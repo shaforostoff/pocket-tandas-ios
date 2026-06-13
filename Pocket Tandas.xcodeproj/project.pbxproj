@@ -1,0 +1,752 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0CE24FF98D8B5610D33D7CD4 /* FadeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3A4024A7FA93B8956DA286 /* FadeController.swift */; };
+		0FC9426F8988ABA5A27072F8 /* TrackDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF04EC9A9D61989661BCF0E /* TrackDisplay.swift */; };
+		1752406383D5767969307F2B /* StopResumeBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E64A91ABB037C8D2EC8E5F /* StopResumeBar.swift */; };
+		1DBF4F0E9AC3874E4024E8BB /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D76246F18FB4D2EF38066899 /* LibraryStore.swift */; };
+		20724BE78F3BDBA17F2BD71E /* FadeControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793840C9AF05E7B7D618259E /* FadeControllerTests.swift */; };
+		25134B84AB1B1EF2C51E34D7 /* MetadataParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FCB409B8B543F4137199041 /* MetadataParsing.swift */; };
+		25424C5384517F1D2F522E22 /* QueueItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DF4E2A802765BB203C5F04 /* QueueItem.swift */; };
+		2BF24F49A68B32779B8B3198 /* BrowserRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */; };
+		2E07473F933932A3FCF55301 /* ExtractedMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81BB4F52B79FA5000750E73A /* ExtractedMetadata.swift */; };
+		352947609BB5A32BB07C1060 /* AudioFileTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30346998D30D95ACE9AA293 /* AudioFileTypes.swift */; };
+		391B4B12B9CE60484B72F5E2 /* PlayQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD42454D852234C6AD343708 /* PlayQueueTests.swift */; };
+		44D74F119581309E720DA2B7 /* MainScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D8F41CCA61565D8E051699C /* MainScreenView.swift */; };
+		462943C2808343F92EB059C3 /* PlaylistParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72C74E75B1F091A21869F10B /* PlaylistParserTests.swift */; };
+		54074B018DCBBA59C5F3D5EE /* SortOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = C735492AA77C72BFEB8A252D /* SortOption.swift */; };
+		60E446C597D26782AB0C5214 /* PlaylistParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884B4CCCB6057CD22F00D3B9 /* PlaylistParser.swift */; };
+		657D4D219F3E67210CD53230 /* SortMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB774D14B26DCD27A530AB67 /* SortMenu.swift */; };
+		65DB46F8B7AA7FA402A67D26 /* MetadataExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC4499797D77F95CC942F75 /* MetadataExtractor.swift */; };
+		69F84E3E88A3785FF6C833EF /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F74FFEA141432E11F27838 /* BrowserView.swift */; };
+		6F3A4711ACE788EE98F297C9 /* RoutePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */; };
+		79094C2AB21CF885C66E076F /* LibraryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8A47AC93C9081661511DAF /* LibraryEntry.swift */; };
+		84E44EC5B54C3441EED0D0F6 /* TrackMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF644EF6A222E63934494281 /* TrackMetadata.swift */; };
+		99B44B73BB1D397161655B01 /* AppMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F204B4A9645469298030DA4 /* AppMode.swift */; };
+		9A874A8A992CC0033EAAF673 /* CurrentRouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4607403494523710516CAD07 /* CurrentRouteView.swift */; };
+		9ECA41038612A89D233DC0EE /* FolderBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */; };
+		A35E4B3599531C1208C64670 /* QueueRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550446ACA175ABD3E68124BF /* QueueRowView.swift */; };
+		A43A4F9E8637CAA28AA271C6 /* TrackMetadataSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */; };
+		CDDF4F2CAFC871F398C84BBC /* NowPlayingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */; };
+		CE986D192FDDF876003B2F2A /* Pocket_TandasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE986D182FDDF876003B2F2A /* Pocket_TandasApp.swift */; };
+		CE986D1F2FDDF87C003B2F2A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE986D1E2FDDF87C003B2F2A /* Assets.xcassets */; };
+		CE986D222FDDF87C003B2F2A /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE986D212FDDF87C003B2F2A /* Preview Assets.xcassets */; };
+		CE986D2C2FDDF87D003B2F2A /* Pocket_TandasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE986D2B2FDDF87D003B2F2A /* Pocket_TandasTests.swift */; };
+		CE986D362FDDF87D003B2F2A /* Pocket_TandasUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE986D352FDDF87D003B2F2A /* Pocket_TandasUITests.swift */; };
+		CE986D382FDDF87D003B2F2A /* Pocket_TandasUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE986D372FDDF87D003B2F2A /* Pocket_TandasUITestsLaunchTests.swift */; };
+		D2DE438C867A74F7E7BCC311 /* PlayQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */; };
+		D4F14E70A3FB44560BADC9D2 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A840598B56A56E71B0F0EA /* QueueView.swift */; };
+		DABA4D49B9D097A034D0AA5D /* MetadataKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */; };
+		DE8F4332A9265EF9457F9E2E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
+		E2204B2095DE9E32AB0CA737 /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */; };
+		E4BA44DD985DA497D324F855 /* StableTrackID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FB4789B2B0DA7E8401866A /* StableTrackID.swift */; };
+		EA0841948933271C613138CA /* DirectoryLister.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521E4B3C811E96019D8FBEB4 /* DirectoryLister.swift */; };
+		EA20405990996CA1B9D81279 /* TrackDisplayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FAB41BD91F2E5C204666532 /* TrackDisplayRow.swift */; };
+		EC004156BD2E3158E037828C /* LauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */; };
+		F08A448DB14F8409AC71B513 /* AudioSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51ED43F1BF0AD0EADA70EF50 /* AudioSessionController.swift */; };
+		F75E4615AB95C79357735D99 /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E194492A760141C1C5FCFE7 /* PlaybackEngine.swift */; };
+		FBC4497C9A5B0A2DDB247D21 /* MetadataParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9C4726B986D34E5855DCFC /* MetadataParsingTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CE986D282FDDF87D003B2F2A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE986D0D2FDDF876003B2F2A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE986D142FDDF876003B2F2A;
+			remoteInfo = "Pocket Tandas";
+		};
+		CE986D322FDDF87D003B2F2A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE986D0D2FDDF876003B2F2A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE986D142FDDF876003B2F2A;
+			remoteInfo = "Pocket Tandas";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayQueue.swift; path = PlayQueue.swift; sourceTree = "<group>"; };
+		16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserRowView.swift; path = BrowserRowView.swift; sourceTree = "<group>"; };
+		1C3A4024A7FA93B8956DA286 /* FadeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FadeController.swift; path = FadeController.swift; sourceTree = "<group>"; };
+		2CF04EC9A9D61989661BCF0E /* TrackDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackDisplay.swift; path = TrackDisplay.swift; sourceTree = "<group>"; };
+		2D8F41CCA61565D8E051699C /* MainScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MainScreenView.swift; path = MainScreenView.swift; sourceTree = "<group>"; };
+		32FB4789B2B0DA7E8401866A /* StableTrackID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StableTrackID.swift; path = StableTrackID.swift; sourceTree = "<group>"; };
+		3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NowPlayingController.swift; path = NowPlayingController.swift; sourceTree = "<group>"; };
+		3BC4499797D77F95CC942F75 /* MetadataExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataExtractor.swift; path = MetadataExtractor.swift; sourceTree = "<group>"; };
+		3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LauncherView.swift; path = LauncherView.swift; sourceTree = "<group>"; };
+		3F9C4726B986D34E5855DCFC /* MetadataParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataParsingTests.swift; path = MetadataParsingTests.swift; sourceTree = "<group>"; };
+		45F74FFEA141432E11F27838 /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserView.swift; path = BrowserView.swift; sourceTree = "<group>"; };
+		4607403494523710516CAD07 /* CurrentRouteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CurrentRouteView.swift; path = CurrentRouteView.swift; sourceTree = "<group>"; };
+		4E194492A760141C1C5FCFE7 /* PlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackEngine.swift; path = PlaybackEngine.swift; sourceTree = "<group>"; };
+		51ED43F1BF0AD0EADA70EF50 /* AudioSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioSessionController.swift; path = AudioSessionController.swift; sourceTree = "<group>"; };
+		521E4B3C811E96019D8FBEB4 /* DirectoryLister.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DirectoryLister.swift; path = DirectoryLister.swift; sourceTree = "<group>"; };
+		550446ACA175ABD3E68124BF /* QueueRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueueRowView.swift; path = QueueRowView.swift; sourceTree = "<group>"; };
+		5FCB409B8B543F4137199041 /* MetadataParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataParsing.swift; path = MetadataParsing.swift; sourceTree = "<group>"; };
+		72C74E75B1F091A21869F10B /* PlaylistParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaylistParserTests.swift; path = PlaylistParserTests.swift; sourceTree = "<group>"; };
+		74E64A91ABB037C8D2EC8E5F /* StopResumeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StopResumeBar.swift; path = StopResumeBar.swift; sourceTree = "<group>"; };
+		76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackMetadataSnapshot.swift; path = TrackMetadataSnapshot.swift; sourceTree = "<group>"; };
+		77A840598B56A56E71B0F0EA /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueueView.swift; path = QueueView.swift; sourceTree = "<group>"; };
+		793840C9AF05E7B7D618259E /* FadeControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FadeControllerTests.swift; path = FadeControllerTests.swift; sourceTree = "<group>"; };
+		7A8A47AC93C9081661511DAF /* LibraryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LibraryEntry.swift; path = LibraryEntry.swift; sourceTree = "<group>"; };
+		81BB4F52B79FA5000750E73A /* ExtractedMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExtractedMetadata.swift; path = ExtractedMetadata.swift; sourceTree = "<group>"; };
+		884B4CCCB6057CD22F00D3B9 /* PlaylistParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaylistParser.swift; path = PlaylistParser.swift; sourceTree = "<group>"; };
+		8FAB41BD91F2E5C204666532 /* TrackDisplayRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackDisplayRow.swift; path = TrackDisplayRow.swift; sourceTree = "<group>"; };
+		9F204B4A9645469298030DA4 /* AppMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppMode.swift; path = AppMode.swift; sourceTree = "<group>"; };
+		A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataService.swift; path = MetadataService.swift; sourceTree = "<group>"; };
+		AD42454D852234C6AD343708 /* PlayQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayQueueTests.swift; path = PlayQueueTests.swift; sourceTree = "<group>"; };
+		B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutePickerView.swift; path = RoutePickerView.swift; sourceTree = "<group>"; };
+		B4DF4E2A802765BB203C5F04 /* QueueItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueueItem.swift; path = QueueItem.swift; sourceTree = "<group>"; };
+		C735492AA77C72BFEB8A252D /* SortOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortOption.swift; path = SortOption.swift; sourceTree = "<group>"; };
+		CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataKeys.swift; path = MetadataKeys.swift; sourceTree = "<group>"; };
+		CE986D152FDDF876003B2F2A /* Pocket Tandas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Tandas.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE986D182FDDF876003B2F2A /* Pocket_TandasApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pocket_TandasApp.swift; sourceTree = "<group>"; };
+		CE986D1E2FDDF87C003B2F2A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CE986D212FDDF87C003B2F2A /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		CE986D272FDDF87D003B2F2A /* Pocket TandasTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Pocket TandasTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE986D2B2FDDF87D003B2F2A /* Pocket_TandasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pocket_TandasTests.swift; sourceTree = "<group>"; };
+		CE986D312FDDF87D003B2F2A /* Pocket TandasUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Pocket TandasUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE986D352FDDF87D003B2F2A /* Pocket_TandasUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pocket_TandasUITests.swift; sourceTree = "<group>"; };
+		CE986D372FDDF87D003B2F2A /* Pocket_TandasUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pocket_TandasUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		CF644EF6A222E63934494281 /* TrackMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackMetadata.swift; path = TrackMetadata.swift; sourceTree = "<group>"; };
+		D30346998D30D95ACE9AA293 /* AudioFileTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioFileTypes.swift; path = AudioFileTypes.swift; sourceTree = "<group>"; };
+		D76246F18FB4D2EF38066899 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LibraryStore.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		E112487F8DED525D48E18718 /* PlaybackState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackState.swift; path = PlaybackState.swift; sourceTree = "<group>"; };
+		EB774D14B26DCD27A530AB67 /* SortMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortMenu.swift; path = SortMenu.swift; sourceTree = "<group>"; };
+		F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FolderBookmark.swift; path = FolderBookmark.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		35274A949CCA483953B9BA6B /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				51ED43F1BF0AD0EADA70EF50 /* AudioSessionController.swift */,
+				4E194492A760141C1C5FCFE7 /* PlaybackEngine.swift */,
+				1C3A4024A7FA93B8956DA286 /* FadeController.swift */,
+				3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */,
+			);
+			name = Audio;
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		686B41A48249928962BEFE51 /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				D30346998D30D95ACE9AA293 /* AudioFileTypes.swift */,
+				F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */,
+				521E4B3C811E96019D8FBEB4 /* DirectoryLister.swift */,
+				D76246F18FB4D2EF38066899 /* LibraryStore.swift */,
+				884B4CCCB6057CD22F00D3B9 /* PlaylistParser.swift */,
+			);
+			name = Library;
+			path = Library;
+			sourceTree = "<group>";
+		};
+		966342ACB17367024627C588 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				CF644EF6A222E63934494281 /* TrackMetadata.swift */,
+				9F204B4A9645469298030DA4 /* AppMode.swift */,
+				E112487F8DED525D48E18718 /* PlaybackState.swift */,
+				C735492AA77C72BFEB8A252D /* SortOption.swift */,
+				76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */,
+				7A8A47AC93C9081661511DAF /* LibraryEntry.swift */,
+				2CF04EC9A9D61989661BCF0E /* TrackDisplay.swift */,
+				B4DF4E2A802765BB203C5F04 /* QueueItem.swift */,
+				05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */,
+			);
+			name = Models;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		BE114DB28DE4D17C054D24B9 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				32FB4789B2B0DA7E8401866A /* StableTrackID.swift */,
+			);
+			name = Support;
+			path = Support;
+			sourceTree = "<group>";
+		};
+		CE986D0C2FDDF876003B2F2A = {
+			isa = PBXGroup;
+			children = (
+				CE986D172FDDF876003B2F2A /* Pocket Tandas */,
+				CE986D2A2FDDF87D003B2F2A /* Pocket TandasTests */,
+				CE986D342FDDF87D003B2F2A /* Pocket TandasUITests */,
+				CE986D162FDDF876003B2F2A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CE986D162FDDF876003B2F2A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CE986D152FDDF876003B2F2A /* Pocket Tandas.app */,
+				CE986D272FDDF87D003B2F2A /* Pocket TandasTests.xctest */,
+				CE986D312FDDF87D003B2F2A /* Pocket TandasUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CE986D172FDDF876003B2F2A /* Pocket Tandas */ = {
+			isa = PBXGroup;
+			children = (
+				CE986D182FDDF876003B2F2A /* Pocket_TandasApp.swift */,
+				CE986D1E2FDDF87C003B2F2A /* Assets.xcassets */,
+				CE986D202FDDF87C003B2F2A /* Preview Content */,
+				966342ACB17367024627C588 /* Models */,
+				F27C415B9D3BDEDDD9FCD530 /* Views */,
+				35274A949CCA483953B9BA6B /* Audio */,
+				686B41A48249928962BEFE51 /* Library */,
+				BE114DB28DE4D17C054D24B9 /* Support */,
+				DA974CEA80228E5E6F942B7D /* Metadata */,
+			);
+			path = "Pocket Tandas";
+			sourceTree = "<group>";
+		};
+		CE986D202FDDF87C003B2F2A /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				CE986D212FDDF87C003B2F2A /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		CE986D2A2FDDF87D003B2F2A /* Pocket TandasTests */ = {
+			isa = PBXGroup;
+			children = (
+				CE986D2B2FDDF87D003B2F2A /* Pocket_TandasTests.swift */,
+				3F9C4726B986D34E5855DCFC /* MetadataParsingTests.swift */,
+				AD42454D852234C6AD343708 /* PlayQueueTests.swift */,
+				72C74E75B1F091A21869F10B /* PlaylistParserTests.swift */,
+				793840C9AF05E7B7D618259E /* FadeControllerTests.swift */,
+			);
+			path = "Pocket TandasTests";
+			sourceTree = "<group>";
+		};
+		CE986D342FDDF87D003B2F2A /* Pocket TandasUITests */ = {
+			isa = PBXGroup;
+			children = (
+				CE986D352FDDF87D003B2F2A /* Pocket_TandasUITests.swift */,
+				CE986D372FDDF87D003B2F2A /* Pocket_TandasUITestsLaunchTests.swift */,
+			);
+			path = "Pocket TandasUITests";
+			sourceTree = "<group>";
+		};
+		DA974CEA80228E5E6F942B7D /* Metadata */ = {
+			isa = PBXGroup;
+			children = (
+				5FCB409B8B543F4137199041 /* MetadataParsing.swift */,
+				81BB4F52B79FA5000750E73A /* ExtractedMetadata.swift */,
+				CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */,
+				3BC4499797D77F95CC942F75 /* MetadataExtractor.swift */,
+				A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */,
+			);
+			name = Metadata;
+			path = Metadata;
+			sourceTree = "<group>";
+		};
+		F27C415B9D3BDEDDD9FCD530 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */,
+				2D8F41CCA61565D8E051699C /* MainScreenView.swift */,
+				B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */,
+				4607403494523710516CAD07 /* CurrentRouteView.swift */,
+				EB774D14B26DCD27A530AB67 /* SortMenu.swift */,
+				16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */,
+				8FAB41BD91F2E5C204666532 /* TrackDisplayRow.swift */,
+				45F74FFEA141432E11F27838 /* BrowserView.swift */,
+				77A840598B56A56E71B0F0EA /* QueueView.swift */,
+				550446ACA175ABD3E68124BF /* QueueRowView.swift */,
+				74E64A91ABB037C8D2EC8E5F /* StopResumeBar.swift */,
+			);
+			name = Views;
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CE986D142FDDF876003B2F2A /* Pocket Tandas */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE986D3B2FDDF87D003B2F2A /* Build configuration list for PBXNativeTarget "Pocket Tandas" */;
+			buildPhases = (
+				CE986D112FDDF876003B2F2A /* Sources */,
+				CE986D132FDDF876003B2F2A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Pocket Tandas";
+			productName = "Pocket Tandas";
+			productReference = CE986D152FDDF876003B2F2A /* Pocket Tandas.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CE986D262FDDF87D003B2F2A /* Pocket TandasTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE986D3E2FDDF87D003B2F2A /* Build configuration list for PBXNativeTarget "Pocket TandasTests" */;
+			buildPhases = (
+				CE986D232FDDF87D003B2F2A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE986D292FDDF87D003B2F2A /* PBXTargetDependency */,
+			);
+			name = "Pocket TandasTests";
+			productName = "Pocket TandasTests";
+			productReference = CE986D272FDDF87D003B2F2A /* Pocket TandasTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		CE986D302FDDF87D003B2F2A /* Pocket TandasUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE986D412FDDF87D003B2F2A /* Build configuration list for PBXNativeTarget "Pocket TandasUITests" */;
+			buildPhases = (
+				CE986D2D2FDDF87D003B2F2A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE986D332FDDF87D003B2F2A /* PBXTargetDependency */,
+			);
+			name = "Pocket TandasUITests";
+			productName = "Pocket TandasUITests";
+			productReference = CE986D312FDDF87D003B2F2A /* Pocket TandasUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CE986D0D2FDDF876003B2F2A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1520;
+				LastUpgradeCheck = 1520;
+				TargetAttributes = {
+					CE986D142FDDF876003B2F2A = {
+						CreatedOnToolsVersion = 15.2;
+					};
+					CE986D262FDDF87D003B2F2A = {
+						CreatedOnToolsVersion = 15.2;
+						TestTargetID = CE986D142FDDF876003B2F2A;
+					};
+					CE986D302FDDF87D003B2F2A = {
+						CreatedOnToolsVersion = 15.2;
+						TestTargetID = CE986D142FDDF876003B2F2A;
+					};
+				};
+			};
+			buildConfigurationList = CE986D102FDDF876003B2F2A /* Build configuration list for PBXProject "Pocket Tandas" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = CE986D0C2FDDF876003B2F2A;
+			productRefGroup = CE986D162FDDF876003B2F2A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CE986D142FDDF876003B2F2A /* Pocket Tandas */,
+				CE986D262FDDF87D003B2F2A /* Pocket TandasTests */,
+				CE986D302FDDF87D003B2F2A /* Pocket TandasUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CE986D132FDDF876003B2F2A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE986D222FDDF87C003B2F2A /* Preview Assets.xcassets in Resources */,
+				CE986D1F2FDDF87C003B2F2A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CE986D112FDDF876003B2F2A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE986D192FDDF876003B2F2A /* Pocket_TandasApp.swift in Sources */,
+				84E44EC5B54C3441EED0D0F6 /* TrackMetadata.swift in Sources */,
+				99B44B73BB1D397161655B01 /* AppMode.swift in Sources */,
+				EC004156BD2E3158E037828C /* LauncherView.swift in Sources */,
+				44D74F119581309E720DA2B7 /* MainScreenView.swift in Sources */,
+				F08A448DB14F8409AC71B513 /* AudioSessionController.swift in Sources */,
+				6F3A4711ACE788EE98F297C9 /* RoutePickerView.swift in Sources */,
+				9A874A8A992CC0033EAAF673 /* CurrentRouteView.swift in Sources */,
+				DE8F4332A9265EF9457F9E2E /* PlaybackState.swift in Sources */,
+				F75E4615AB95C79357735D99 /* PlaybackEngine.swift in Sources */,
+				54074B018DCBBA59C5F3D5EE /* SortOption.swift in Sources */,
+				A43A4F9E8637CAA28AA271C6 /* TrackMetadataSnapshot.swift in Sources */,
+				79094C2AB21CF885C66E076F /* LibraryEntry.swift in Sources */,
+				0FC9426F8988ABA5A27072F8 /* TrackDisplay.swift in Sources */,
+				352947609BB5A32BB07C1060 /* AudioFileTypes.swift in Sources */,
+				9ECA41038612A89D233DC0EE /* FolderBookmark.swift in Sources */,
+				EA0841948933271C613138CA /* DirectoryLister.swift in Sources */,
+				1DBF4F0E9AC3874E4024E8BB /* LibraryStore.swift in Sources */,
+				657D4D219F3E67210CD53230 /* SortMenu.swift in Sources */,
+				2BF24F49A68B32779B8B3198 /* BrowserRowView.swift in Sources */,
+				EA20405990996CA1B9D81279 /* TrackDisplayRow.swift in Sources */,
+				69F84E3E88A3785FF6C833EF /* BrowserView.swift in Sources */,
+				E4BA44DD985DA497D324F855 /* StableTrackID.swift in Sources */,
+				25424C5384517F1D2F522E22 /* QueueItem.swift in Sources */,
+				D2DE438C867A74F7E7BCC311 /* PlayQueue.swift in Sources */,
+				D4F14E70A3FB44560BADC9D2 /* QueueView.swift in Sources */,
+				A35E4B3599531C1208C64670 /* QueueRowView.swift in Sources */,
+				0CE24FF98D8B5610D33D7CD4 /* FadeController.swift in Sources */,
+				1752406383D5767969307F2B /* StopResumeBar.swift in Sources */,
+				25134B84AB1B1EF2C51E34D7 /* MetadataParsing.swift in Sources */,
+				2E07473F933932A3FCF55301 /* ExtractedMetadata.swift in Sources */,
+				DABA4D49B9D097A034D0AA5D /* MetadataKeys.swift in Sources */,
+				65DB46F8B7AA7FA402A67D26 /* MetadataExtractor.swift in Sources */,
+				E2204B2095DE9E32AB0CA737 /* MetadataService.swift in Sources */,
+				60E446C597D26782AB0C5214 /* PlaylistParser.swift in Sources */,
+				CDDF4F2CAFC871F398C84BBC /* NowPlayingController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE986D232FDDF87D003B2F2A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE986D2C2FDDF87D003B2F2A /* Pocket_TandasTests.swift in Sources */,
+				FBC4497C9A5B0A2DDB247D21 /* MetadataParsingTests.swift in Sources */,
+				391B4B12B9CE60484B72F5E2 /* PlayQueueTests.swift in Sources */,
+				462943C2808343F92EB059C3 /* PlaylistParserTests.swift in Sources */,
+				20724BE78F3BDBA17F2BD71E /* FadeControllerTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE986D2D2FDDF87D003B2F2A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE986D362FDDF87D003B2F2A /* Pocket_TandasUITests.swift in Sources */,
+				CE986D382FDDF87D003B2F2A /* Pocket_TandasUITestsLaunchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CE986D292FDDF87D003B2F2A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE986D142FDDF876003B2F2A /* Pocket Tandas */;
+			targetProxy = CE986D282FDDF87D003B2F2A /* PBXContainerItemProxy */;
+		};
+		CE986D332FDDF87D003B2F2A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE986D142FDDF876003B2F2A /* Pocket Tandas */;
+			targetProxy = CE986D322FDDF87D003B2F2A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		CE986D392FDDF87D003B2F2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		CE986D3A2FDDF87D003B2F2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		CE986D3C2FDDF87D003B2F2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Pocket Tandas/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Pocket Tandas/Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-Tandas";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CE986D3D2FDDF87D003B2F2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Pocket Tandas/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Pocket Tandas/Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-Tandas";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		CE986D3F2FDDF87D003B2F2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Pocket Tandas.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Pocket Tandas";
+			};
+			name = Debug;
+		};
+		CE986D402FDDF87D003B2F2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Pocket Tandas.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Pocket Tandas";
+			};
+			name = Release;
+		};
+		CE986D422FDDF87D003B2F2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Pocket Tandas";
+			};
+			name = Debug;
+		};
+		CE986D432FDDF87D003B2F2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Pocket Tandas";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CE986D102FDDF876003B2F2A /* Build configuration list for PBXProject "Pocket Tandas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE986D392FDDF87D003B2F2A /* Debug */,
+				CE986D3A2FDDF87D003B2F2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE986D3B2FDDF87D003B2F2A /* Build configuration list for PBXNativeTarget "Pocket Tandas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE986D3C2FDDF87D003B2F2A /* Debug */,
+				CE986D3D2FDDF87D003B2F2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE986D3E2FDDF87D003B2F2A /* Build configuration list for PBXNativeTarget "Pocket TandasTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE986D3F2FDDF87D003B2F2A /* Debug */,
+				CE986D402FDDF87D003B2F2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE986D412FDDF87D003B2F2A /* Build configuration list for PBXNativeTarget "Pocket TandasUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE986D422FDDF87D003B2F2A /* Debug */,
+				CE986D432FDDF87D003B2F2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CE986D0D2FDDF876003B2F2A /* Project object */;
+}
