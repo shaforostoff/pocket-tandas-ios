@@ -14,34 +14,20 @@ import SwiftUI
 import SwiftData
 
 struct MainScreenView: View {
+    /// Carried for future per-mode behaviour; both modes currently behave the same.
     let mode: AppMode
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                BrowserView()
-                    .frame(maxHeight: .infinity)
-                Divider()
-                StopResumeBar()
-                Divider()
-                QueueView()
-                    .frame(maxHeight: .infinity)
-            }
-            .navigationTitle(mode.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Label("Launcher", systemImage: "chevron.left")
-                    }
-                }
-            }
+        VStack(spacing: 0) {
+            BrowserView()
+                .frame(maxHeight: .infinity)
+            Divider()
+            StopResumeBar()
+            Divider()
+            QueueView()
+                .frame(maxHeight: .infinity)
         }
     }
-
 }
 
 #Preview {
