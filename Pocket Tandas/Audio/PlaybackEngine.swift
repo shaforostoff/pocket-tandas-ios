@@ -11,13 +11,20 @@
 //  (preloaded next) — roles swap on each transition for gapless hand-off.
 //  The mixer's outputVolume is the single fade lever.
 //
-//  The crux requirement — a queue edit made seconds before the current track
-//  ends must be honoured — is satisfied by re-reading `queue.item(after:)` at the
-//  transition moment (in `advance()`), never caching the "next" decision.
+//  A queue edit made seconds before the current track ends is honoured by
+//  re-reading `queue.item(after:)` at the transition moment (in `advance()`),
+//  never caching the "next" decision.
 //
-//  Completion handlers fire on an engine thread, so every handler hops to the
-//  main thread before touching state or the queue (this class is plain
-//  @Observable, not @MainActor — see the observable-not-mainactor note).
+//  Completions are identified by a per-schedule GENERATION TOKEN, not by item
+//  id: the engine reacts only to the completion of the currently audible
+//  schedule. This is essential because the SAME track can be scheduled on two
+//  nodes at once (e.g. preloaded on standby AND tapped to play on active);
+//  stopping the standby fires a stale `.dataPlayedBack` whose item id would
+//  otherwise match the new current track and trigger a spurious advance.
+//
+//  Completion handlers fire on an engine thread, so each hops to the main
+//  thread before touching state (this class is plain @Observable, not
+//  @MainActor — see the observable-not-mainactor note).
 //
 
 import Foundation
@@ -45,6 +52,14 @@ final class PlaybackEngine {
     @ObservationIgnored private var activePlayer: AVAudioPlayerNode
     @ObservationIgnored private var standbyPlayer: AVAudioPlayerNode
     @ObservationIgnored private var preloadedItemID: UUID?
+
+    /// Monotonic schedule tokens. `activeScheduleID` is the token of the audible
+    /// schedule; only its completion may advance. `preloadedScheduleID` is the
+    /// token of the standby's preloaded schedule (becomes active on swap).
+    @ObservationIgnored private var scheduleSeq = 0
+    @ObservationIgnored private var activeScheduleID = 0
+    @ObservationIgnored private var preloadedScheduleID = 0
+
     @ObservationIgnored private var formats: [ObjectIdentifier: AVAudioFormat] = [:]
     @ObservationIgnored private let fader = FadeController()
     @ObservationIgnored private let audioSession: AudioSessionController
@@ -147,7 +162,7 @@ final class PlaybackEngine {
         fader.cancel()
         activePlayer.stop()
         standbyPlayer.stop()
-        preloadedItemID = nil
+        clearSchedules()
         currentItem = nil
         currentDuration = 0
         engine.mainMixerNode.outputVolume = normalVolume
@@ -187,39 +202,56 @@ final class PlaybackEngine {
         audioSession.activate()
         ensureEngineRunning()
         engine.mainMixerNode.outputVolume = normalVolume
-        guard schedule(item, on: activePlayer, startNow: true) else { return }
+        guard let scheduleID = schedule(item, on: activePlayer, startNow: true) else { return }
+        activeScheduleID = scheduleID
         currentItem = item
         currentDuration = duration(of: item.url)
         setState(.playing(item.id))
         preloadNext(after: item.id)
     }
 
-    @discardableResult
-    private func schedule(_ item: QueueItem, on player: AVAudioPlayerNode, startNow: Bool) -> Bool {
+    /// Schedules `item` on `player`. Returns the unique schedule token, or nil if
+    /// the file couldn't be opened.
+    private func schedule(_ item: QueueItem, on player: AVAudioPlayerNode, startNow: Bool) -> Int? {
         guard let file = try? AVAudioFile(forReading: item.url) else {
-            print("[Engine] could not open \(item.filename)")
-            return false
+            ptLog("schedule FAILED to open \(item.filename)")
+            return nil
         }
+        scheduleSeq += 1
+        let scheduleID = scheduleSeq
         connectIfNeeded(player, format: file.processingFormat)
         player.stop()
         player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-            DispatchQueue.main.async { self?.handleTrackEnded(item.id) }
+            DispatchQueue.main.async { self?.handleScheduleEnded(scheduleID) }
         }
         if startNow { player.play() }
-        return true
+        ptLog("schedule \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow)")
+        return scheduleID
     }
 
     private func preloadNext(after id: UUID) {
         guard let next = queue.item(after: id) else {
             preloadedItemID = nil
+            preloadedScheduleID = 0
             return
         }
-        preloadedItemID = schedule(next, on: standbyPlayer, startNow: false) ? next.id : nil
+        if let scheduleID = schedule(next, on: standbyPlayer, startNow: false) {
+            preloadedItemID = next.id
+            preloadedScheduleID = scheduleID
+        } else {
+            preloadedItemID = nil
+            preloadedScheduleID = 0
+        }
     }
 
-    private func handleTrackEnded(_ endedID: UUID) {
-        ptLog("trackEnded ended=\(endedID.uuidString.prefix(4)) state=\(state.debugLabel)")
-        guard state.currentItemID == endedID else { return }   // ignore stale callbacks
+    /// Called (on main) when a scheduled file finishes. Only the audible
+    /// schedule may advance; stale tokens (stopped/replaced schedules) are ignored.
+    private func handleScheduleEnded(_ scheduleID: Int) {
+        ptLog("scheduleEnded sid=\(scheduleID) active=\(activeScheduleID) state=\(state.debugLabel)")
+        guard scheduleID == activeScheduleID else {
+            ptLog("  ignored (stale schedule)")
+            return
+        }
         switch state {
         case .playing:
             advance()
@@ -244,13 +276,15 @@ final class PlaybackEngine {
         ptLog("advance current=\(currentID.uuidString.prefix(4)) next=\(next.filename)#\(next.id.uuidString.prefix(4)) preloaded=\(preloadedItemID?.uuidString.prefix(4) ?? "nil") | queue: \(queue.debugOrder)")
 
         if preloadedItemID != next.id {
-            guard schedule(next, on: standbyPlayer, startNow: false) else {
+            guard let scheduleID = schedule(next, on: standbyPlayer, startNow: false) else {
                 stop(); return
             }
             preloadedItemID = next.id
+            preloadedScheduleID = scheduleID
         }
 
         swap(&activePlayer, &standbyPlayer)   // standby (holding `next`) becomes active
+        activeScheduleID = preloadedScheduleID
         engine.mainMixerNode.outputVolume = normalVolume
         activePlayer.play()
         currentItem = next
@@ -263,11 +297,17 @@ final class PlaybackEngine {
         ptLog("fade complete → idle")
         activePlayer.stop()
         standbyPlayer.stop()
-        preloadedItemID = nil
+        clearSchedules()
         currentItem = nil
         currentDuration = 0
         engine.mainMixerNode.outputVolume = normalVolume
         setState(.idle)
+    }
+
+    private func clearSchedules() {
+        preloadedItemID = nil
+        activeScheduleID = 0      // 0 never matches a real token (tokens start at 1)
+        preloadedScheduleID = 0
     }
 
     private func duration(of url: URL) -> TimeInterval {
