@@ -75,6 +75,21 @@ final class PlaylistParserTests: XCTestCase {
         XCTAssertTrue(PlaylistParser.parseLines("BBB.mp3", relativeTo: dir).isEmpty)
     }
 
+    func testLeadingBOMDoesNotSwallowFirstEntry() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        try Data().write(to: dir.appendingPathComponent("first.mp3"))
+
+        // UTF-8 BOM glued to the first track path, Windows CRLF endings — exactly
+        // what a Windows-authored .m3u8 produces.
+        let text = "\u{FEFF}first.mp3\r\nmissing.mp3\r\n"
+        let urls = PlaylistParser.parseLines(text, relativeTo: dir)
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls.first?.lastPathComponent, "first.mp3")
+    }
+
     func testWindowsSeparatorsNormalized() throws {
         let fm = FileManager.default
         let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString, isDirectory: true)

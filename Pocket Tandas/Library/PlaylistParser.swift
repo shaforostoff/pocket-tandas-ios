@@ -27,6 +27,12 @@ enum PlaylistParser {
     }
 
     static func parseLines(_ text: String, relativeTo directory: URL) -> [URL] {
+        // Drop a leading UTF-8 BOM (U+FEFF): Swift keeps it in the decoded string
+        // and it isn't whitespace, so it would otherwise corrupt the first entry
+        // (and hide a leading #EXTM3U from the comment check below).
+        var text = text
+        if text.first == "\u{FEFF}" { text.removeFirst() }
+
         var urls: [URL] = []
         for rawLine in text.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
