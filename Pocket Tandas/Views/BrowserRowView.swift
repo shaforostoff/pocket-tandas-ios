@@ -32,7 +32,7 @@ struct BrowserRowView: View {
 
             Spacer(minLength: 0)
 
-            if entry.isFolder {
+            if entry.isNavigable {
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(.tertiary)

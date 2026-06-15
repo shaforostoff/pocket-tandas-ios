@@ -25,6 +25,10 @@ struct LibraryEntry: Identifiable, Hashable {
     var name: String { url.lastPathComponent }
     var isFolder: Bool { kind == .folder }
 
+    /// Drillable in the browser: real folders and playlists (opened as fake
+    /// folders of their tracks).
+    var isNavigable: Bool { kind == .folder || kind == .playlist }
+
     var systemImage: String {
         switch kind {
         case .folder: return "folder.fill"
