@@ -64,6 +64,7 @@ final class PlaybackEngine {
     @ObservationIgnored private let fader = FadeController()
     @ObservationIgnored private let audioSession: AudioSessionController
     @ObservationIgnored private let queue: PlayQueue
+    @ObservationIgnored private let metadata: MetadataService
 
     /// Elapsed playback time of the active track (best effort, for Now Playing).
     var currentElapsed: TimeInterval {
@@ -73,9 +74,10 @@ final class PlaybackEngine {
         return Double(playerTime.sampleTime) / playerTime.sampleRate
     }
 
-    init(audioSession: AudioSessionController, queue: PlayQueue) {
+    init(audioSession: AudioSessionController, queue: PlayQueue, metadata: MetadataService) {
         self.audioSession = audioSession
         self.queue = queue
+        self.metadata = metadata
         self.activePlayer = playerA
         self.standbyPlayer = playerB
         configureGraph()
@@ -221,12 +223,26 @@ final class PlaybackEngine {
         let scheduleID = scheduleSeq
         connectIfNeeded(player, format: file.processingFormat)
         player.stop()
+        // Per-track ReplayGain lives on the player node's own volume, so it rides
+        // with the node through the active/standby swap and composes
+        // multiplicatively with the mixer's fade lever. Set before play.
+        let gain = trackGainScale(for: item)
+        player.volume = gain
         player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async { self?.handleScheduleEnded(scheduleID) }
         }
         if startNow { player.play() }
-        ptLog("schedule \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow)")
+        ptLog("schedule \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow) gain=\(gain)")
         return scheduleID
+    }
+
+    /// ReplayGain track gain → linear amplitude scale for a player node's volume,
+    /// looked up live from the metadata cache. Defaults to unity (1.0) when the
+    /// track has no gain data (e.g. not yet scanned). Negative dB attenuates;
+    /// positive dB boosts — the node accepts > 1.0 (its only clamp is at 0).
+    private func trackGainScale(for item: QueueItem) -> Float {
+        guard let db = metadata.snapshot(forKey: item.trackKey)?.trackGainDB else { return 1.0 }
+        return Float(pow(10.0, db / 20.0))
     }
 
     private func preloadNext(after id: UUID) {

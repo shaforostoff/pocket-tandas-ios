@@ -20,8 +20,12 @@ struct ExtractedMetadata: Sendable {
     var year: Int?
     var bpm: Int?
 
+    /// ReplayGain track gain in dB (album gain is ignored). nil when absent.
+    var trackGainDB: Double?
+
     var snapshot: TrackMetadataSnapshot {
         TrackMetadataSnapshot(title: title, artist: artist, genre: genre,
-                              dateText: dateText, year: year, bpm: bpm)
+                              dateText: dateText, year: year, bpm: bpm,
+                              trackGainDB: trackGainDB)
     }
 }

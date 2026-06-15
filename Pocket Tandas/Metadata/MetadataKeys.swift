@@ -50,4 +50,11 @@ enum MetadataKeys {
         // atom (----:com.apple.iTunes:BPM) rather than the standard `tmpo`.
         AVMetadataIdentifier(rawValue: "itlk/com.apple.iTunes.BPM")
     ]
+
+    // ReplayGain *track* gain only — album gain is deliberately ignored. Stored
+    // as a freeform iTunes atom (----:com.apple.iTunes:replaygain_track_gain),
+    // value like "-2.33 dB". There is no common/standard identifier for it.
+    static let replayGainTrack: [AVMetadataIdentifier] = [
+        AVMetadataIdentifier(rawValue: "itlk/com.apple.iTunes.replaygain_track_gain")
+    ]
 }

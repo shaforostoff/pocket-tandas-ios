@@ -112,7 +112,8 @@ final class MetadataService {
         for m in all {
             snapshots[m.trackKey] = TrackMetadataSnapshot(title: m.title, artist: m.artist,
                                                           genre: m.genre, dateText: m.dateText,
-                                                          year: m.year, bpm: m.bpm)
+                                                          year: m.year, bpm: m.bpm,
+                                                          trackGainDB: m.trackGainDB)
             modDates[m.trackKey] = m.sourceModDate
         }
     }
@@ -166,12 +167,14 @@ final class MetadataService {
             existing.dateText = extracted.dateText
             existing.year = extracted.year
             existing.bpm = extracted.bpm
+            existing.trackGainDB = extracted.trackGainDB
             existing.sourceModDate = modDate
             existing.lastScanned = .now
         } else {
             context.insert(TrackMetadata(trackKey: key, title: extracted.title, artist: extracted.artist,
                                          genre: extracted.genre, dateText: extracted.dateText,
                                          year: extracted.year, bpm: extracted.bpm,
+                                         trackGainDB: extracted.trackGainDB,
                                          sourceModDate: modDate, lastScanned: .now))
         }
     }
