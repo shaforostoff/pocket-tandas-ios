@@ -13,12 +13,24 @@ import SwiftUI
 
 struct TrackDisplayRow: View {
     let display: TrackDisplay
+    /// Optional text shown at the top-right of the title row (e.g. the playing
+    /// track's remaining time, "-0:50").
+    var titleAccessory: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(display.titleLine)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(display.titleLine)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let titleAccessory {
+                    Spacer(minLength: 8)
+                    Text(titleAccessory)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             if display.hasSecondRow {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
