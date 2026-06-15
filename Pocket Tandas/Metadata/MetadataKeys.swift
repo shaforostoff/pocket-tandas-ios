@@ -45,6 +45,9 @@ enum MetadataKeys {
 
     static let bpm: [AVMetadataIdentifier] = [
         .id3MetadataBeatsPerMinute,
-        .iTunesMetadataBeatsPerMin
+        .iTunesMetadataBeatsPerMin,
+        // TangoTunes (and some other taggers) store BPM in a freeform iTunes
+        // atom (----:com.apple.iTunes:BPM) rather than the standard `tmpo`.
+        AVMetadataIdentifier(rawValue: "itlk/com.apple.iTunes.BPM")
     ]
 }
