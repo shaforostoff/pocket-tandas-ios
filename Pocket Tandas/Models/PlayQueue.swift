@@ -70,4 +70,11 @@ final class PlayQueue {
         guard let idx = index(of: id), idx + 1 < items.count else { return nil }
         return items[idx + 1]
     }
+
+    /// Compact dump for diagnostic logging: "0:foo.mp3#a1b2 | 1:bar.mp3#c3d4".
+    var debugOrder: String {
+        items.enumerated()
+            .map { "\($0.offset):\($0.element.filename)#\($0.element.id.uuidString.prefix(4))" }
+            .joined(separator: " | ")
+    }
 }

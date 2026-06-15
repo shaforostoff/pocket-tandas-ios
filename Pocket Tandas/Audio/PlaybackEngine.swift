@@ -100,6 +100,7 @@ final class PlaybackEngine {
     /// user must Stop first) — EXCEPT while a fade-out is in progress, when the
     /// tapped track starts immediately and the fade is cancelled.
     func requestPlay(_ item: QueueItem) {
+        ptLog("requestPlay tapped=\(item.filename)#\(item.id.uuidString.prefix(4)) state=\(state.debugLabel) | queue: \(queue.debugOrder)")
         switch state {
         case .idle:
             startPlaying(item)
@@ -117,6 +118,7 @@ final class PlaybackEngine {
     /// cancel it.
     func stopWithFade() {
         guard case .playing(let id) = state else { return }
+        ptLog("stopWithFade current=\(id.uuidString.prefix(4))")
         setState(.fadingOut(id))
         fader.ramp(from: engine.mainMixerNode.outputVolume,
                    to: 0,
@@ -129,6 +131,7 @@ final class PlaybackEngine {
     /// playback. Guards against accidental Stop presses.
     func resumeFromFade() {
         guard case .fadingOut(let id) = state else { return }
+        ptLog("resumeFromFade current=\(id.uuidString.prefix(4))")
         fader.cancel()
         setState(.playing(id))
         fader.ramp(from: engine.mainMixerNode.outputVolume,
@@ -140,6 +143,7 @@ final class PlaybackEngine {
 
     /// Instant stop (queue exhausted, or the deferred end of a fade-out).
     func stop() {
+        ptLog("stop → idle")
         fader.cancel()
         activePlayer.stop()
         standbyPlayer.stop()
@@ -179,6 +183,7 @@ final class PlaybackEngine {
     }
 
     private func startPlaying(_ item: QueueItem) {
+        ptLog("startPlaying \(item.filename)#\(item.id.uuidString.prefix(4))")
         audioSession.activate()
         ensureEngineRunning()
         engine.mainMixerNode.outputVolume = normalVolume
@@ -213,6 +218,7 @@ final class PlaybackEngine {
     }
 
     private func handleTrackEnded(_ endedID: UUID) {
+        ptLog("trackEnded ended=\(endedID.uuidString.prefix(4)) state=\(state.debugLabel)")
         guard state.currentItemID == endedID else { return }   // ignore stale callbacks
         switch state {
         case .playing:
@@ -231,9 +237,11 @@ final class PlaybackEngine {
         activePlayer.stop()
 
         guard let next = queue.item(after: currentID) else {
+            ptLog("advance current=\(currentID.uuidString.prefix(4)) next=nil → stop | queue: \(queue.debugOrder)")
             stop()                       // queue exhausted
             return
         }
+        ptLog("advance current=\(currentID.uuidString.prefix(4)) next=\(next.filename)#\(next.id.uuidString.prefix(4)) preloaded=\(preloadedItemID?.uuidString.prefix(4) ?? "nil") | queue: \(queue.debugOrder)")
 
         if preloadedItemID != next.id {
             guard schedule(next, on: standbyPlayer, startNow: false) else {
@@ -252,6 +260,7 @@ final class PlaybackEngine {
     }
 
     private func finishFadeStop() {
+        ptLog("fade complete → idle")
         activePlayer.stop()
         standbyPlayer.stop()
         preloadedItemID = nil

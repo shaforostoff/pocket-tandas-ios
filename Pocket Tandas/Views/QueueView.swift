@@ -39,8 +39,11 @@ struct QueueView: View {
                 }
                 .onDelete { queue.remove(atOffsets: $0) }
                 .onMove { source, destination in
+                    ptLog("onMove src=\(Array(source)) dst=\(destination) pinned=\(engine.state.currentItemID?.uuidString.prefix(4) ?? "nil")")
+                    ptLog("  before: \(queue.debugOrder)")
                     queue.move(fromOffsets: source, toOffset: destination,
                                pinnedID: engine.state.currentItemID)
+                    ptLog("  after:  \(queue.debugOrder)")
                 }
             }
             .listStyle(.plain)
