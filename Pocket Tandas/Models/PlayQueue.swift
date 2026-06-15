@@ -40,6 +40,13 @@ final class PlayQueue {
         items.remove(atOffsets: offsets)
     }
 
+    /// Empty the queue. Playback (which holds its own current item and scheduled
+    /// file) is unaffected and continues until the running track ends, after
+    /// which `item(after:)` returns nil and the engine stops.
+    func removeAll() {
+        items.removeAll()
+    }
+
     /// Reorder. If `pinnedID` is given and the dragged item IS the pinned
     /// (currently playing) track, the move is rejected — the playing track can't
     /// be relocated. Moving *other* items (including across the pinned one) is
