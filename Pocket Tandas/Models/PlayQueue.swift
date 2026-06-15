@@ -40,7 +40,16 @@ final class PlayQueue {
         items.remove(atOffsets: offsets)
     }
 
-    func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+    /// Reorder. If `pinnedID` is given and the dragged item IS the pinned
+    /// (currently playing) track, the move is rejected — the playing track can't
+    /// be relocated. Moving *other* items (including across the pinned one) is
+    /// allowed. Enforcing the pin here, by identity, rather than via the view's
+    /// `.moveDisabled`, keeps the `.onMove` offsets in one consistent index space
+    /// so `Array.move` can't reorder the wrong element.
+    func move(fromOffsets source: IndexSet, toOffset destination: Int, pinnedID: QueueItem.ID? = nil) {
+        if let pinnedID, let pinnedIndex = index(of: pinnedID), source.contains(pinnedIndex) {
+            return
+        }
         items.move(fromOffsets: source, toOffset: destination)
     }
 
