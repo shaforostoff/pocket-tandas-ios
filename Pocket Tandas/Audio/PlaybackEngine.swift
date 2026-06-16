@@ -40,7 +40,19 @@ final class PlaybackEngine {
     @ObservationIgnored var onStateChange: (() -> Void)?
 
     @ObservationIgnored let normalVolume: Float = 1.0
-    @ObservationIgnored let fadeOutDuration: TimeInterval = 10
+
+    /// DJ-mode fade-out length (seconds). Configurable from the Launcher and
+    /// persisted under `fadeOutDurationKey`; read live at each Stop so a change
+    /// takes effect on the next fade. Explore mode stops instantly (see
+    /// `stop()`) and ignores this entirely.
+    static let fadeOutDurationKey = "dj.fadeOutDuration"
+    static let fadeOutDurationRange: ClosedRange<TimeInterval> = 1...10
+    static let defaultFadeOutDuration: TimeInterval = 10
+
+    var fadeOutDuration: TimeInterval {
+        let stored = UserDefaults.standard.double(forKey: Self.fadeOutDurationKey)
+        return Self.fadeOutDurationRange.contains(stored) ? stored : Self.defaultFadeOutDuration
+    }
 
     /// The item currently loaded, plus its duration — for Now Playing info.
     @ObservationIgnored private(set) var currentItem: QueueItem?

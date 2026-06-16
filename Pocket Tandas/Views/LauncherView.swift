@@ -16,6 +16,10 @@ struct LauncherView: View {
     @Environment(AudioSessionController.self) private var audioSession
     @State private var activeMode: AppMode?
 
+    /// DJ-mode Stop fade-out length, shared with the engine via UserDefaults.
+    @AppStorage(PlaybackEngine.fadeOutDurationKey)
+    private var fadeOutSeconds: Double = PlaybackEngine.defaultFadeOutDuration
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 28) {
@@ -33,6 +37,8 @@ struct LauncherView: View {
                 }
 
                 outputSection
+
+                fadeSection
 
                 Spacer(minLength: 0)
 
@@ -57,6 +63,31 @@ struct LauncherView: View {
                         .frame(width: 40, height: 40)
                 }
                 CurrentRouteView(description: audioSession.currentRouteDescription)
+            }
+        }
+    }
+
+    private var fadeSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("DJ fade-out", systemImage: "timer")
+                        .font(.headline)
+                    Spacer()
+                    Text("\(Int(fadeOutSeconds.rounded())) s")
+                        .font(.headline)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: $fadeOutSeconds,
+                       in: PlaybackEngine.fadeOutDurationRange,
+                       step: 1) {
+                    Text("Fade-out duration")
+                } minimumValueLabel: {
+                    Text("1s")
+                } maximumValueLabel: {
+                    Text("10s")
+                }
             }
         }
     }
