@@ -13,6 +13,7 @@ enum SortOption: String, CaseIterable, Identifiable {
     case listed       // source order — a playlist's own order; not shown for folders
     case filename
     case dateYear
+    case genre
     case bpm
     case artist
 
@@ -23,6 +24,7 @@ enum SortOption: String, CaseIterable, Identifiable {
         case .listed: return "Playlist Order"
         case .filename: return "Filename"
         case .dateYear: return "Date / Year"
+        case .genre: return "Genre"
         case .bpm: return "BPM"
         case .artist: return "Artist"
         }
@@ -33,6 +35,7 @@ enum SortOption: String, CaseIterable, Identifiable {
         case .listed: return "list.number"
         case .filename: return "textformat"
         case .dateYear: return "calendar"
+        case .genre: return "guitars"
         case .bpm: return "metronome"
         case .artist: return "person"
         }
@@ -43,7 +46,7 @@ enum SortOption: String, CaseIterable, Identifiable {
     var usesMetadata: Bool {
         switch self {
         case .listed, .filename: return false
-        case .dateYear, .bpm, .artist: return true
+        case .dateYear, .genre, .bpm, .artist: return true
         }
     }
 }

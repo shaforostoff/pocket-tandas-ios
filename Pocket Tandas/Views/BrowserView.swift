@@ -199,8 +199,8 @@ struct BrowserView: View {
     /// Sort options offered here — "Playlist Order" only inside a playlist.
     private var sortOptions: [SortOption] {
         isViewingPlaylist
-            ? [.listed, .filename, .dateYear, .bpm, .artist]
-            : [.filename, .dateYear, .bpm, .artist]
+            ? [.listed, .filename, .dateYear, .genre, .bpm, .artist]
+            : [.filename, .dateYear, .genre, .bpm, .artist]
     }
 
     /// Change location, clear the filter, and keep the sort valid for the

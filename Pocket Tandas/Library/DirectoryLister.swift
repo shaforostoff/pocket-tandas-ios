@@ -92,7 +92,7 @@ enum DirectoryLister {
                 .map { (entry: $0, name: $0.name) }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
                 .map(\.entry)
-        case .dateYear, .bpm, .artist:
+        case .dateYear, .genre, .bpm, .artist:
             return files
                 .map { (entry: $0, name: $0.name, snapshot: metadata($0.url)) }
                 .sorted { ascendingOrder($0, $1, sort: sort) }
@@ -107,6 +107,11 @@ enum DirectoryLister {
             let ya = a.snapshot?.year ?? Int.min
             let yb = b.snapshot?.year ?? Int.min
             return ya == yb ? byName() : ya < yb
+        case .genre:
+            let ga = a.snapshot?.genre ?? ""
+            let gb = b.snapshot?.genre ?? ""
+            let c = ga.localizedStandardCompare(gb)
+            return c == .orderedSame ? byName() : c == .orderedAscending
         case .bpm:
             let ba = a.snapshot?.bpm ?? Int.min
             let bb = b.snapshot?.bpm ?? Int.min
