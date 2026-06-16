@@ -40,7 +40,6 @@ final class MetadataService {
 
     init(container: ModelContainer) {
         self.container = container
-        Task { @MainActor in self.migrateIfNeeded() }
     }
 
     // MARK: - Lookup (UI)
@@ -113,20 +112,6 @@ final class MetadataService {
                   cached.sourceModDate == item.modDate, cached.fileSize == item.size else { return true }
             return false
         }
-    }
-
-    /// One-time migration. The key scheme changed (path-only for in-base files),
-    /// so any pre-existing rows are keyed differently and unreachable — purge them
-    /// once rather than leaving orphans in memory and on disk; scans repopulate.
-    @MainActor
-    private func migrateIfNeeded() {
-        let schemaKey = "metadataCacheKeySchema"
-        let schemaVersion = 2
-        guard UserDefaults.standard.integer(forKey: schemaKey) < schemaVersion else { return }
-        let context = container.mainContext
-        try? context.delete(model: TrackMetadata.self)
-        try? context.save()
-        UserDefaults.standard.set(schemaVersion, forKey: schemaKey)
     }
 
     /// Pull cached snapshots for `keys` not yet in memory from the durable store.
