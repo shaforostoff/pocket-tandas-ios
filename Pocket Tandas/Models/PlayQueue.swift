@@ -18,6 +18,13 @@ import Observation
 final class PlayQueue {
     private(set) var items: [QueueItem] = []
 
+    /// The insert anchor, if any. While set, newly enqueued tracks are inserted
+    /// immediately *above* this item instead of appended at the end; at most one
+    /// exists at a time. Live DJ state, in-memory only (not persisted): it's a
+    /// transient "insert upcoming tracks here" marker, and items are reassigned
+    /// fresh ids on `restore`, so a stored id couldn't be rematched anyway.
+    private(set) var anchorID: QueueItem.ID?
+
     /// Current base folder, used to store queue entries as relocatable,
     /// base-relative references. Kept in sync by the app.
     @ObservationIgnored var baseURL: URL?
@@ -30,15 +37,27 @@ final class PlayQueue {
 
     // MARK: - Editing
 
-    func append(_ item: QueueItem) {
-        items.append(item)
+    /// Add a track, honouring the insert anchor: when an anchor is set, insert
+    /// immediately above it; otherwise append at the end.
+    func enqueue(_ item: QueueItem) {
+        if let anchorID, let idx = index(of: anchorID) {
+            items.insert(item, at: idx)
+        } else {
+            items.append(item)
+        }
         persist()
     }
 
-    /// Append many at once (e.g. a whole playlist) with a single save.
-    func append(contentsOf newItems: [QueueItem]) {
+    /// Add many at once (e.g. a whole playlist) with a single save. The block
+    /// keeps its order and lands together — above the anchor when one is set,
+    /// otherwise at the end.
+    func enqueue(contentsOf newItems: [QueueItem]) {
         guard !newItems.isEmpty else { return }
-        items.append(contentsOf: newItems)
+        if let anchorID, let idx = index(of: anchorID) {
+            items.insert(contentsOf: newItems, at: idx)
+        } else {
+            items.append(contentsOf: newItems)
+        }
         persist()
     }
 
@@ -53,11 +72,13 @@ final class PlayQueue {
 
     func remove(_ id: QueueItem.ID) {
         items.removeAll { $0.id == id }
+        pruneAnchor()
         persist()
     }
 
     func remove(atOffsets offsets: IndexSet) {
         items.remove(atOffsets: offsets)
+        pruneAnchor()
         persist()
     }
 
@@ -66,6 +87,7 @@ final class PlayQueue {
     /// which `item(after:)` returns nil and the engine stops.
     func removeAll() {
         items.removeAll()
+        pruneAnchor()
         persist()
     }
 
@@ -81,6 +103,26 @@ final class PlayQueue {
         }
         items.move(fromOffsets: source, toOffset: destination)
         persist()
+    }
+
+    // MARK: - Insert anchor
+
+    /// Set the insert anchor (pass nil to clear). New tracks then insert above
+    /// the anchored item until it is played, removed, or cleared.
+    func setAnchor(_ id: QueueItem.ID?) {
+        anchorID = id
+    }
+
+    /// Clear the anchor when its track starts playing. The engine calls this as
+    /// each track becomes current, so playback reaching the anchor drops it.
+    func clearAnchor(ifMatches id: QueueItem.ID) {
+        if anchorID == id { anchorID = nil }
+    }
+
+    /// Drop a dangling anchor whose item has left the queue (after a removal). A
+    /// move keeps the anchored item present, so the anchor survives a reorder.
+    private func pruneAnchor() {
+        if let anchorID, index(of: anchorID) == nil { self.anchorID = nil }
     }
 
     // MARK: - Queries
