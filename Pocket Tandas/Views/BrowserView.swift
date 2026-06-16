@@ -142,12 +142,10 @@ struct BrowserView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { open(entry) }
                             .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                if !entry.isFolder {
-                                    Button { add(entry) } label: {
-                                        Label("Add", systemImage: "text.append")
-                                    }
-                                    .tint(.green)
+                                Button { add(entry) } label: {
+                                    Label("Add", systemImage: "text.append")
                                 }
+                                .tint(.green)
                             }
                     }
                     .listStyle(.plain)
@@ -246,7 +244,18 @@ struct BrowserView: View {
             // Scan the referenced tracks' metadata (doesn't disturb folder scan).
             metadata.scan(urls: urls, baseURL: library.baseURL)
         case .folder:
-            break
+            // The folder's immediate audio files only — no recursion, and any
+            // playlists inside are ignored. Ordered by the browser's active sort;
+            // metadata sorts fall back to filename for tracks not yet scanned.
+            let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
+            let urls = DirectoryLister.arrange(audio, filter: "", sort: sort, direction: direction,
+                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
+                .map(\.url)
+            for url in urls {
+                let key = StableTrackID.key(for: url, baseURL: library.baseURL)
+                queue.append(QueueItem(url: url, trackKey: key))
+            }
+            metadata.scan(urls: urls, baseURL: library.baseURL)
         }
     }
 
