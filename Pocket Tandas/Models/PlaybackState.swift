@@ -36,6 +36,11 @@ enum PlaybackState: Equatable {
         return false
     }
 
+    var isPaused: Bool {
+        if case .paused = self { return true }
+        return false
+    }
+
     /// Short label for diagnostic logging, e.g. "playing(a1b2)".
     var debugLabel: String {
         func short(_ id: UUID) -> String { String(id.uuidString.prefix(4)) }

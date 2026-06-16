@@ -137,8 +137,11 @@ final class PlaybackEngine {
     // MARK: - Public control
 
     /// Tap-to-play from the queue. While already playing, a tap is rejected (the
-    /// user must Stop first) — EXCEPT while a fade-out is in progress, when the
-    /// tapped track starts immediately and the fade is cancelled.
+    /// user must Stop/Pause first) — EXCEPT:
+    ///  - while a fade-out is in progress, the tapped track starts immediately
+    ///    and the fade is cancelled; and
+    ///  - while paused, the tapped track (re)starts from the beginning, so even
+    ///    the currently paused track can be restarted from the top.
     func requestPlay(_ item: QueueItem) {
         ptLog("requestPlay tapped=\(item.filename)#\(item.id.uuidString.prefix(4)) state=\(state.debugLabel) | queue: \(queue.debugOrder)")
         switch state {
@@ -148,7 +151,9 @@ final class PlaybackEngine {
             fader.cancel()
             engine.mainMixerNode.outputVolume = normalVolume
             startPlaying(item)
-        case .playing, .paused:
+        case .paused:
+            startPlaying(item)
+        case .playing:
             break
         }
     }
