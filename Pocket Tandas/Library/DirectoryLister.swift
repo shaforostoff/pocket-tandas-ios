@@ -11,8 +11,9 @@
 //  which can re-run cheaply on every render as metadata scans land.
 //
 //  Folders are always grouped first; files are sorted by the chosen option.
-//  Metadata-based sorts (date/bpm/artist) use the cache via the `metadata`
-//  lookup, falling back to filename when unavailable.
+//  Metadata-based sorts (date/genre/bpm/artist) read the cached snapshot and
+//  apply a fixed chain of secondary criteria, with filename as the final
+//  tiebreak (see `ascendingOrder`).
 //
 
 import Foundation
@@ -100,29 +101,45 @@ enum DirectoryLister {
         }
     }
 
+    /// Multi-level order for metadata sorts. Each option has a priority chain of
+    /// criteria; when one ties, the next decides, and filename is always the final
+    /// tiebreak. Short-circuits, so a deeper field is only compared on a tie.
     private static func ascendingOrder(_ a: Decorated, _ b: Decorated, sort: SortOption) -> Bool {
-        func byName() -> Bool { a.name.localizedStandardCompare(b.name) == .orderedAscending }
+        var c: ComparisonResult
         switch sort {
         case .dateYear:
-            let ya = a.snapshot?.year ?? Int.min
-            let yb = b.snapshot?.year ?? Int.min
-            return ya == yb ? byName() : ya < yb
+            c = compareYear(a, b)
         case .genre:
-            let ga = a.snapshot?.genre ?? ""
-            let gb = b.snapshot?.genre ?? ""
-            let c = ga.localizedStandardCompare(gb)
-            return c == .orderedSame ? byName() : c == .orderedAscending
-        case .bpm:
-            let ba = a.snapshot?.bpm ?? Int.min
-            let bb = b.snapshot?.bpm ?? Int.min
-            return ba == bb ? byName() : ba < bb
+            c = compareGenre(a, b)
+            if c == .orderedSame { c = compareYear(a, b) }
         case .artist:
-            let aa = a.snapshot?.artist ?? ""
-            let ab = b.snapshot?.artist ?? ""
-            let c = aa.localizedStandardCompare(ab)
-            return c == .orderedSame ? byName() : c == .orderedAscending
+            c = compareArtist(a, b)
+            if c == .orderedSame { c = compareGenre(a, b) }
+            if c == .orderedSame { c = compareYear(a, b) }
+        case .bpm:
+            c = compareBPM(a, b)
+            if c == .orderedSame { c = compareArtist(a, b) }
+            if c == .orderedSame { c = compareYear(a, b) }
         case .listed, .filename:
-            return byName()   // not reached (handled in sortFiles)
+            c = .orderedSame   // handled in sortFiles
         }
+        if c == .orderedSame { c = a.name.localizedStandardCompare(b.name) }
+        return c == .orderedAscending
+    }
+
+    // Per-field comparators for the chains above (nil sorts first: Int.min / "").
+    private static func compareYear(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
+        let x = a.snapshot?.year ?? Int.min, y = b.snapshot?.year ?? Int.min
+        return x == y ? .orderedSame : (x < y ? .orderedAscending : .orderedDescending)
+    }
+    private static func compareBPM(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
+        let x = a.snapshot?.bpm ?? Int.min, y = b.snapshot?.bpm ?? Int.min
+        return x == y ? .orderedSame : (x < y ? .orderedAscending : .orderedDescending)
+    }
+    private static func compareGenre(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
+        (a.snapshot?.genre ?? "").localizedStandardCompare(b.snapshot?.genre ?? "")
+    }
+    private static func compareArtist(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
+        (a.snapshot?.artist ?? "").localizedStandardCompare(b.snapshot?.artist ?? "")
     }
 }
