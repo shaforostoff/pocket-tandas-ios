@@ -81,4 +81,60 @@ final class PlayQueueTests: XCTestCase {
         q.append(makeItem("a"))
         XCTAssertNil(q.item(after: UUID()))
     }
+
+    // MARK: - Persistence
+
+    func testPersistenceIsRelocatableAcrossBasePath() throws {
+        let fm = FileManager.default
+        let store = fm.temporaryDirectory.appendingPathComponent("q-\(UUID().uuidString).json")
+        defer { try? fm.removeItem(at: store) }
+
+        // Base A holds Album/01.mp3.
+        let baseA = fm.temporaryDirectory.appendingPathComponent("pt-A-\(UUID().uuidString)", isDirectory: true)
+        let album = baseA.appendingPathComponent("Album", isDirectory: true)
+        try fm.createDirectory(at: album, withIntermediateDirectories: true)
+        let track = album.appendingPathComponent("01.mp3")
+        try Data().write(to: track)
+
+        // Session 1: enable persistence under base A and queue the track.
+        let q1 = PlayQueue(storeURL: store)
+        q1.restore(baseURL: baseA)
+        q1.append(QueueItem(url: track, trackKey: StableTrackID.key(for: track, baseURL: baseA)))
+        XCTAssertEqual(q1.items.count, 1)
+
+        // The base folder now lives at a NEW absolute path (B), as iOS may re-grant.
+        let baseB = fm.temporaryDirectory.appendingPathComponent("pt-B-\(UUID().uuidString)", isDirectory: true)
+        try fm.moveItem(at: baseA, to: baseB)
+        defer { try? fm.removeItem(at: baseB) }
+
+        // Session 2: restoring against base B resolves the relative entry under B.
+        let q2 = PlayQueue(storeURL: store)
+        q2.restore(baseURL: baseB)
+        XCTAssertEqual(q2.items.count, 1)
+        let restored = try XCTUnwrap(q2.items.first)
+        XCTAssertTrue(restored.url.path.hasSuffix("Album/01.mp3"))
+        XCTAssertTrue(restored.url.path.contains(baseB.lastPathComponent))
+        XCTAssertTrue(fm.fileExists(atPath: restored.url.path))
+    }
+
+    func testPersistenceDropsMissingFiles() throws {
+        let fm = FileManager.default
+        let store = fm.temporaryDirectory.appendingPathComponent("q-\(UUID().uuidString).json")
+        defer { try? fm.removeItem(at: store) }
+        let base = fm.temporaryDirectory.appendingPathComponent("pt-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: base) }
+        let track = base.appendingPathComponent("gone.mp3")
+        try Data().write(to: track)
+
+        let q1 = PlayQueue(storeURL: store)
+        q1.restore(baseURL: base)
+        q1.append(QueueItem(url: track, trackKey: StableTrackID.key(for: track, baseURL: base)))
+
+        try fm.removeItem(at: track)   // the file disappears between launches
+
+        let q2 = PlayQueue(storeURL: store)
+        q2.restore(baseURL: base)
+        XCTAssertTrue(q2.items.isEmpty)
+    }
 }
