@@ -20,6 +20,7 @@ struct Pocket_TandasApp: App {
     @State private var library = LibraryStore()
     @State private var metadata: MetadataService
     @State private var nowPlaying: NowPlayingController
+    @State private var equalizer: Equalizer
 
     /// Durable metadata cache. Runtime state (queue, playback) lives in plain
     /// observable objects, not SwiftData — see the implementation plan.
@@ -31,7 +32,8 @@ struct Pocket_TandasApp: App {
         let queue = PlayQueue()
         // metadata before engine: the engine reads each track's ReplayGain from it.
         let metadata = MetadataService(container: container)
-        let engine = PlaybackEngine(audioSession: session, queue: queue, metadata: metadata)
+        let equalizer = Equalizer()
+        let engine = PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer)
         let nowPlaying = NowPlayingController(engine: engine, metadata: metadata)
 
         self.modelContainer = container
@@ -40,6 +42,7 @@ struct Pocket_TandasApp: App {
         _engine = State(initialValue: engine)
         _metadata = State(initialValue: metadata)
         _nowPlaying = State(initialValue: nowPlaying)
+        _equalizer = State(initialValue: equalizer)
     }
 
     private static func makeModelContainer() -> ModelContainer {
@@ -60,6 +63,7 @@ struct Pocket_TandasApp: App {
                 .environment(library)
                 .environment(playQueue)
                 .environment(metadata)
+                .environment(equalizer)
         }
         .modelContainer(modelContainer)
     }
