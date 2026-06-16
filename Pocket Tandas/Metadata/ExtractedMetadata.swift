@@ -23,9 +23,12 @@ struct ExtractedMetadata: Sendable {
     /// ReplayGain track gain in dB (album gain is ignored). nil when absent.
     var trackGainDB: Double?
 
-    var snapshot: TrackMetadataSnapshot {
+    /// Map the extracted tags into a UI snapshot, stamping the source-file
+    /// identity (mod-date + size) used later for staleness checks.
+    func snapshot(sourceModDate: Date, fileSize: Int) -> TrackMetadataSnapshot {
         TrackMetadataSnapshot(title: title, artist: artist, genre: genre,
                               dateText: dateText, year: year, bpm: bpm,
-                              trackGainDB: trackGainDB)
+                              trackGainDB: trackGainDB,
+                              sourceModDate: sourceModDate, fileSize: fileSize)
     }
 }

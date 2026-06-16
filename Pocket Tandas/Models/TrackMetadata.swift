@@ -35,8 +35,11 @@ final class TrackMetadata {
     /// cache entries migrate in place (re-scanned files pick it up).
     var trackGainDB: Double?
 
-    /// File modification date at the time of the scan, used for staleness checks.
+    /// File modification date + size at the time of the scan; staleness checks
+    /// re-scan when either changes. `fileSize` is optional so existing rows migrate
+    /// in place (older entries predate it and are re-scanned anyway).
     var sourceModDate: Date
+    var fileSize: Int?
     var lastScanned: Date
 
     /// Optional per-file security-scoped bookmark for files referenced by a
@@ -52,6 +55,7 @@ final class TrackMetadata {
          bpm: Int? = nil,
          trackGainDB: Double? = nil,
          sourceModDate: Date = .distantPast,
+         fileSize: Int? = nil,
          lastScanned: Date = .now,
          fileBookmark: Data? = nil) {
         self.trackKey = trackKey
@@ -63,6 +67,7 @@ final class TrackMetadata {
         self.bpm = bpm
         self.trackGainDB = trackGainDB
         self.sourceModDate = sourceModDate
+        self.fileSize = fileSize
         self.lastScanned = lastScanned
         self.fileBookmark = fileBookmark
     }
