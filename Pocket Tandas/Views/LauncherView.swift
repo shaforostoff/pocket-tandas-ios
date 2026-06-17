@@ -111,6 +111,27 @@ struct LauncherView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
+
+            Divider()
+                .padding(.vertical, 2)
+
+            Button {
+                activeMode = .remoteSend
+            } label: {
+                Label("Remote Send", systemImage: "dot.radiowaves.right")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+
+            Button {
+                activeMode = .remoteReceive
+            } label: {
+                Label("Remote Receive", systemImage: "antenna.radiowaves.left.and.right")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
         }
     }
 }
