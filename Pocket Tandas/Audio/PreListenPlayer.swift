@@ -6,19 +6,22 @@
 //  PreListenPlayer.swift
 //  Pocket Tandas
 //
-//  Explore-mode "prelistening": tap an audio file in the browser to audition it
-//  directly, without touching the DJ play queue. A deliberately simple
-//  AVAudioPlayer (not the dual-node engine) — one file at a time, no fades, no
-//  ReplayGain — that only runs while the play queue is idle.
+//  "Prelistening": auditioning a browser audio file without disturbing the DJ
+//  play queue. It owns a small AVAudioEngine of its own (a single player node →
+//  downmix → pan → output) so the cue can be routed to its own output:
+//
+//    .off              plays to the shared route; Explore-only, idle-gated so it
+//                      never overlaps the queue.
+//    .stereoSplitTest  downmixed to mono and panned hard RIGHT — the 2-channel
+//                      stand-in for cueing (queue holds the LEFT channel).
+//    .fourChannel      stereo cue mapped to output channels 3+4, playing
+//                      concurrently with the queue on 1+2 (DJ cueing).
 //
 //  When a track finishes it advances to the next file in the browser's *current*
-//  arrangement: the view keeps `listing`/`listingFolder` in sync with what it
-//  shows (live sort + filter), so the next pick honours those. If the user has
-//  navigated to a different place by the time the track ends, playback just
-//  stops — the file kept playing while away, but we don't auto-advance elsewhere.
-//
-//  Like the engine, the AVAudioPlayer delegate callback fires off the main
-//  thread, so it hops to main before touching state (see observable-not-mainactor).
+//  arrangement (the view keeps `listing`/`listingFolder` in sync); if the user
+//  has navigated away by then, it just stops. Completion fires on an engine
+//  thread, so it hops to main, and is matched by a per-schedule token so a
+//  stop/replace can't trigger a stale advance (see observable-not-mainactor).
 //
 
 import Foundation
@@ -26,7 +29,7 @@ import AVFoundation
 import Observation
 
 @Observable
-final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
+final class PreListenPlayer {
     /// The audio file currently being auditioned, or nil when stopped. Drives the
     /// browser's stop button, the now-playing row highlight, and scroll-to-visible.
     private(set) var currentURL: URL?
@@ -36,8 +39,20 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     /// leaves the list alone when the user taps a row (which is already on screen).
     private(set) var autoAdvanceCount = 0
 
-    @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private let engine = AVAudioEngine()
+    @ObservationIgnored private let player = AVAudioPlayerNode()
+    /// downmix collapses stereo→mono for the L/R test; pan places the cue on its
+    /// channel. A stereo passthrough otherwise. See `applyRouting`.
+    @ObservationIgnored private let downmix = AVAudioMixerNode()
+    @ObservationIgnored private let pan = AVAudioMixerNode()
+    @ObservationIgnored private var playerFormat: AVAudioFormat?
+
+    /// Per-schedule token; only the active schedule's completion may advance.
+    @ObservationIgnored private var scheduleSeq = 0
+    @ObservationIgnored private var activeScheduleID = 0
+
     @ObservationIgnored private let audioSession: AudioSessionController
+    @ObservationIgnored private let routing: AudioRouting
 
     /// The audio files of the place the browser is *currently* showing, in display
     /// order, plus the folder/playlist they belong to. Kept in sync by the browser
@@ -52,39 +67,79 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
 
     var isPlaying: Bool { currentURL != nil }
 
-    init(audioSession: AudioSessionController) {
+    init(audioSession: AudioSessionController, routing: AudioRouting) {
         self.audioSession = audioSession
-        super.init()
+        self.routing = routing
+        configureGraph()
+    }
+
+    private func configureGraph() {
+        engine.attach(player)
+        engine.attach(downmix)
+        engine.attach(pan)
+        // player → downmix is wired per-file in `play` (the format varies); the
+        // rest is fixed here, with downmix → pan set by the routing.
+        let std = engine.outputNode.outputFormat(forBus: 0)
+        engine.connect(pan, to: engine.outputNode, format: std)
+        applyRouting()
+        engine.prepare()
+    }
+
+    /// (Re)wire the cue's output for the active routing mode. Called from the
+    /// launcher before a mode is entered (cue idle).
+    ///
+    ///  - `.off` / `.fourChannel`: stereo passthrough. 4-channel maps the stereo
+    ///    cue onto hardware channels 3+4 (unverified on hardware — see
+    ///    AudioSessionController.configure(for:)).
+    ///  - `.stereoSplitTest`: downmix to mono and pan hard RIGHT.
+    func applyRouting() {
+        let std = engine.outputNode.outputFormat(forBus: 0)
+        engine.disconnectNodeInput(pan)
+        switch routing.mode {
+        case .off, .fourChannel:
+            engine.connect(downmix, to: pan, format: std)
+            downmix.pan = 0
+        case .stereoSplitTest:
+            let mono = AVAudioFormat(standardFormatWithSampleRate: std.sampleRate, channels: 1) ?? std
+            engine.connect(downmix, to: pan, format: mono)
+            downmix.pan = 1                // mono cue → right channel only
+        }
+        engine.outputNode.auAudioUnit.channelMap = (routing.mode == .fourChannel)
+            ? [-1, -1, 0, 1].map { NSNumber(value: $0) }   // stereo cue → hardware ch 3+4
+            : nil
     }
 
     /// Start (or restart, from the top) auditioning `url`, tapped while browsing
     /// `folder`. Replaces any track already prelistening.
     func play(_ url: URL, in folder: URL?) {
-        player?.stop()
         audioSession.activate()
-        guard let newPlayer = try? AVAudioPlayer(contentsOf: url) else {
+        guard let file = try? AVAudioFile(forReading: url) else {
             ptLog("prelisten FAILED to open \(url.lastPathComponent)")
-            player = nil
-            currentURL = nil
-            contextFolder = nil
+            stop()
             return
         }
-        newPlayer.delegate = self
-        newPlayer.play()
-        player = newPlayer
+        connectPlayerIfNeeded(format: file.processingFormat)
+        ensureRunning()
+        player.stop()
+        scheduleSeq += 1
+        let scheduleID = scheduleSeq
+        activeScheduleID = scheduleID
+        player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            DispatchQueue.main.async { self?.handleScheduleEnded(scheduleID) }
+        }
+        player.play()
         contextFolder = folder
         currentURL = url
-        ptLog("prelisten play \(url.lastPathComponent) in \(folder?.lastPathComponent ?? "nil")")
+        ptLog("prelisten play \(url.lastPathComponent) in \(folder?.lastPathComponent ?? "nil") sid=\(scheduleID)")
     }
 
     /// Stop auditioning (user Stop, finished with nowhere to advance, queue
-    /// playback taking over, or leaving the screen). The shared audio session is
-    /// left active so the queue engine can take over without a gap.
+    /// playback taking over in Explore, or leaving the screen).
     func stop() {
         guard isPlaying else { return }
         ptLog("prelisten stop")
-        player?.stop()
-        player = nil
+        player.stop()
+        activeScheduleID = 0          // 0 never matches a real token (they start at 1)
         currentURL = nil
         contextFolder = nil
     }
@@ -96,14 +151,24 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
         listingFolder = folder
     }
 
-    // MARK: - AVAudioPlayerDelegate
+    // MARK: - Internals
 
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        DispatchQueue.main.async { [weak self] in self?.advanceAfterFinish() }
+    private func ensureRunning() {
+        guard !engine.isRunning else { return }
+        do { try engine.start() } catch { ptLog("prelisten engine start failed: \(error)") }
     }
 
-    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        DispatchQueue.main.async { [weak self] in self?.advanceAfterFinish() }
+    private func connectPlayerIfNeeded(format: AVAudioFormat) {
+        if let existing = playerFormat, existing == format { return }
+        engine.connect(player, to: downmix, format: format)
+        playerFormat = format
+    }
+
+    /// Called on main when a scheduled file finishes. Only the active schedule's
+    /// completion advances; stale tokens (after stop/replace) are ignored.
+    private func handleScheduleEnded(_ scheduleID: Int) {
+        guard scheduleID == activeScheduleID else { return }
+        advanceAfterFinish()
     }
 
     /// Pick the next file in the current arrangement and play it — but only while

@@ -70,6 +70,12 @@ final class PlaybackEngine {
     @ObservationIgnored private var standbyPlayer: AVAudioPlayerNode
     @ObservationIgnored private var preloadedItemID: UUID?
 
+    /// Output split stage (eq → splitDownmix → splitPan → output). A plain stereo
+    /// passthrough in normal/4-channel routing; under the L/R test routing it
+    /// downmixes the main mix to mono and pans it hard left. See `applyRouting`.
+    @ObservationIgnored private let splitDownmix = AVAudioMixerNode()
+    @ObservationIgnored private let splitPan = AVAudioMixerNode()
+
     /// Monotonic schedule tokens. `activeScheduleID` is the token of the audible
     /// schedule; only its completion may advance. `preloadedScheduleID` is the
     /// token of the standby's preloaded schedule (becomes active on swap).
@@ -83,6 +89,7 @@ final class PlaybackEngine {
     @ObservationIgnored private let queue: PlayQueue
     @ObservationIgnored private let metadata: MetadataService
     @ObservationIgnored private let equalizer: Equalizer
+    @ObservationIgnored private let routing: AudioRouting
 
     /// Elapsed playback time of the active track (best effort, for Now Playing).
     var currentElapsed: TimeInterval {
@@ -92,11 +99,12 @@ final class PlaybackEngine {
         return Double(playerTime.sampleTime) / playerTime.sampleRate
     }
 
-    init(audioSession: AudioSessionController, queue: PlayQueue, metadata: MetadataService, equalizer: Equalizer) {
+    init(audioSession: AudioSessionController, queue: PlayQueue, metadata: MetadataService, equalizer: Equalizer, routing: AudioRouting) {
         self.audioSession = audioSession
         self.queue = queue
         self.metadata = metadata
         self.equalizer = equalizer
+        self.routing = routing
         self.activePlayer = playerA
         self.standbyPlayer = playerB
         configureGraph()
@@ -110,16 +118,48 @@ final class PlaybackEngine {
         engine.attach(playerA)
         engine.attach(playerB)
         engine.attach(equalizer.node)
-        // Insert the master EQ between the mixer (our fade lever) and the output:
-        //   players → mainMixerNode → eq → outputNode
-        // Both players already sum at the mixer, so a single EQ on the mixer's
-        // output colours everything. Connecting the mixer's output here replaces
-        // the implicit mainMixerNode → outputNode connection.
+        engine.attach(splitDownmix)
+        engine.attach(splitPan)
+        // Insert the master EQ between the mixer (our fade lever) and the output,
+        // then an output split stage:
+        //   players → mainMixerNode → eq → splitDownmix → splitPan → outputNode
+        // Both players sum at the mixer, so a single EQ on the mixer's output
+        // colours everything. The split pair is a stereo passthrough by default;
+        // `applyRouting` repurposes it for the L/R test (see below).
         let mixer = engine.mainMixerNode
         let format = mixer.outputFormat(forBus: 0)
         engine.connect(mixer, to: equalizer.node, format: format)
-        engine.connect(equalizer.node, to: engine.outputNode, format: format)
+        engine.connect(equalizer.node, to: splitDownmix, format: format)
+        engine.connect(splitPan, to: engine.outputNode, format: format)
+        applyRouting()        // wires splitDownmix → splitPan for the current mode
         engine.prepare()
+    }
+
+    /// (Re)wire the output split stage for the active routing mode. Called from
+    /// the launcher before a mode is entered (engine idle), so the queue's mix is
+    /// placed correctly the moment playback starts.
+    ///
+    ///  - `.off` / `.fourChannel`: stereo passthrough. 4-channel additionally maps
+    ///    the stereo mix onto hardware channels 1+2 (cue takes 3+4 on its own
+    ///    engine). The channel-map path is unverified on hardware — see
+    ///    AudioSessionController.configure(for:).
+    ///  - `.stereoSplitTest`: downmix the main mix to mono and pan it hard LEFT,
+    ///    leaving the right channel for the cue engine.
+    func applyRouting() {
+        let std = engine.mainMixerNode.outputFormat(forBus: 0)
+        engine.disconnectNodeInput(splitPan)
+        switch routing.mode {
+        case .off, .fourChannel:
+            engine.connect(splitDownmix, to: splitPan, format: std)
+            splitDownmix.pan = 0
+        case .stereoSplitTest:
+            let mono = AVAudioFormat(standardFormatWithSampleRate: std.sampleRate, channels: 1) ?? std
+            engine.connect(splitDownmix, to: splitPan, format: mono)
+            splitDownmix.pan = -1          // mono main mix → left channel only
+        }
+        engine.outputNode.auAudioUnit.channelMap = (routing.mode == .fourChannel)
+            ? [0, 1, -1, -1].map { NSNumber(value: $0) }   // stereo main mix → hardware ch 1+2
+            : nil
     }
 
     private func ensureEngineRunning() {

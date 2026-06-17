@@ -24,6 +24,7 @@ struct BrowserView: View {
     @Environment(BrowserState.self) private var browser
     @Environment(PlaybackEngine.self) private var engine
     @Environment(PreListenPlayer.self) private var preListen
+    @Environment(AudioRouting.self) private var routing
     @Environment(\.dismiss) private var dismiss
 
     @State private var rawEntries: [LibraryEntry] = []
@@ -205,7 +206,6 @@ struct BrowserView: View {
     }
 
     private func syncPrelistenListing(_ listing: DisplayedListing) {
-        guard mode == .explore else { return }
         preListen.updateListing(listing.urls, folder: listing.folder)
     }
 
@@ -278,25 +278,29 @@ struct BrowserView: View {
         navigate(to: folder.deletingLastPathComponent())
     }
 
-    /// Tap routing: folders/playlists drill in; in Explore, tapping an audio file
-    /// auditions it (prelistening). A *paused* play queue is stopped first to make
-    /// room; an actively *playing* queue wins and the tap is ignored. Outside
-    /// Explore an audio tap does nothing (tracks are queued via swipe-right).
+    /// Tap routing: folders/playlists drill in; tapping an audio file auditions it
+    /// (prelistening). Audio behaviour depends on the mode:
+    ///   - Explore: idle-gated on the shared route — a playing queue wins, a paused
+    ///     one is stopped to make room.
+    ///   - DJ: cueing, only when a separate cue output is routed (4-channel, or the
+    ///     L/R test). Plays concurrently with the queue, independently.
     private func tap(_ entry: LibraryEntry) {
         switch entry.kind {
         case .folder, .playlist:
             open(entry)
         case .audio:
-            guard mode == .explore else { return }
-            switch engine.state {
-            case .playing, .fadingOut:
-                return                       // don't interrupt active queue playback
-            case .paused:
-                engine.stop()                // stop the paused queue to make room
-            case .idle:
-                break
+            switch mode {
+            case .explore:
+                switch engine.state {
+                case .playing, .fadingOut: return
+                case .paused: engine.stop()
+                case .idle: break
+                }
+                preListen.play(entry.url, in: browser.currentFolder)
+            case .dj:
+                guard routing.cueEnabled else { return }
+                preListen.play(entry.url, in: browser.currentFolder)
             }
-            preListen.play(entry.url, in: browser.currentFolder)
         }
     }
 

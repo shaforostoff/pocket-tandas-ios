@@ -11,10 +11,15 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct LauncherView: View {
     @Environment(AudioSessionController.self) private var audioSession
+    @Environment(PlaybackEngine.self) private var engine
+    @Environment(PreListenPlayer.self) private var preListen
+    @Environment(AudioRouting.self) private var routing
     @State private var activeMode: AppMode?
+    @State private var showDJRoutingOptions = false
 
     /// DJ-mode Stop fade-out length, shared with the engine via UserDefaults.
     @AppStorage(PlaybackEngine.fadeOutDurationKey)
@@ -95,7 +100,7 @@ struct LauncherView: View {
     private var modeButtons: some View {
         VStack(spacing: 14) {
             Button {
-                activeMode = .explore
+                enter(.explore)
             } label: {
                 Label("Explore", systemImage: "folder")
                     .frame(maxWidth: .infinity)
@@ -103,19 +108,64 @@ struct LauncherView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
 
+            // Tap enters DJ mode (cueing on channels 3+4 when ≥4 are available).
+            // Press-and-hold offers the 2-channel L/R split for testing cueing
+            // without a 4-channel interface.
             Button {
-                activeMode = .dj
+                enter(.dj)
             } label: {
                 Label("DJ Mode", systemImage: "slider.horizontal.3")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
+            .highPriorityGesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in showDJRoutingOptions = true }
+            )
         }
+        .confirmationDialog("DJ Output Routing", isPresented: $showDJRoutingOptions,
+                            titleVisibility: .visible) {
+            Button("Enter DJ Mode") { enter(.dj) }
+            Button("L/R Split Test — Queue ▸ Left, Cue ▸ Right") { enter(.dj, splitTest: true) }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("L/R Split routes the play queue to the left channel and prelistening to the right (both downmixed to mono) — for testing cueing without a 4-channel interface.")
+        }
+    }
+
+    /// Choose the output routing for the mode being entered, apply it to the
+    /// session and both engines (all idle here), then present the screen.
+    /// Explore always uses the single shared route; DJ uses a true 4-channel cue
+    /// when the interface offers ≥4 channels, the L/R split when forced, else none.
+    private func enter(_ appMode: AppMode, splitTest: Bool = false) {
+        let mode: AudioRouting.Mode
+        if splitTest {
+            mode = .stereoSplitTest
+        } else if appMode == .dj && audioSession.maxOutputChannels >= 4 {
+            mode = .fourChannel
+        } else {
+            mode = .off
+        }
+        routing.set(mode)
+        audioSession.configure(for: mode)
+        engine.applyRouting()
+        preListen.applyRouting()
+        activeMode = appMode
     }
 }
 
 #Preview {
-    LauncherView()
-        .environment(AudioSessionController())
+    let session = AudioSessionController()
+    let queue = PlayQueue()
+    let container = try! ModelContainer(for: TrackMetadata.self,
+                                        configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let metadata = MetadataService(container: container)
+    let equalizer = Equalizer()
+    let routing = AudioRouting()
+    return LauncherView()
+        .environment(session)
+        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer, routing: routing))
+        .environment(routing)
+        .environment(PreListenPlayer(audioSession: session, routing: routing))
 }

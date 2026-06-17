@@ -24,6 +24,11 @@ final class AudioSessionController {
     /// Human-readable description of the current output route(s).
     private(set) var currentRouteDescription: String = "System default"
 
+    /// Most output channels the current route can drive. ≥4 means a true cue
+    /// (queue on 1+2, prelisten on 3+4) is offerable in DJ mode. Refreshed on
+    /// every route change.
+    private(set) var maxOutputChannels: Int = 2
+
     // Hooks the PlaybackEngine attaches to. Nil until later milestones wire them.
     @ObservationIgnored var onInterruptionBegan: (() -> Void)?
     @ObservationIgnored var onInterruptionEnded: ((_ shouldResume: Bool) -> Void)?
@@ -59,6 +64,30 @@ final class AudioSessionController {
         }
     }
 
+    /// Configure the session category for a routing mode and activate it. Cue
+    /// modes that fan out to discrete output channels need `.multiRoute`; the
+    /// single-route modes use ordinary `.playback`.
+    ///
+    /// NOTE: the `.multiRoute` / 4-channel path is unverified on real hardware —
+    /// multiRoute support and channel counts vary by interface and iOS version,
+    /// and Bluetooth (e.g. AirPods) is never a multiRoute output. The
+    /// `.stereoSplitTest` path uses plain `.playback` and is the testable proxy.
+    func configure(for mode: AudioRouting.Mode) {
+        switch mode {
+        case .off, .stereoSplitTest:
+            configureCategory()      // activation stays deferred to first playback
+        case .fourChannel:
+            do {
+                try session.setCategory(.multiRoute)
+                try session.setActive(true)
+                try session.setPreferredOutputNumberOfChannels(min(4, session.maximumOutputNumberOfChannels))
+            } catch {
+                print("[AudioSession] multiRoute configure failed: \(error)")
+            }
+            refreshRoute()
+        }
+    }
+
     func deactivate(notifyOthers: Bool = true) {
         do {
             try session.setActive(false, options: notifyOthers ? [.notifyOthersOnDeactivation] : [])
@@ -72,6 +101,8 @@ final class AudioSessionController {
         currentRouteDescription = outputs.isEmpty
             ? "No output"
             : outputs.map(\.portName).joined(separator: ", ")
+        maxOutputChannels = max(session.maximumOutputNumberOfChannels,
+                                outputs.reduce(0) { $0 + ($1.channels?.count ?? 0) })
     }
 
     private func registerObservers() {

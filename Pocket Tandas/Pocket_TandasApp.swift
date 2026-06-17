@@ -21,6 +21,7 @@ struct Pocket_TandasApp: App {
     @State private var metadata: MetadataService
     @State private var nowPlaying: NowPlayingController
     @State private var equalizer: Equalizer
+    @State private var routing: AudioRouting
     @State private var preListen: PreListenPlayer
 
     /// Durable metadata cache. Runtime state lives in plain observable objects,
@@ -39,12 +40,16 @@ struct Pocket_TandasApp: App {
         // metadata before engine: the engine reads each track's ReplayGain from it.
         let metadata = MetadataService(container: container)
         let equalizer = Equalizer()
-        let engine = PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer)
+        let routing = AudioRouting()
+        let engine = PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer, routing: routing)
         let nowPlaying = NowPlayingController(engine: engine, metadata: metadata)
-        // Explore-mode prelistening shares the audio session; starting queue
-        // playback tears it down so the two never sound at once.
-        let preListen = PreListenPlayer(audioSession: session)
-        engine.onPlaybackStart = { [weak preListen] in preListen?.stop() }
+        // The cue shares the audio session. In single-route mode (.off / Explore)
+        // starting queue playback tears the cue down so the two never overlap; in a
+        // cue routing they play on separate outputs and stay fully independent.
+        let preListen = PreListenPlayer(audioSession: session, routing: routing)
+        engine.onPlaybackStart = { [weak preListen, weak routing] in
+            if routing?.mode == .off { preListen?.stop() }
+        }
 
         self.modelContainer = container
         _audioSession = State(initialValue: session)
@@ -54,6 +59,7 @@ struct Pocket_TandasApp: App {
         _metadata = State(initialValue: metadata)
         _nowPlaying = State(initialValue: nowPlaying)
         _equalizer = State(initialValue: equalizer)
+        _routing = State(initialValue: routing)
         _preListen = State(initialValue: preListen)
     }
 
@@ -76,6 +82,7 @@ struct Pocket_TandasApp: App {
                 .environment(playQueue)
                 .environment(metadata)
                 .environment(equalizer)
+                .environment(routing)
                 .environment(preListen)
                 .task {
                     // Warm the cache for the restored queue so its rows show

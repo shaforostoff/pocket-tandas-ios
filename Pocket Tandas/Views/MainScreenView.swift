@@ -47,14 +47,16 @@ struct MainScreenView: View {
                                         configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     let metadata = MetadataService(container: container)
     let equalizer = Equalizer()
+    let routing = AudioRouting()
     return MainScreenView(mode: .dj)
         .environment(session)
-        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer))
+        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer, routing: routing))
         .environment(queue)
         .environment(LibraryStore())
         .environment(metadata)
         .environment(equalizer)
-        .environment(PreListenPlayer(audioSession: session))
+        .environment(routing)
+        .environment(PreListenPlayer(audioSession: session, routing: routing))
         .modelContainer(container)
 }
 

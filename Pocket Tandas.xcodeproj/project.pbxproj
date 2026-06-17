@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0CE24FF98D8B5610D33D7CD4 /* FadeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3A4024A7FA93B8956DA286 /* FadeController.swift */; };
 		0FC9426F8988ABA5A27072F8 /* TrackDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF04EC9A9D61989661BCF0E /* TrackDisplay.swift */; };
+		16DD43E8AAD738EF7AB65DAC /* AudioRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EA43DA88F0283E00693A14 /* AudioRouting.swift */; };
 		1752406383D5767969307F2B /* StopResumeBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E64A91ABB037C8D2EC8E5F /* StopResumeBar.swift */; };
 		1DBF4F0E9AC3874E4024E8BB /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D76246F18FB4D2EF38066899 /* LibraryStore.swift */; };
 		20724BE78F3BDBA17F2BD71E /* FadeControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793840C9AF05E7B7D618259E /* FadeControllerTests.swift */; };
@@ -137,6 +138,7 @@
 		E23540369F03A26D4315C3F2 /* EQButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQButton.swift; path = EQButton.swift; sourceTree = "<group>"; };
 		EB774D14B26DCD27A530AB67 /* SortMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortMenu.swift; path = SortMenu.swift; sourceTree = "<group>"; };
 		F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FolderBookmark.swift; path = FolderBookmark.swift; sourceTree = "<group>"; };
+		F1EA43DA88F0283E00693A14 /* AudioRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioRouting.swift; path = AudioRouting.swift; sourceTree = "<group>"; };
 		F85146FC93DB6E8EAC261BA8 /* ClearQueueButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ClearQueueButton.swift; path = ClearQueueButton.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -182,6 +184,7 @@
 				B4DF4E2A802765BB203C5F04 /* QueueItem.swift */,
 				05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */,
 				AAD3451DBC3FBFA192B41543 /* BrowserState.swift */,
+				F1EA43DA88F0283E00693A14 /* AudioRouting.swift */,
 			);
 			name = Models;
 			path = Models;
@@ -454,6 +457,7 @@
 				3F5D44CBA62ADB4D9E438575 /* EQButton.swift in Sources */,
 				46FD481BB5597FB8B3FA30B7 /* EqualizerView.swift in Sources */,
 				DC9E448E9D47F2AF03F1B15D /* PreListenPlayer.swift in Sources */,
+				16DD43E8AAD738EF7AB65DAC /* AudioRouting.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
