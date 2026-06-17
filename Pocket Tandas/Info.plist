@@ -4,6 +4,8 @@
 <dict>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Pocket Tandas adds tracks from your Music library to the play queue.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Pocket Tandas uses Bluetooth to connect to a nearby phone for remote DJ control.</string>
 	<key>NSBonjourServices</key>

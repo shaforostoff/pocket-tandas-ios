@@ -26,6 +26,7 @@
 		46FD481BB5597FB8B3FA30B7 /* EqualizerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76764CC68526E0C71A84329B /* EqualizerView.swift */; };
 		4FBA4152A48621059B0B0C90 /* Equalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67984284884245074A7BDCAE /* Equalizer.swift */; };
 		54074B018DCBBA59C5F3D5EE /* SortOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = C735492AA77C72BFEB8A252D /* SortOption.swift */; };
+		589D4965ABC8BD3CE7F12817 /* MediaLibraryImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6AE4828B8B3A1A70ED5839E /* MediaLibraryImporter.swift */; };
 		5930485BA7FCD1A190D203C8 /* RemoteMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53643CEB516E9D67C100371 /* RemoteMessage.swift */; };
 		60E446C597D26782AB0C5214 /* PlaylistParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884B4CCCB6057CD22F00D3B9 /* PlaylistParser.swift */; };
 		616B4C72BB16ACBAAE45EBBE /* PlaybackControlling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A789455796DA2EC4EB76F57E /* PlaybackControlling.swift */; };
@@ -45,6 +46,7 @@
 		9ECA41038612A89D233DC0EE /* FolderBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */; };
 		A35E4B3599531C1208C64670 /* QueueRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550446ACA175ABD3E68124BF /* QueueRowView.swift */; };
 		A43A4F9E8637CAA28AA271C6 /* TrackMetadataSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */; };
+		A67D437E95B8FA6B46D9C1FE /* MediaPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4745DAA2BE7D1E9B861E8D /* MediaPicker.swift */; };
 		A70E4EDD92427F71D017BF3B /* RemoteConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381D40C9A5BC87BA965371A7 /* RemoteConnectionView.swift */; };
 		B3E24B6E8FC29593ED4A411E /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAEC4AA894A066ABE40E5456 /* DebugLog.swift */; };
 		C9544E77B948A8144AC0C7A8 /* RemoteQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9CA4380AB56B57660B01D65 /* RemoteQueue.swift */; };
@@ -102,6 +104,7 @@
 		326E43918354BD12D57FCB96 /* PlaylistWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaylistWriter.swift; path = PlaylistWriter.swift; sourceTree = "<group>"; };
 		32FB4789B2B0DA7E8401866A /* StableTrackID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StableTrackID.swift; path = StableTrackID.swift; sourceTree = "<group>"; };
 		381D40C9A5BC87BA965371A7 /* RemoteConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteConnectionView.swift; path = RemoteConnectionView.swift; sourceTree = "<group>"; };
+		3A4745DAA2BE7D1E9B861E8D /* MediaPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaPicker.swift; path = MediaPicker.swift; sourceTree = "<group>"; };
 		3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NowPlayingController.swift; path = NowPlayingController.swift; sourceTree = "<group>"; };
 		3BC4499797D77F95CC942F75 /* MetadataExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataExtractor.swift; path = MetadataExtractor.swift; sourceTree = "<group>"; };
 		3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LauncherView.swift; path = LauncherView.swift; sourceTree = "<group>"; };
@@ -135,6 +138,7 @@
 		B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutePickerView.swift; path = RoutePickerView.swift; sourceTree = "<group>"; };
 		B4DF4E2A802765BB203C5F04 /* QueueItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueueItem.swift; path = QueueItem.swift; sourceTree = "<group>"; };
 		BAEC4AA894A066ABE40E5456 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugLog.swift; path = DebugLog.swift; sourceTree = "<group>"; };
+		C6AE4828B8B3A1A70ED5839E /* MediaLibraryImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaLibraryImporter.swift; path = MediaLibraryImporter.swift; sourceTree = "<group>"; };
 		C735492AA77C72BFEB8A252D /* SortOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortOption.swift; path = SortOption.swift; sourceTree = "<group>"; };
 		CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataKeys.swift; path = MetadataKeys.swift; sourceTree = "<group>"; };
 		CE986D152FDDF876003B2F2A /* Pocket Tandas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Tandas.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -198,6 +202,8 @@
 				D76246F18FB4D2EF38066899 /* LibraryStore.swift */,
 				884B4CCCB6057CD22F00D3B9 /* PlaylistParser.swift */,
 				326E43918354BD12D57FCB96 /* PlaylistWriter.swift */,
+				3A4745DAA2BE7D1E9B861E8D /* MediaPicker.swift */,
+				C6AE4828B8B3A1A70ED5839E /* MediaLibraryImporter.swift */,
 			);
 			name = Library;
 			path = Library;
@@ -499,6 +505,8 @@
 				428747CDBB1F714A700B0AAC /* RemoteTrackResolver.swift in Sources */,
 				A70E4EDD92427F71D017BF3B /* RemoteConnectionView.swift in Sources */,
 				71414723ACFF6F9C62EB384B /* QueuePresenter.swift in Sources */,
+				A67D437E95B8FA6B46D9C1FE /* MediaPicker.swift in Sources */,
+				589D4965ABC8BD3CE7F12817 /* MediaLibraryImporter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -13,6 +13,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import MediaPlayer
 
 @MainActor
 struct BrowserView: View {
@@ -34,6 +35,8 @@ struct BrowserView: View {
     @State private var sort: SortOption = .filename
     @State private var direction: SortDirection = .ascending
     @State private var showingPicker = false
+    @State private var showingMusicPicker = false
+    @State private var musicAccessDenied = false
     /// On "Back", the child we left — so the parent list can scroll back to it.
     @State private var scrollTarget: URL?
 
@@ -51,6 +54,15 @@ struct BrowserView: View {
                       allowedContentTypes: [.folder],
                       allowsMultipleSelection: false) { result in
             handlePick(result)
+        }
+        .sheet(isPresented: $showingMusicPicker) {
+            MediaPicker(onPick: importMusic, onCancel: { showingMusicPicker = false })
+                .ignoresSafeArea()
+        }
+        .alert("Music Access Needed", isPresented: $musicAccessDenied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Allow Pocket Tandas to access your music in Settings to add tracks from your library.")
         }
         .onAppear {
             if browser.currentFolder == nil { navigate(to: library.baseURL) }
@@ -107,10 +119,7 @@ struct BrowserView: View {
                 SortMenu(sort: $sort, direction: $direction, options: sortOptions)
 
                 if isAtRoot {
-                    Button { showingPicker = true } label: {
-                        Image(systemName: "folder.badge.gearshape").imageScale(.large)
-                    }
-                    .buttonStyle(.borderless)
+                    browseControl
                 }
 
                 // While a browser audition is playing, a Stop sits at the trailing
@@ -225,10 +234,9 @@ struct BrowserView: View {
             ContentUnavailableView {
                 Label("No Base Folder", systemImage: "folder.badge.questionmark")
             } description: {
-                Text("Choose a folder of music to browse.")
+                Text("Choose a folder of music to browse, or add tracks from your Music library.")
             } actions: {
-                Button("Choose Folder…") { showingPicker = true }
-                    .buttonStyle(.borderedProminent)
+                browsePromptButton
             }
             if let err = library.accessError {
                 Text(err).font(.footnote).foregroundStyle(.red)
@@ -373,6 +381,86 @@ struct BrowserView: View {
                                title: snapshot?.title,
                                dateText: snapshot?.dateText,
                                year: snapshot?.year)
+    }
+
+    /// The "Browse" control in the header: a Files/Music dropdown in local
+    /// Explore/DJ, or the plain folder picker in Remote Send — there, imported
+    /// library copies live only on this device, so the receiver couldn't resolve
+    /// them, and Music is left off the menu.
+    @ViewBuilder
+    private var browseControl: some View {
+        if mode.isRemoteSend {
+            Button { showingPicker = true } label: {
+                Image(systemName: "folder.badge.gearshape").imageScale(.large)
+            }
+            .buttonStyle(.borderless)
+        } else {
+            Menu {
+                sourceMenuItems
+            } label: {
+                Image(systemName: "folder.badge.gearshape").imageScale(.large)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    /// The prominent action on the empty-state prompt, mirroring `browseControl`
+    /// for when no base folder has been chosen yet.
+    @ViewBuilder
+    private var browsePromptButton: some View {
+        if mode.isRemoteSend {
+            Button("Choose Folder…") { showingPicker = true }
+                .buttonStyle(.borderedProminent)
+        } else {
+            Menu {
+                sourceMenuItems
+            } label: {
+                Text("Browse…")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    /// The two browse sources: the file/folder picker and the device Music library.
+    @ViewBuilder
+    private var sourceMenuItems: some View {
+        Button { showingPicker = true } label: {
+            Label("Files", systemImage: "folder")
+        }
+        Button { chooseMusic() } label: {
+            Label("Music", systemImage: "music.note")
+        }
+    }
+
+    /// Request Music-library access, then present the system music picker. A denial
+    /// (or restriction) surfaces the access alert instead.
+    private func chooseMusic() {
+        Task { @MainActor in
+            if await MediaLibraryImporter.requestAuthorization() == .authorized {
+                showingMusicPicker = true
+            } else {
+                musicAccessDenied = true
+            }
+        }
+    }
+
+    /// Export the picked non-DRM tracks into the sandbox and enqueue them, then
+    /// scan their tags for display. DRM picks (no asset URL) are skipped by the
+    /// importer. Not reached in Remote Send (Music is off that menu).
+    private func importMusic(_ items: [MPMediaItem]) {
+        showingMusicPicker = false
+        guard !items.isEmpty else { return }
+        Task {
+            let summary = await MediaLibraryImporter.importItems(items)
+            await MainActor.run {
+                guard !summary.imported.isEmpty else { return }
+                let added = summary.imported.map {
+                    QueueItem(url: $0, trackKey: StableTrackID.key(for: $0, baseURL: library.baseURL))
+                }
+                queue.enqueue(contentsOf: added)
+                metadata.scan(urls: summary.imported, baseURL: library.baseURL)
+            }
+        }
     }
 
     private func handlePick(_ result: Result<[URL], Error>) {
