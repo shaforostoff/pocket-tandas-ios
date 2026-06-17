@@ -38,11 +38,11 @@ struct LauncherView: View {
 
                 outputSection
 
+                modeButtons
+
                 fadeSection
 
                 Spacer(minLength: 0)
-
-                modeButtons
             }
             .padding()
             .navigationBarTitleDisplayMode(.inline)
@@ -71,7 +71,7 @@ struct LauncherView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Label("DJ fade-out", systemImage: "timer")
+                    Label("Fade-out for DJ Mode", systemImage: "timer")
                         .font(.headline)
                     Spacer()
                     Text("\(Int(fadeOutSeconds.rounded())) s")
@@ -94,44 +94,53 @@ struct LauncherView: View {
 
     private var modeButtons: some View {
         VStack(spacing: 14) {
-            Button {
-                activeMode = .explore
-            } label: {
-                Label("Explore", systemImage: "folder")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            HStack(spacing: 14) {
+                Button {
+                    activeMode = .explore
+                } label: {
+                    Label("Explore", systemImage: "folder")
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
 
-            Button {
-                activeMode = .dj
-            } label: {
-                Label("DJ Mode", systemImage: "slider.horizontal.3")
-                    .frame(maxWidth: .infinity)
+                Button {
+                    activeMode = .remoteSend
+                } label: {
+                    Label("Remote Control", systemImage: "dot.radiowaves.right")
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
 
-            Divider()
-                .padding(.vertical, 2)
+            HStack(spacing: 14) {
+                Button {
+                    activeMode = .dj
+                } label: {
+                    Label("DJ Mode", systemImage: "slider.horizontal.3")
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
 
-            Button {
-                activeMode = .remoteSend
-            } label: {
-                Label("Remote Send", systemImage: "dot.radiowaves.right")
-                    .frame(maxWidth: .infinity)
+                Button {
+                    activeMode = .remoteReceive
+                } label: {
+                    Label("DJ Mode + Remote", systemImage: "antenna.radiowaves.left.and.right")
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-
-            Button {
-                activeMode = .remoteReceive
-            } label: {
-                Label("Remote Receive", systemImage: "antenna.radiowaves.left.and.right")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
         }
     }
 }
