@@ -108,9 +108,9 @@ struct LauncherView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
 
-            // Tap enters DJ mode (cueing on channels 3+4 when ≥4 are available).
-            // Press-and-hold offers the 2-channel L/R split for testing cueing
-            // without a 4-channel interface.
+            // Tap enters DJ mode (auto 4-channel cue on ch 3+4 when ≥4 are
+            // available). Press-and-hold to force a routing: 4-channel cue (when
+            // detection under-reports) or the 2-channel L/R split for testing.
             Button {
                 enter(.dj)
             } label: {
@@ -127,21 +127,23 @@ struct LauncherView: View {
         .confirmationDialog("DJ Output Routing", isPresented: $showDJRoutingOptions,
                             titleVisibility: .visible) {
             Button("Enter DJ Mode") { enter(.dj) }
-            Button("L/R Split Test — Queue ▸ Left, Cue ▸ Right") { enter(.dj, splitTest: true) }
+            Button("4-Channel Cue — Cue ▸ Channels 3+4") { enter(.dj, forcedRouting: .fourChannel) }
+            Button("L/R Split Test — Queue ▸ Left, Cue ▸ Right") { enter(.dj, forcedRouting: .stereoSplitTest) }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("L/R Split routes the play queue to the left channel and prelistening to the right (both downmixed to mono) — for testing cueing without a 4-channel interface.")
+            Text("4-Channel Cue routes the queue to output channels 1+2 and prelistening to 3+4 (needs a multi-channel interface). L/R Split is a 2-channel stand-in: queue to the left, cue to the right (both mono).")
         }
     }
 
     /// Choose the output routing for the mode being entered, apply it to the
-    /// session and both engines (all idle here), then present the screen.
-    /// Explore always uses the single shared route; DJ uses a true 4-channel cue
-    /// when the interface offers ≥4 channels, the L/R split when forced, else none.
-    private func enter(_ appMode: AppMode, splitTest: Bool = false) {
+    /// session and both engines (all idle here), then present the screen. A
+    /// `forcedRouting` (from the long-press dialog) overrides detection; otherwise
+    /// DJ auto-selects a 4-channel cue when the interface offers ≥4 channels, and
+    /// Explore always uses the single shared route.
+    private func enter(_ appMode: AppMode, forcedRouting: AudioRouting.Mode? = nil) {
         let mode: AudioRouting.Mode
-        if splitTest {
-            mode = .stereoSplitTest
+        if let forcedRouting {
+            mode = forcedRouting
         } else if appMode == .dj && audioSession.maxOutputChannels >= 4 {
             mode = .fourChannel
         } else {
