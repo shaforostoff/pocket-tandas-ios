@@ -77,10 +77,8 @@ final class PreListenPlayer {
         engine.attach(player)
         engine.attach(downmix)
         engine.attach(pan)
-        // player → downmix is wired per-file in `play` (the format varies); the
-        // rest is fixed here, with downmix → pan set by the routing.
-        let std = engine.outputNode.outputFormat(forBus: 0)
-        engine.connect(pan, to: engine.outputNode, format: std)
+        // player → downmix is wired per-file in `play` (the format varies);
+        // downmix → pan → output is set by the routing.
         applyRouting()
         engine.prepare()
     }
@@ -94,7 +92,9 @@ final class PreListenPlayer {
     ///  - `.stereoSplitTest`: downmix to mono and pan hard RIGHT.
     func applyRouting() {
         let std = engine.outputNode.outputFormat(forBus: 0)
-        engine.disconnectNodeInput(pan)
+        // Re-wire only downmix's *output* edge, then re-assert pan → output, so the
+        // cue's path to the hardware is never left dangling (see PlaybackEngine).
+        engine.disconnectNodeOutput(downmix)
         switch routing.mode {
         case .off, .fourChannel:
             engine.connect(downmix, to: pan, format: std)
@@ -104,6 +104,7 @@ final class PreListenPlayer {
             engine.connect(downmix, to: pan, format: mono)
             downmix.pan = 1                // mono cue → right channel only
         }
+        engine.connect(pan, to: engine.outputNode, format: std)
         engine.outputNode.auAudioUnit.channelMap = (routing.mode == .fourChannel)
             ? [-1, -1, 0, 1].map { NSNumber(value: $0) }   // stereo cue → hardware ch 3+4
             : nil

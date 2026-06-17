@@ -130,8 +130,7 @@ final class PlaybackEngine {
         let format = mixer.outputFormat(forBus: 0)
         engine.connect(mixer, to: equalizer.node, format: format)
         engine.connect(equalizer.node, to: splitDownmix, format: format)
-        engine.connect(splitPan, to: engine.outputNode, format: format)
-        applyRouting()        // wires splitDownmix → splitPan for the current mode
+        applyRouting()        // wires splitDownmix → splitPan → output for the mode
         engine.prepare()
     }
 
@@ -147,7 +146,11 @@ final class PlaybackEngine {
     ///    leaving the right channel for the cue engine.
     func applyRouting() {
         let std = engine.mainMixerNode.outputFormat(forBus: 0)
-        engine.disconnectNodeInput(splitPan)
+        // Re-wire only splitDownmix's *output* edge, then re-assert splitPan →
+        // output. Never disconnect splitPan's input/output directly: that can leave
+        // the path to the hardware dangling, and playing a node with no route to
+        // the output throws "player started when in a disconnected state".
+        engine.disconnectNodeOutput(splitDownmix)
         switch routing.mode {
         case .off, .fourChannel:
             engine.connect(splitDownmix, to: splitPan, format: std)
@@ -157,6 +160,7 @@ final class PlaybackEngine {
             engine.connect(splitDownmix, to: splitPan, format: mono)
             splitDownmix.pan = -1          // mono main mix → left channel only
         }
+        engine.connect(splitPan, to: engine.outputNode, format: std)
         engine.outputNode.auAudioUnit.channelMap = (routing.mode == .fourChannel)
             ? [0, 1, -1, -1].map { NSNumber(value: $0) }   // stereo main mix → hardware ch 1+2
             : nil
