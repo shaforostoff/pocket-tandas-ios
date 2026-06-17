@@ -21,6 +21,7 @@ struct Pocket_TandasApp: App {
     @State private var metadata: MetadataService
     @State private var nowPlaying: NowPlayingController
     @State private var equalizer: Equalizer
+    @State private var preListen: PreListenPlayer
 
     /// Durable metadata cache. Runtime state lives in plain observable objects,
     /// not SwiftData: the play queue persists itself to a small JSON file (see
@@ -40,6 +41,10 @@ struct Pocket_TandasApp: App {
         let equalizer = Equalizer()
         let engine = PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer)
         let nowPlaying = NowPlayingController(engine: engine, metadata: metadata)
+        // Explore-mode prelistening shares the audio session; starting queue
+        // playback tears it down so the two never sound at once.
+        let preListen = PreListenPlayer(audioSession: session)
+        engine.onPlaybackStart = { [weak preListen] in preListen?.stop() }
 
         self.modelContainer = container
         _audioSession = State(initialValue: session)
@@ -49,6 +54,7 @@ struct Pocket_TandasApp: App {
         _metadata = State(initialValue: metadata)
         _nowPlaying = State(initialValue: nowPlaying)
         _equalizer = State(initialValue: equalizer)
+        _preListen = State(initialValue: preListen)
     }
 
     private static func makeModelContainer() -> ModelContainer {
@@ -70,6 +76,7 @@ struct Pocket_TandasApp: App {
                 .environment(playQueue)
                 .environment(metadata)
                 .environment(equalizer)
+                .environment(preListen)
                 .task {
                     // Warm the cache for the restored queue so its rows show
                     // titles/artists at launch, not just filenames.
