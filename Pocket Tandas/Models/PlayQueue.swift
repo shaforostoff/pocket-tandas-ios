@@ -13,6 +13,7 @@
 
 import Foundation
 import Observation
+import MediaPlayer
 
 @Observable
 final class PlayQueue {
@@ -153,8 +154,20 @@ final class PlayQueue {
     // MARK: - Persistence
 
     private struct StoredItem: Codable {
-        var relativePath: String?
-        var absolutePath: String?
+        // File items: a relocatable relative path, else an absolute path.
+        var relativePath: String? = nil
+        var absolutePath: String? = nil
+        // Media-library items: the persistent id (stable on this device) plus the
+        // cached display fields, so the row shows correctly at launch and the
+        // snapshot can be re-seeded before re-resolution completes.
+        var mediaPersistentID: UInt64? = nil
+        var title: String? = nil
+        var artist: String? = nil
+        var genre: String? = nil
+        var dateText: String? = nil
+        var year: Int? = nil
+        var bpm: Int? = nil
+        var duration: TimeInterval? = nil
     }
 
     private static let defaultStoreURL: URL = {
@@ -175,6 +188,9 @@ final class PlayQueue {
               let stored = try? JSONDecoder().decode([StoredItem].self, from: data) else { return }
         let fm = FileManager.default
         items = stored.compactMap { entry in
+            if let pid = entry.mediaPersistentID {
+                return Self.restoreMediaItem(entry, persistentID: pid)
+            }
             let url: URL
             if let rel = entry.relativePath, let base = baseURL {
                 url = base.appending(path: rel)
@@ -188,14 +204,47 @@ final class PlayQueue {
         }
     }
 
+    /// Rebuild a media item from its stored persistent id. When the library is
+    /// authorized, re-resolve the asset URL (persistent id is stable on this
+    /// device) and drop the entry only if the track is genuinely gone. When access
+    /// hasn't been granted yet (cold launch), keep a placeholder with a nil asset
+    /// URL so the queue survives — it resolves on first play / once granted.
+    private static func restoreMediaItem(_ entry: StoredItem, persistentID pid: UInt64) -> QueueItem? {
+        let cached = TrackMetadataSnapshot(title: entry.title, artist: entry.artist, genre: entry.genre,
+                                           dateText: entry.dateText, year: entry.year, bpm: entry.bpm,
+                                           trackGainDB: nil)
+        let title = entry.title ?? "Unknown"
+        guard MPMediaLibrary.authorizationStatus() == .authorized else {
+            let ref = MediaRef(persistentID: pid, assetURL: nil, displayTitle: title,
+                               duration: entry.duration ?? 0)
+            return QueueItem(media: ref, snapshot: cached)
+        }
+        let query = MPMediaQuery.songs()
+        query.addFilterPredicate(MPMediaPropertyPredicate(value: NSNumber(value: pid),
+                                                          forProperty: MPMediaItemPropertyPersistentID))
+        guard let mp = query.items?.first else { return nil }   // track removed from the library
+        let ref = MediaRef(persistentID: pid, assetURL: mp.assetURL,
+                           displayTitle: mp.title ?? title, duration: mp.playbackDuration)
+        return QueueItem(media: ref, snapshot: cached)
+    }
+
     /// Write the queue as relocatable references (base-relative where possible).
     private func persist() {
         guard persistenceEnabled else { return }   // off until the app calls restore()
         let stored = items.map { item -> StoredItem in
-            if let rel = StableTrackID.relativePath(for: item.url, baseURL: baseURL) {
-                return StoredItem(relativePath: rel, absolutePath: nil)
+            switch item.source {
+            case .file(let url):
+                if let rel = StableTrackID.relativePath(for: url, baseURL: baseURL) {
+                    return StoredItem(relativePath: rel)
+                }
+                return StoredItem(absolutePath: url.path)
+            case .mediaLibrary(let ref):
+                let snap = item.mediaSnapshot
+                return StoredItem(mediaPersistentID: ref.persistentID,
+                                  title: snap?.title, artist: snap?.artist, genre: snap?.genre,
+                                  dateText: snap?.dateText, year: snap?.year, bpm: snap?.bpm,
+                                  duration: ref.duration)
             }
-            return StoredItem(relativePath: nil, absolutePath: item.url.path)
         }
         guard let data = try? JSONEncoder().encode(stored) else { return }
         try? data.write(to: storeURL, options: .atomic)

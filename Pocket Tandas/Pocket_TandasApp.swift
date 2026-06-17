@@ -79,8 +79,10 @@ struct Pocket_TandasApp: App {
                 .environment(preListen)
                 .task {
                     // Warm the cache for the restored queue so its rows show
-                    // titles/artists at launch, not just filenames.
-                    metadata.scan(urls: playQueue.items.map(\.url), baseURL: library.baseURL)
+                    // titles/artists at launch, not just filenames. File items scan
+                    // from disk; media items are seeded from their carried metadata.
+                    metadata.scan(urls: playQueue.items.compactMap(\.fileURL), baseURL: library.baseURL)
+                    metadata.seedMedia(playQueue.items)
                 }
                 .onChange(of: library.baseURL) { _, newValue in
                     playQueue.baseURL = newValue
