@@ -50,8 +50,10 @@ final class MediaTrackDecoder {
 
     func decode(assetURL: URL, expectedDuration: TimeInterval) throws -> (AVAudioPCMBuffer, AVAudioFormat) {
         let asset = AVURLAsset(url: assetURL)
-        // Synchronous track load is fine — we are already off the main thread.
-        guard let track = asset.tracks(withMediaType: .audio).first else {
+        // `loadTracks` is async; bridge it back into this synchronous, off-main
+        // decode with a semaphore. Safe to block: we run on a private dispatch
+        // queue, never on a Swift Concurrency executor thread.
+        guard let track = try loadFirstAudioTrack(of: asset) else {
             throw DecodeError.noAudioTrack
         }
 
@@ -100,6 +102,25 @@ final class MediaTrackDecoder {
         case .cancelled: throw DecodeError.cancelled
         default:         throw DecodeError.readerFailed
         }
+    }
+
+    /// Load the first audio track, bridging `AVAsset.loadTracks` (async) into the
+    /// synchronous `decode`. Blocking is safe here — `decode` runs on a dedicated
+    /// dispatch queue, so the wait can't starve the concurrency cooperative pool.
+    private func loadFirstAudioTrack(of asset: AVURLAsset) throws -> AVAssetTrack? {
+        // Reference box so the load task hands its result back across the
+        // semaphore without tripping "mutation of captured var"; the wait/signal
+        // pair is the happens-before that makes the unchecked Sendable sound.
+        final class Box: @unchecked Sendable { var result: Result<[AVAssetTrack], Error>? }
+        let box = Box()
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            do { box.result = .success(try await asset.loadTracks(withMediaType: .audio)) }
+            catch { box.result = .failure(error) }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return try box.result?.get().first
     }
 
     /// Copy one sample buffer's deinterleaved Float32 channels into `pcm` at its
