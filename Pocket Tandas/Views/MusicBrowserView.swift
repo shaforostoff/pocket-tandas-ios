@@ -38,7 +38,13 @@ struct MusicBrowserView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            content
+            ScrollViewReader { proxy in
+                content
+                    // The listing loads asynchronously, so when this view is (re)built
+                    // (e.g. an iPad rotation) scroll to the auditioned track once the
+                    // rows populate — keeping the currently playing row visible.
+                    .onChange(of: displayed) { _, _ in scrollToAudition(proxy: proxy) }
+            }
         }
         .task(id: browser.musicModel.current) { reload() }
         .onChange(of: browser.musicFilter) { _, _ in applyArrange() }
@@ -270,6 +276,16 @@ struct MusicBrowserView: View {
     private func syncPrelistenListing() {
         guard mode.isExploreLike else { return }
         preListen.updateListing(displayed.compactMap(\.assetURL), folder: browser.musicModel.current.contextURL)
+    }
+
+    /// Center the auditioned track if it's in the shown list — used when the view
+    /// is (re)built or the listing changes, so the currently playing row stays
+    /// visible. Deferred so a freshly built List has committed its rows first.
+    private func scrollToAudition(proxy: ScrollViewProxy) {
+        guard let target = displayed.first(where: { isAuditioning($0) })?.id else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            proxy.scrollTo(target, anchor: .center)
+        }
     }
 
     // MARK: - Actions

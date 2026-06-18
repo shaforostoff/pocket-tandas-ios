@@ -218,7 +218,13 @@ struct BrowserView: View {
     private func scrollToAudition(_ entries: [LibraryEntry], proxy: ScrollViewProxy) {
         guard let url = preListen.currentURL,
               entries.contains(where: { $0.id == url }) else { return }
-        Task { @MainActor in proxy.scrollTo(url, anchor: .center) }
+        // Defer past this runloop turn so a freshly built List — after the view is
+        // rebuilt on rotation, or after the folder finishes reloading — has
+        // committed its rows before we scroll; a same-turn hop can run first and
+        // silently no-op (see QueueView for the same gotcha).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            proxy.scrollTo(url, anchor: .center)
+        }
     }
 
     private var chooseFolderPrompt: some View {
