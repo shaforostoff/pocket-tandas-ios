@@ -54,7 +54,8 @@ struct MainScreenView: View {
     var body: some View {
         VStack(spacing: 0) {
             connectionBanner
-            BrowserView(mode: mode, remoteQueue: remoteQueue)
+            remoteNotice
+            topBrowser
                 .frame(maxHeight: .infinity)
             Divider()
             StopResumeBar(mode: mode, control: control)
@@ -81,6 +82,33 @@ struct MainScreenView: View {
         } else if mode.isRemoteReceive, let receiver {
             RemoteConnectionView(link: receiver.link, role: .receiver)
             Divider()
+        }
+    }
+
+    /// Top half: the file browser or the Music-library browser, per the source the
+    /// Browse dropdown selected.
+    @ViewBuilder
+    private var topBrowser: some View {
+        switch browser.source {
+        case .files:
+            BrowserView(mode: mode, remoteQueue: remoteQueue)
+        case .music:
+            MusicBrowserView(mode: mode, remoteQueue: remoteQueue)
+        }
+    }
+
+    /// Brief banner shown to the sending DJ when the receiver couldn't resolve some
+    /// added tracks (Remote Send only).
+    @ViewBuilder
+    private var remoteNotice: some View {
+        if mode.isRemoteSend, let notice = remoteQueue?.addFailureNotice {
+            Text(notice)
+                .font(.footnote)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.red.opacity(0.9))
         }
     }
 

@@ -18,7 +18,13 @@ import Observation
 
 @Observable
 final class BrowserState {
-    /// The folder the browser is showing — or a playlist opened as a fake folder
-    /// of its tracks. Nil until a base folder is chosen.
+    /// Which source the top-half browser shows: the file system or the device
+    /// Music library. Set by the Browse dropdown; the file/music browsers swap in
+    /// MainScreenView on this. Resets to `.files` on each presentation.
+    enum Source { case files, music }
+    var source: Source = .files
+
+    /// The folder the file browser is showing — or a playlist opened as a fake
+    /// folder of its tracks. Nil until a base folder is chosen.
     var currentFolder: URL?
 }
