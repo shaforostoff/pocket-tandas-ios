@@ -31,10 +31,6 @@ struct MusicBrowserView: View {
     @Environment(PlaybackEngine.self) private var engine
     @Environment(BrowserState.self) private var browser
 
-    @State private var model = MusicBrowseModel()
-    @State private var filterText = ""
-    @State private var sort: SortOption = .artist
-    @State private var direction: SortDirection = .ascending
     @State private var rawEntries: [MusicEntry] = []
     @State private var displayed: [MusicEntry] = []
 
@@ -44,10 +40,10 @@ struct MusicBrowserView: View {
             Divider()
             content
         }
-        .task(id: model.current) { reload() }
-        .onChange(of: filterText) { _, _ in applyArrange() }
-        .onChange(of: sort) { _, _ in applyArrange() }
-        .onChange(of: direction) { _, _ in applyArrange() }
+        .task(id: browser.musicModel.current) { reload() }
+        .onChange(of: browser.musicFilter) { _, _ in applyArrange() }
+        .onChange(of: browser.musicSort) { _, _ in applyArrange() }
+        .onChange(of: browser.musicDirection) { _, _ in applyArrange() }
     }
 
     // MARK: - Header
@@ -62,7 +58,7 @@ struct MusicBrowserView: View {
             .buttonStyle(.borderless)
 
             if !atRoot {
-                TextField("Filter", text: $filterText)
+                TextField("Filter", text: Bindable(browser).musicFilter)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -72,8 +68,8 @@ struct MusicBrowserView: View {
                 Spacer()
             }
 
-            if model.current.isTrackList {
-                SortMenu(sort: $sort, direction: $direction, options: sortOptions)
+            if browser.musicModel.current.isTrackList {
+                SortMenu(sort: Bindable(browser).musicSort, direction: Bindable(browser).musicDirection, options: sortOptions)
             }
 
             // While auditioning, a Stop sits at the trailing edge (Explore only).
@@ -100,16 +96,16 @@ struct MusicBrowserView: View {
                 BrowserRowView(title: category.title, systemImage: category.systemImage,
                                isNavigable: true, isContainer: true)
                     .contentShape(Rectangle())
-                    .onTapGesture { model.push(.category(category)) }
+                    .onTapGesture { browser.musicModel.push(.category(category)) }
             }
             .listStyle(.plain)
         } else if displayed.isEmpty {
             ContentUnavailableView(
-                filterText.isEmpty ? "Nothing Here" : "No Matches",
+                browser.musicFilter.isEmpty ? "Nothing Here" : "No Matches",
                 systemImage: "music.note",
-                description: Text(filterText.isEmpty
+                description: Text(browser.musicFilter.isEmpty
                                   ? "No music in this part of your library."
-                                  : "Nothing matches “\(filterText)”."))
+                                  : "Nothing matches “\(browser.musicFilter)”."))
             .frame(maxHeight: .infinity)
         } else {
             List(displayed) { entry in
@@ -133,14 +129,14 @@ struct MusicBrowserView: View {
     // MARK: - Navigation
 
     private var atRoot: Bool {
-        if case .root = model.current { return true }
+        if case .root = browser.musicModel.current { return true }
         return false
     }
 
     /// Back pops a level; at the Music root it returns to the file browser (the
     /// source the user came from).
     private func back() {
-        if model.canGoUp { model.pop() } else { browser.source = .files }
+        if browser.musicModel.canGoUp { browser.musicModel.pop() } else { browser.source = .files }
     }
 
     private func isAuditioning(_ entry: MusicEntry) -> Bool {
@@ -151,7 +147,7 @@ struct MusicBrowserView: View {
     /// Sort options: the metadata-capable subset (no filename — there are none).
     /// Inside a playlist, its own listed order is offered and is the default.
     private var sortOptions: [SortOption] {
-        model.current.isPlaylist
+        browser.musicModel.current.isPlaylist
             ? [.listed, .artist, .dateYear, .genre, .bpm]
             : [.artist, .dateYear, .genre, .bpm]
     }
@@ -159,26 +155,26 @@ struct MusicBrowserView: View {
     // MARK: - Loading
 
     private func reload() {
-        switch model.current {
+        switch browser.musicModel.current {
         case .root:
             rawEntries = []
         case .category(.songs):
-            rawEntries = makeTrackEntries(MusicLibrary.tracks(in: model.current))
+            rawEntries = makeTrackEntries(MusicLibrary.tracks(in: browser.musicModel.current))
         case .category(let category):
             rawEntries = MusicLibrary.containers(for: category).map(makeContainerEntry)
         case .container:
-            rawEntries = makeTrackEntries(MusicLibrary.tracks(in: model.current))
+            rawEntries = makeTrackEntries(MusicLibrary.tracks(in: browser.musicModel.current))
         }
         // Keep the sort valid for the destination: a playlist defaults to its own
         // listed order; folders/track lists never use it.
-        if model.current.isPlaylist {
-            sort = .listed
-            direction = .ascending
-        } else if sort == .listed {
-            sort = .artist
-            direction = .ascending
+        if browser.musicModel.current.isPlaylist {
+            browser.musicSort = .listed
+            browser.musicDirection = .ascending
+        } else if browser.musicSort == .listed {
+            browser.musicSort = .artist
+            browser.musicDirection = .ascending
         }
-        filterText = ""
+        browser.musicFilter = ""
         applyArrange()
     }
 
@@ -206,7 +202,7 @@ struct MusicBrowserView: View {
     }
 
     private func arranged() -> [MusicEntry] {
-        let needle = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needle = browser.musicFilter.trimmingCharacters(in: .whitespacesAndNewlines)
         var entries = rawEntries
         if !needle.isEmpty {
             entries = entries.filter { entry in
@@ -218,14 +214,14 @@ struct MusicBrowserView: View {
         }
         // Container lists sort alphabetically (like folders); track lists use the
         // chosen metadata sort, with listed order preserved for playlists.
-        guard model.current.isTrackList else {
+        guard browser.musicModel.current.isTrackList else {
             return entries.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         }
-        if sort == .listed {
-            return direction == .descending ? entries.reversed() : entries
+        if browser.musicSort == .listed {
+            return browser.musicDirection == .descending ? entries.reversed() : entries
         }
         var sorted = entries.sorted { ascending($0, $1) }
-        if direction == .descending { sorted.reverse() }
+        if browser.musicDirection == .descending { sorted.reverse() }
         return sorted
     }
 
@@ -233,7 +229,7 @@ struct MusicBrowserView: View {
     /// (each option falls through to the next on a tie; title is the final tiebreak).
     private func ascending(_ a: MusicEntry, _ b: MusicEntry) -> Bool {
         var c: ComparisonResult
-        switch sort {
+        switch browser.musicSort {
         case .dateYear:
             c = cmpYear(a, b)
         case .genre:
@@ -273,7 +269,7 @@ struct MusicBrowserView: View {
 
     private func syncPrelistenListing() {
         guard mode.isExploreLike else { return }
-        preListen.updateListing(displayed.compactMap(\.assetURL), folder: model.current.contextURL)
+        preListen.updateListing(displayed.compactMap(\.assetURL), folder: browser.musicModel.current.contextURL)
     }
 
     // MARK: - Actions
@@ -281,7 +277,7 @@ struct MusicBrowserView: View {
     private func tap(_ entry: MusicEntry) {
         switch entry.kind {
         case .container(let container):
-            model.push(.container(container))
+            browser.musicModel.push(.container(container))
         case .track:
             guard mode.isExploreLike, let url = entry.assetURL else { return }
             switch engine.state {
@@ -292,7 +288,7 @@ struct MusicBrowserView: View {
             case .idle:
                 break
             }
-            preListen.play(url, in: model.current.contextURL)
+            preListen.play(url, in: browser.musicModel.current.contextURL)
         }
     }
 
