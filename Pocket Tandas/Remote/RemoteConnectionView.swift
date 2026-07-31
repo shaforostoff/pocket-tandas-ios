@@ -47,7 +47,7 @@ struct RemoteConnectionView: View {
         if link.discoveredPeers.isEmpty {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("Searching for a receiver…")
+                Text("Searching for a controlable…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -77,8 +77,8 @@ struct RemoteConnectionView: View {
     private var statusText: String {
         switch link.connectionState {
         case .idle: return "Off"
-        case .advertising: return "Waiting for a sender to connect…"
-        case .browsing: return "Searching for a receiver…"
+        case .advertising: return "Waiting for a client to connect…"
+        case .browsing: return "Searching for a controllable…"
         case .connecting(let name): return "Connecting to \(name)…"
         case .connected(let name): return "Connected to \(name)"
         case .disconnected: return role == .sender ? "Disconnected — searching…" : "Disconnected — waiting…"
