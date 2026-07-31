@@ -16,10 +16,12 @@ enum AppMode: String, Identifiable, Hashable, CaseIterable {
     case explore
     case dj
     /// Extends Explore: drives a remote receiver (hides the local queue, shows a
-    /// mirror of the receiver's queue, sends control commands + track requests).
+    /// mirror of the receiver's queue, sends control commands + track requests,
+    /// and edits the receiver's EQ / master volume). Launcher: "Remote Control".
     case remoteSend
-    /// Extends DJ: exposes its play queue and playback state to a remote sender
-    /// and applies the sender's commands locally.
+    /// Extends DJ: exposes its play queue, playback state and audio settings to a
+    /// remote sender and applies the sender's commands locally. Launcher: "Remote
+    /// Controllable".
     case remoteReceive
 
     var id: String { rawValue }
@@ -28,8 +30,8 @@ enum AppMode: String, Identifiable, Hashable, CaseIterable {
         switch self {
         case .explore: return "Explore"
         case .dj: return "DJ Mode"
-        case .remoteSend: return "Remote Send"
-        case .remoteReceive: return "Remote Receive"
+        case .remoteSend: return "Remote Control"
+        case .remoteReceive: return "Remote Controllable"
         }
     }
 

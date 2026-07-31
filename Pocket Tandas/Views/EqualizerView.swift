@@ -11,31 +11,46 @@
 //  node and persist. A master enable toggle bypasses the whole unit; Reset
 //  returns every band to flat defaults.
 //
+//  The same panel edits the local EQ or — in Remote Control mode — the receiver's,
+//  through whichever EqualizerControlling it was handed. While a remote EQ hasn't
+//  reported its state yet (`isReady == false`) the controls stay disabled so no
+//  edit is sent against invented values.
+//
 
 import SwiftUI
 
 struct EqualizerView: View {
-    @Environment(Equalizer.self) private var equalizer
+    let control: any EqualizerControlling
+    var isReady: Bool = true
+
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Toggle("Enable EQ", isOn: Binding(
-                        get: { equalizer.isEnabled },
-                        set: { equalizer.setEnabled($0) }))
+                if !isReady {
+                    Section {
+                        Label("Waiting for the receiver…", systemImage: "antenna.radiowaves.left.and.right.slash")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
-                ForEach(equalizer.bands) { band in
+                Section {
+                    Toggle("Enable EQ", isOn: Binding(
+                        get: { control.isEnabled },
+                        set: { control.setEnabled($0) }))
+                }
+
+                ForEach(control.bands) { band in
                     bandSection(band)
                 }
 
                 Section {
-                    Button("Reset to Flat", role: .destructive) { equalizer.reset() }
+                    Button("Reset to Flat", role: .destructive) { control.reset() }
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
+            .disabled(!isReady)
             .navigationTitle("Equalizer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -48,11 +63,11 @@ struct EqualizerView: View {
     }
 
     @ViewBuilder
-    private func bandSection(_ band: Equalizer.Band) -> some View {
+    private func bandSection(_ band: EQBand) -> some View {
         Section(band.name) {
             paramRow(title: "Gain", value: String(format: "%+.1f dB", band.gain)) {
                 Slider(value: Binding(get: { band.gain },
-                                      set: { equalizer.setGain($0, bandID: band.id) }),
+                                      set: { control.setGain($0, bandID: band.id) }),
                        in: Equalizer.gainRange)
             }
             paramRow(title: "Frequency", value: frequencyLabel(band.frequency)) {
@@ -60,16 +75,16 @@ struct EqualizerView: View {
                 // wastes most of its travel on the top octave.
                 Slider(value: Binding(
                     get: { log10(Double(band.frequency)) },
-                    set: { equalizer.setFrequency(Float(pow(10.0, $0)), bandID: band.id) }),
+                    set: { control.setFrequency(Float(pow(10.0, $0)), bandID: band.id) }),
                     in: log10(Double(band.frequencyRange.lowerBound))...log10(Double(band.frequencyRange.upperBound)))
             }
             paramRow(title: "Bandwidth", value: String(format: "%.2f oct", band.bandwidth)) {
                 Slider(value: Binding(get: { band.bandwidth },
-                                      set: { equalizer.setBandwidth($0, bandID: band.id) }),
+                                      set: { control.setBandwidth($0, bandID: band.id) }),
                        in: Equalizer.bandwidthRange)
             }
         }
-        .disabled(!equalizer.isEnabled)
+        .disabled(!control.isEnabled)
     }
 
     private func paramRow<Content: View>(title: String, value: String,

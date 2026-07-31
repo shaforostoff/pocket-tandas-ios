@@ -27,18 +27,27 @@ final class RemoteQueue {
     private(set) var addFailureNotice: String?
 
     @ObservationIgnored let link: PeerLink
+
+    /// The receiver's audio chain (EQ + master volume), driven by the EQ and Volume
+    /// buttons on the Remote Control screen. Shares this link.
+    @ObservationIgnored let audio: RemoteAudioControl
+
     @ObservationIgnored private var lastSnapshotSeq: UInt64 = 0
     @ObservationIgnored private var lastProgressSeq: UInt64 = 0
 
     init(link: PeerLink) {
         self.link = link
+        self.audio = RemoteAudioControl(link: link)
         link.onReceive = { [weak self] message in self?.handle(message) }
         link.onConnected = { [weak self] _ in
+            guard let self else { return }
             // Fresh receiver session may restart its seq counter — reset ours so
             // the first new snapshot isn't rejected, then ask for current state.
-            self?.lastSnapshotSeq = 0
-            self?.lastProgressSeq = 0
-            self?.link.send(.requestSnapshot)
+            self.lastSnapshotSeq = 0
+            self.lastProgressSeq = 0
+            self.audio.resetSeq()
+            self.link.send(.requestSnapshot)
+            self.link.send(.requestAudioSettings)
         }
     }
 
@@ -62,8 +71,11 @@ final class RemoteQueue {
             self.progress = progress
         case .addTrackResult(_, let failed):
             noteAddResult(failed: failed)
+        case .audioSettings(let settings):
+            audio.apply(settings)
         case .requestPlay, .stopWithFade, .resumeFromFade,
-             .setAnchor, .move, .removeItems, .addTracks, .requestSnapshot:
+             .setAnchor, .move, .removeItems, .addTracks, .requestSnapshot,
+             .setEQEnabled, .setEQBand, .resetEQ, .setVolume, .requestAudioSettings:
             break   // not consumed by the sender
         }
     }

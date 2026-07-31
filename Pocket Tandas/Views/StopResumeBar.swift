@@ -14,7 +14,8 @@
 //
 //  Remote Send: the same Stop ⇄ Resume control, but bound to the RemoteQueue —
 //  so it drives the receiver's fade and reflects the receiver's broadcast state
-//  (Resume shows while the receiver is fading). No local-queue buttons.
+//  (Resume shows while the receiver is fading). No local-queue buttons; instead the
+//  row carries Volume and EQ, both wired to the RECEIVER's audio chain.
 //
 //  Explore mode: Pause / Play instead — Pause holds the current track and Play
 //  resumes it from where it left off. The row also carries Clear and Save for the
@@ -29,6 +30,10 @@ import SwiftUI
 struct StopResumeBar: View {
     let mode: AppMode
     let control: any PlaybackControlling
+    /// Remote Send only: the receiver's EQ + master volume over the peer link.
+    var remoteAudio: RemoteAudioControl? = nil
+
+    @Environment(Equalizer.self) private var equalizer
 
     var body: some View {
         HStack(spacing: 8) {
@@ -38,10 +43,15 @@ struct StopResumeBar: View {
                 SavePlaylistButton()
                 ClearQueueButton()
             }
-            // EQ lives on the device that actually plays: plain DJ and the
-            // receiver. The sender has no local playback to equalise.
-            if mode.isDJLike {
-                EQButton()
+            // EQ edits whatever device is playing: the local chain in plain DJ /
+            // Remote Receive, the receiver's chain from the Remote Control screen.
+            // Volume is remote-only — locally the hardware keys already do it, but
+            // they can't reach the phone wired to the speakers.
+            if let remoteAudio, mode.isRemoteSend {
+                VolumeButton(control: remoteAudio, isReady: remoteAudio.hasSettings)
+                EQButton(control: remoteAudio, isReady: remoteAudio.hasSettings)
+            } else if mode.isDJLike {
+                EQButton(control: equalizer)
             }
             playbackControl
         }

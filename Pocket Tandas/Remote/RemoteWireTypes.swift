@@ -54,6 +54,35 @@ struct RemoteSnapshot: Codable, Hashable {
     var seq: UInt64
 }
 
+/// The receiver's audio-chain settings (EQ + master volume), broadcast to the
+/// sender on connect and on every change so the Remote Control screen's EQ and
+/// Volume panels show what the speakers are actually doing. `seq` shares the
+/// coordinator's counter, so stale updates can be dropped.
+///
+/// Version-tolerant like TrackAddRequest: every field has a default and decoding
+/// tolerates a missing key, so a peer running an older/newer build still decodes.
+struct RemoteAudioSettings: Codable, Hashable {
+    var eqEnabled: Bool = true
+    var bands: [EQBand] = []
+    var volume: Float = 1.0
+    var seq: UInt64 = 0
+
+    init(eqEnabled: Bool = true, bands: [EQBand] = [], volume: Float = 1.0, seq: UInt64 = 0) {
+        self.eqEnabled = eqEnabled
+        self.bands = bands
+        self.volume = volume
+        self.seq = seq
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? true
+        bands = try c.decodeIfPresent([EQBand].self, forKey: .bands) ?? []
+        volume = try c.decodeIfPresent(Float.self, forKey: .volume) ?? 1.0
+        seq = try c.decodeIfPresent(UInt64.self, forKey: .seq) ?? 0
+    }
+}
+
 /// A request to add a track on the receiver. The receiver resolves it via
 /// RemoteTrackResolver to either a local file (file source) or a track in its own
 /// Music library (media source). For files, `relativePath` is the sender's

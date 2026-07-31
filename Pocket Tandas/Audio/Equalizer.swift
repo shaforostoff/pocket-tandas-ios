@@ -26,17 +26,10 @@ import AVFoundation
 import Observation
 
 @Observable
-final class Equalizer {
-    /// One adjustable band. The name and frequency range are fixed metadata; the
-    /// three stored values (frequency / bandwidth / gain) are what the user edits.
-    struct Band: Identifiable {
-        let id: Int                 // index into node.bands
-        let name: String
-        var frequency: Float        // Hz
-        var bandwidth: Float        // octaves — lower is narrower (higher Q)
-        var gain: Float             // dB
-        let frequencyRange: ClosedRange<Float>
-    }
+final class Equalizer: EqualizerControlling {
+    /// One adjustable band — see EQBand (shared with the EQ panel and the wire
+    /// payload the remote receiver broadcasts).
+    typealias Band = EQBand
 
     /// Slider ranges shared by every band.
     static let gainRange: ClosedRange<Float> = -12...12         // dB
@@ -154,11 +147,5 @@ final class Equalizer {
             bands[i].bandwidth = snapshot.bands[i].bandwidth.clamped(to: Self.bandwidthRange)
             bands[i].gain = snapshot.bands[i].gain.clamped(to: Self.gainRange)
         }
-    }
-}
-
-private extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
     }
 }
