@@ -53,6 +53,7 @@
 		A43A4F9E8637CAA28AA271C6 /* TrackMetadataSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */; };
 		A70E4EDD92427F71D017BF3B /* RemoteConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381D40C9A5BC87BA965371A7 /* RemoteConnectionView.swift */; };
 		B3E24B6E8FC29593ED4A411E /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAEC4AA894A066ABE40E5456 /* DebugLog.swift */; };
+		B8794538BBB6C30C230772F7 /* StayAwake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B194BB3837007A3B31A6A1B /* StayAwake.swift */; };
 		C9544E77B948A8144AC0C7A8 /* RemoteQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9CA4380AB56B57660B01D65 /* RemoteQueue.swift */; };
 		CDDF4F2CAFC871F398C84BBC /* NowPlayingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */; };
 		CE986D192FDDF876003B2F2A /* Pocket_TandasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE986D182FDDF876003B2F2A /* Pocket_TandasApp.swift */; };
@@ -104,6 +105,7 @@
 		117D4F0B8209DA7F1CDC67F6 /* SavePlaylistButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SavePlaylistButton.swift; path = SavePlaylistButton.swift; sourceTree = "<group>"; };
 		167B48A78E746629E499E6D3 /* RemoteWireTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteWireTypes.swift; path = RemoteWireTypes.swift; sourceTree = "<group>"; };
 		16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserRowView.swift; path = BrowserRowView.swift; sourceTree = "<group>"; };
+		1B194BB3837007A3B31A6A1B /* StayAwake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StayAwake.swift; path = StayAwake.swift; sourceTree = "<group>"; };
 		1C3A4024A7FA93B8956DA286 /* FadeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FadeController.swift; path = FadeController.swift; sourceTree = "<group>"; };
 		1DCD4630A30D4AE666147A03 /* QueuePresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueuePresenter.swift; path = QueuePresenter.swift; sourceTree = "<group>"; };
 		2CF04EC9A9D61989661BCF0E /* TrackDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackDisplay.swift; path = TrackDisplay.swift; sourceTree = "<group>"; };
@@ -205,6 +207,7 @@
 				76124D929F0AFEA8128073DF /* PreListenPlayer.swift */,
 				F80042B1A005AAD4ABA98817 /* MediaTrackDecoder.swift */,
 				BC4E416886B461A5F0353C2D /* AudioControlling.swift */,
+				1B194BB3837007A3B31A6A1B /* StayAwake.swift */,
 			);
 			name = Audio;
 			path = Audio;
@@ -535,6 +538,7 @@
 				D09541028920BCF81CD1B712 /* AudioControlling.swift in Sources */,
 				207643AB9D9703F0F8EE015A /* RemoteAudioControl.swift in Sources */,
 				8A9240CCA79E0FC973499D2E /* VolumeButton.swift in Sources */,
+				B8794538BBB6C30C230772F7 /* StayAwake.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
