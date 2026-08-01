@@ -12,6 +12,11 @@
 //  can't drift. Its intent methods send commands; the resulting change comes back
 //  as the next snapshot.
 //
+//  Rows whose display text the receiver has already sent on this connection arrive
+//  text-less and are filled in from the mirror (see `merge`), so a queue's names
+//  cross the wire once rather than on every change. Playback state arrives either
+//  inside a snapshot or, when only the engine moved, as its own small message.
+//
 
 import Foundation
 import Observation
@@ -33,6 +38,7 @@ final class RemoteQueue {
     @ObservationIgnored let audio: RemoteAudioControl
 
     @ObservationIgnored private var lastSnapshotSeq: UInt64 = 0
+    @ObservationIgnored private var lastPlaybackSeq: UInt64 = 0
     @ObservationIgnored private var lastProgressSeq: UInt64 = 0
 
     init(link: PeerLink) {
@@ -44,6 +50,7 @@ final class RemoteQueue {
             // Fresh receiver session may restart its seq counter — reset ours so
             // the first new snapshot isn't rejected, then ask for current state.
             self.lastSnapshotSeq = 0
+            self.lastPlaybackSeq = 0
             self.lastProgressSeq = 0
             self.audio.resetSeq()
             self.link.send(.requestSnapshot)
@@ -60,6 +67,7 @@ final class RemoteQueue {
         playback = RemotePlaybackState()
         progress = RemoteProgress()
         lastSnapshotSeq = 0
+        lastPlaybackSeq = 0
         lastProgressSeq = 0
         audio.clear()
     }
@@ -75,9 +83,19 @@ final class RemoteQueue {
         switch message {
         case .snapshot(let snapshot):
             guard snapshot.seq > lastSnapshotSeq else { return }
+            guard let merged = merge(snapshot.items) else {
+                // A row arrived without text that we have no text for — our mirror and
+                // the receiver's idea of it have diverged. Ask for the full picture
+                // rather than rendering blank rows.
+                ptLog("[RemoteQueue] unresolvable row — requesting full resync")
+                link.send(.requestSnapshot)
+                return
+            }
             lastSnapshotSeq = snapshot.seq
-            items = snapshot.items
-            playback = snapshot.playback
+            items = merged
+            applyPlayback(snapshot.playback, seq: snapshot.seq)
+        case .playbackState(let update):
+            applyPlayback(update.playback, seq: update.seq)
         case .progress(let progress):
             guard progress.seq > lastProgressSeq else { return }
             lastProgressSeq = progress.seq
@@ -91,6 +109,35 @@ final class RemoteQueue {
              .setEQEnabled, .setEQBand, .resetEQ, .setVolume, .requestAudioSettings:
             break   // not consumed by the sender
         }
+    }
+
+    /// Playback arrives two ways — inside a snapshot, and on its own when only the
+    /// engine changed. One seq guard across both keeps the newer of the two.
+    private func applyPlayback(_ state: RemotePlaybackState, seq: UInt64) {
+        guard seq > lastPlaybackSeq else { return }
+        lastPlaybackSeq = seq
+        playback = state
+    }
+
+    /// Fill in the rows the receiver sent without text, from the mirror we already
+    /// hold. Returns nil if any such row is unknown to us — the caller resyncs.
+    private func merge(_ incoming: [RemoteQueueItem]) -> [RemoteQueueItem]? {
+        guard incoming.contains(where: { !$0.hasText }) else { return incoming }
+        let known = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var merged: [RemoteQueueItem] = []
+        merged.reserveCapacity(incoming.count)
+        for row in incoming {
+            if row.hasText {
+                merged.append(row)
+            } else if let cached = known[row.id] {
+                // Only the anchor flag travels with a text-less row.
+                merged.append(RemoteQueueItem(id: row.id, title: cached.title, artist: cached.artist,
+                                              detail: cached.detail, isAnchor: row.isAnchor))
+            } else {
+                return nil
+            }
+        }
+        return merged
     }
 
     /// Surface a brief notice when the receiver couldn't resolve some adds. Runs on

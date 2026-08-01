@@ -38,9 +38,37 @@ final class RemoteReceiverCoordinator {
 
     @ObservationIgnored private var seq: UInt64 = 0
     @ObservationIgnored private var broadcastScheduled = false
+    @ObservationIgnored private var playbackBroadcastScheduled = false
     @ObservationIgnored private var settingsBroadcastScheduled = false
     @ObservationIgnored private var progressTimer: Timer?
     @ObservationIgnored private var running = false
+
+    /// Display text already sent to the CURRENT sender, per row — the basis for
+    /// omitting it from later snapshots. Cleared whenever a sender (re)connects or
+    /// asks for a full resync, so it can never claim the peer knows something it
+    /// doesn't, and pruned to the live queue so it can't grow unbounded.
+    @ObservationIgnored private var sentText: [UUID: RowText] = [:]
+    /// What the sender already has, so an unchanged rebuild (queue untouched, e.g.
+    /// metadata churn from browsing on this device) isn't resent. Only the row
+    /// identities/anchors and playback are compared — the text is covered by
+    /// `sentText`, and the same state can serialize as full rows once and text-less
+    /// rows thereafter.
+    @ObservationIgnored private var lastSent: SentState?
+
+    private struct RowText: Equatable {
+        let title: String
+        let artist: String?
+        let detail: String?
+    }
+
+    private struct SentState: Equatable {
+        struct Row: Equatable {
+            let id: UUID
+            let isAnchor: Bool
+        }
+        let rows: [Row]
+        let playback: RemotePlaybackState
+    }
 
     init(queue: PlayQueue, engine: PlaybackEngine, metadata: MetadataService,
          library: LibraryStore, equalizer: Equalizer, container: ModelContainer) {
@@ -53,6 +81,8 @@ final class RemoteReceiverCoordinator {
         self.link = PeerLink(role: .receiver)
         link.onReceive = { [weak self] message in self?.handle(message) }
         link.onConnected = { [weak self] _ in
+            // A new sender knows nothing: start describing every row in full again.
+            self?.forgetSentText()
             self?.broadcastSnapshot()
             self?.broadcastAudioSettings()
         }
@@ -66,6 +96,7 @@ final class RemoteReceiverCoordinator {
         Task { _ = await MediaLibraryImporter.requestAuthorization() }
         link.startAdvertising()
         observe()
+        observePlayback()
         observeAudioSettings()
         startProgressTimer()
     }
@@ -79,11 +110,12 @@ final class RemoteReceiverCoordinator {
 
     // MARK: - Observe → broadcast
 
+    /// Structural/display state → full snapshot. Playback is tracked separately
+    /// (below) so a track transition doesn't drag the whole queue onto the wire.
     private func observe() {
         withObservationTracking {
             _ = queue.items
             _ = queue.anchorID
-            _ = engine.state
             _ = metadata.snapshots
         } onChange: { [weak self] in
             // onChange fires on willSet (old values still in place); hop to main to
@@ -92,6 +124,18 @@ final class RemoteReceiverCoordinator {
                 guard let self, self.running else { return }
                 self.scheduleBroadcast()
                 self.observe()
+            }
+        }
+    }
+
+    private func observePlayback() {
+        withObservationTracking {
+            _ = engine.state
+        } onChange: { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.running else { return }
+                self.schedulePlaybackBroadcast()
+                self.observePlayback()
             }
         }
     }
@@ -105,6 +149,17 @@ final class RemoteReceiverCoordinator {
             guard let self else { return }
             self.broadcastScheduled = false
             self.broadcastSnapshot()
+        }
+    }
+
+    private func schedulePlaybackBroadcast() {
+        guard !playbackBroadcastScheduled else { return }
+        playbackBroadcastScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.playbackBroadcastScheduled = false
+            self.link.send(.playbackState(RemotePlaybackUpdate(playback: self.makePlayback(),
+                                                               seq: self.nextSeq())))
         }
     }
 
@@ -134,8 +189,26 @@ final class RemoteReceiverCoordinator {
         }
     }
 
+    /// Build the snapshot and send it — unless it is byte-for-byte what the sender
+    /// already has. The text cache is committed only on an actual send, so a
+    /// skipped snapshot can't leave us believing the peer saw text it never got.
     private func broadcastSnapshot() {
-        link.send(.snapshot(makeSnapshot()))
+        let (items, text) = makeItems()
+        let playback = makePlayback()
+        let state = SentState(rows: items.map { .init(id: $0.id, isAnchor: $0.isAnchor) },
+                              playback: playback)
+        // Nothing to say: same rows in the same order, no row's text has changed.
+        if lastSent == state, !items.contains(where: \.hasText) { return }
+        sentText = text
+        lastSent = state
+        link.send(.snapshot(RemoteSnapshot(items: items, playback: playback, seq: nextSeq())))
+    }
+
+    /// Drop what we believe the sender knows, so the next snapshot re-describes
+    /// every row in full (on (re)connect, or an explicit resync request).
+    private func forgetSentText() {
+        sentText = [:]
+        lastSent = nil
     }
 
     private func broadcastAudioSettings() {
@@ -145,8 +218,14 @@ final class RemoteReceiverCoordinator {
                                                      seq: nextSeq())))
     }
 
-    private func makeSnapshot() -> RemoteSnapshot {
+    /// The rows to send, plus the text cache that would result from sending them.
+    /// A row carries its text only when the sender hasn't been told it yet or it has
+    /// changed since — a newly queued track, or one whose metadata scan has just
+    /// replaced a filename with a real title.
+    private func makeItems() -> (items: [RemoteQueueItem], text: [UUID: RowText]) {
         let anchorID = queue.anchorID
+        var text: [UUID: RowText] = [:]
+        text.reserveCapacity(queue.items.count)
         let items = queue.items.map { item -> RemoteQueueItem in
             // Media items carry their own snapshot (seeded at enqueue); fall back to
             // it if the cache hasn't been populated.
@@ -157,10 +236,19 @@ final class RemoteReceiverCoordinator {
             } else {
                 display = TrackDisplay(filename: item.filename)
             }
-            return RemoteQueueItem(id: item.id, title: display.titleLine, artist: display.artistLine,
-                                   detail: display.detailLine, isAnchor: item.id == anchorID)
+            let row = RowText(title: display.titleLine, artist: display.artistLine,
+                              detail: display.detailLine)
+            // Pruning falls out of rebuilding the map from the live queue.
+            text[item.id] = row
+            let isAnchor = item.id == anchorID
+            guard sentText[item.id] != row else {
+                return RemoteQueueItem(id: item.id, title: nil, artist: nil, detail: nil,
+                                       isAnchor: isAnchor)
+            }
+            return RemoteQueueItem(id: item.id, title: row.title, artist: row.artist,
+                                   detail: row.detail, isAnchor: isAnchor)
         }
-        return RemoteSnapshot(items: items, playback: makePlayback(), seq: nextSeq())
+        return (items, text)
     }
 
     private func makePlayback() -> RemotePlaybackState {
@@ -174,8 +262,10 @@ final class RemoteReceiverCoordinator {
         return RemotePlaybackState(kind: kind, currentItemID: engine.state.currentItemID)
     }
 
+    /// One tick a second: the row shows whole seconds, so a faster tick only bought
+    /// wire traffic.
     private func startProgressTimer() {
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.broadcastProgress()
         }
     }
@@ -213,6 +303,9 @@ final class RemoteReceiverCoordinator {
         case .addTracks(let requests):
             Task { @MainActor in self.applyAddTracks(requests) }
         case .requestSnapshot:
+            // A resync request means the sender can't resolve what it has — describe
+            // every row in full again.
+            forgetSentText()
             broadcastSnapshot()
         case .setEQEnabled(let on):
             equalizer.setEnabled(on)
@@ -226,7 +319,7 @@ final class RemoteReceiverCoordinator {
             engine.setMasterVolume(level)
         case .requestAudioSettings:
             broadcastAudioSettings()
-        case .snapshot, .progress, .addTrackResult, .audioSettings:
+        case .snapshot, .playbackState, .progress, .addTrackResult, .audioSettings:
             break   // receiver→sender messages; ignored here
         }
     }

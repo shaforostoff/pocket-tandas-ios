@@ -247,6 +247,20 @@ Reused as-is: [PlayQueue](Pocket Tandas/Models/PlayQueue.swift) (enqueue/move/se
 
 ---
 
+## Milestone 4 (built after the fact) — wire traffic
+
+The queue's names used to go out in full on every playback state change and every metadata-cache mutation on the receiver. Four changes, aimed at the Bluetooth-only path (no Wi-Fi), where 20 KB is seconds rather than milliseconds:
+
+- **Playback split out of the snapshot** — `.playbackState(RemotePlaybackUpdate)`, broadcast from its own observation of `engine.state`. A track transition now costs ~100 bytes instead of the whole queue.
+- **Display text once per connection** — the receiver keeps `sentText: [UUID: RowText]`; a row whose text the sender already has goes out as id + anchor flag only (`RemoteQueueItem.title` and friends are optional, and Codable omits nil keys). Text returns whenever it is genuinely new: a freshly added track, or a row whose metadata scan replaced a filename with a real title. The sender merges against its mirror and asks for a full resync if it ever meets an id it has no text for; the receiver clears the cache on (re)connect and on `.requestSnapshot`.
+- **No-op snapshots dropped** — the receiver compares row identities/anchors + playback against what it last sent, so metadata churn from browsing on the receiver stops re-sending an unchanged queue.
+- **zlib frames** — `RemoteMessage.encoded()` prefixes one marker byte (`0x00` raw / `0x01` deflate) and compresses only when it wins; an unmarked frame is read as bare JSON, so an older peer still decodes.
+- Progress ticks halved to 1 s (the row renders whole seconds).
+
+Algorithms verified outside the app (no XCTest here) by transcribing them into a throwaway `swift` script — elision/merge across add, reorder, anchor, metadata-change, removal, reconnect and desync, plus frame round-trips. That check caught one real redundancy: comparing whole serialized rows made the *first* unchanged rebuild re-send as an all-lite snapshot; comparing row identities instead fixed it.
+
+---
+
 ## Milestone 3 (built after the fact) — remote EQ + master volume
 
 The launcher buttons read **Remote Control** (sender) and **Remote Controllable** (receiver). The sender's control bar carries **Volume | EQ | Stop**, both audio buttons wired to the *receiver's* chain:

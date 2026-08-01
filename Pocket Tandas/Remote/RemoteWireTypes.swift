@@ -19,12 +19,31 @@ import Foundation
 
 /// One queue entry as seen over the wire. `id` is the receiver's QueueItem.id —
 /// commands address rows by this identity, never by index.
+///
+/// The display text is sent ONCE PER CONNECTION per row: the receiver remembers
+/// what it has told this sender about each id, and thereafter sends the row with
+/// the text fields omitted (Codable drops nil keys, so a repeat row is ~60 bytes
+/// instead of ~200). Text reappears whenever it is genuinely new — a freshly added
+/// track, or a row whose metadata scan has since filled in a real title. The
+/// sender merges nil fields against its own mirror; if it ever meets an id it has
+/// no text for it asks for a full resync rather than showing a blank row.
 struct RemoteQueueItem: Codable, Identifiable, Hashable {
     let id: UUID
-    let title: String
+    let title: String?
     let artist: String?
     let detail: String?      // right-aligned line: BPM · Genre · Date
     let isAnchor: Bool
+
+    /// True when this row carries its display text (a new or changed row).
+    var hasText: Bool { title != nil }
+}
+
+/// Playback state on its own, sent whenever the engine changes without the queue
+/// changing — a track transition, Stop, Resume, pause. Keeping it out of
+/// RemoteSnapshot is what stops every song change retransmitting the whole queue.
+struct RemotePlaybackUpdate: Codable, Hashable {
+    var playback: RemotePlaybackState
+    var seq: UInt64
 }
 
 /// Mirror of PlaybackState for the wire (engine internals omitted).
