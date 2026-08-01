@@ -71,6 +71,15 @@ final class PeerLink: NSObject {
     /// Set while the app is in the background, so the return to the foreground knows
     /// the stack may have been suspended (and killed) meanwhile.
     @ObservationIgnored private var wasBackgrounded = false
+
+    /// Sender only: the peer this screen was last connected to. Re-discovering it
+    /// re-invites it without the DJ tapping anything — the phone locks, the link
+    /// dies, and unlocking picks it back up. Cleared on a deliberate disconnect at
+    /// either end, so "Disconnect" can't be undone a second later.
+    @ObservationIgnored private var preferredPeerName: String?
+    @ObservationIgnored private var lastAutoInviteAt: Date?
+    /// An invitation has its own timeout; don't stack attempts on top of one.
+    @ObservationIgnored private static let autoInviteCooldown: TimeInterval = 3
     @ObservationIgnored private var lifecycleObservers: [NSObjectProtocol] = []
 
     init(role: Role) {
@@ -127,12 +136,20 @@ final class PeerLink: NSObject {
         setState(.connecting(peer.displayName))
     }
 
+    /// User-initiated. Tell the peer it was deliberate — otherwise the sender's
+    /// auto-reconnect would re-invite within the second — and drop the link a beat
+    /// later so that message actually makes it out.
     func disconnect() {
-        session.disconnect()
+        preferredPeerName = nil
+        send(.goodbye)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.session.disconnect()
+        }
     }
 
     func stop() {
         isActive = false
+        preferredPeerName = nil
         stopDiscovery()
         session.disconnect()
         setState(.idle)
@@ -232,6 +249,7 @@ extension PeerLink: MCSessionDelegate {
             switch state {
             case .connected:
                 self.stopDiscovery()            // 1:1 — no need to keep looking
+                self.preferredPeerName = peerID.displayName
                 self.connectionState = .connected(peerID.displayName)
                 self.onConnected?(peerID)
             case .connecting:
@@ -250,6 +268,8 @@ extension PeerLink: MCSessionDelegate {
         guard let message = RemoteMessage.decode(data) else { return }
         DispatchQueue.main.async {
             guard session === self.session else { return }
+            // The peer is leaving deliberately — don't chase it.
+            if case .goodbye = message { self.preferredPeerName = nil }
             self.onReceive?(message)
         }
     }
@@ -283,7 +303,21 @@ extension PeerLink: MCNearbyServiceBrowserDelegate {
     func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String: String]?) {
         DispatchQueue.main.async {
             if !self.discoveredPeers.contains(peerID) { self.discoveredPeers.append(peerID) }
+            self.autoInviteIfPreferred(peerID)
         }
+    }
+
+    /// Re-invite the peer we were last connected to, and only that one: a DJ's phone
+    /// must never latch onto whatever else happens to be advertising in the venue.
+    private func autoInviteIfPreferred(_ peer: MCPeerID) {
+        guard role == .sender, isActive,
+              peer.displayName == preferredPeerName,
+              session.connectedPeers.isEmpty else { return }
+        if case .connecting = connectionState { return }
+        if let last = lastAutoInviteAt, Date().timeIntervalSince(last) < Self.autoInviteCooldown { return }
+        lastAutoInviteAt = Date()
+        ptLog("[PeerLink] auto-reconnecting to \(peer.displayName)")
+        invite(peer)
     }
 
     func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {

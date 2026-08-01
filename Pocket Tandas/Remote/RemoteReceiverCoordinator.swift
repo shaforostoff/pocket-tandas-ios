@@ -321,6 +321,8 @@ final class RemoteReceiverCoordinator {
             broadcastAudioSettings()
         case .snapshot, .playbackState, .progress, .addTrackResult, .audioSettings:
             break   // receiver→sender messages; ignored here
+        case .goodbye:
+            break   // handled in PeerLink
         }
     }
 
