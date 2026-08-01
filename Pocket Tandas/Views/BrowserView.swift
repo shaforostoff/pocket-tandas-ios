@@ -165,7 +165,7 @@ struct BrowserView: View {
                     List(entries) { entry in
                         BrowserRowView(entry: entry,
                                        metadata: entry.isFolder ? nil : metadata.snapshot(for: entry.url, baseURL: library.baseURL),
-                                       isPlaying: preListen.currentURL == entry.url)
+                                       isPlaying: preListen.current == .file(entry.url))
                             .contentShape(Rectangle())
                             .onTapGesture { tap(entry) }
                             .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -210,13 +210,13 @@ struct BrowserView: View {
 
     private func syncPrelistenListing(_ listing: DisplayedListing) {
         guard mode.isExploreLike else { return }
-        preListen.updateListing(listing.urls, folder: listing.folder)
+        preListen.updateListing(listing.urls.map(PreListenTrack.file), folder: listing.folder)
     }
 
     /// Center the currently-auditioned file if it's in the shown list. No-op when
     /// nothing is prelistening or it's been filtered out of view.
     private func scrollToAudition(_ entries: [LibraryEntry], proxy: ScrollViewProxy) {
-        guard let url = preListen.currentURL,
+        guard let url = preListen.current?.fileURL,
               entries.contains(where: { $0.id == url }) else { return }
         // Defer past this runloop turn so a freshly built List — after the view is
         // rebuilt on rotation, or after the folder finishes reloading — has
@@ -305,7 +305,7 @@ struct BrowserView: View {
             case .idle:
                 break
             }
-            preListen.play(entry.url, in: browser.currentFolder)
+            preListen.play(.file(entry.url), in: browser.currentFolder)
         }
     }
 
