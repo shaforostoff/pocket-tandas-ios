@@ -83,12 +83,30 @@ final class PlaybackEngine {
     @ObservationIgnored private var activeScheduleID = 0
     @ObservationIgnored private var preloadedScheduleID = 0
 
-    /// Off-main decode for media-library items (AVAssetReader → one PCM buffer).
-    /// `decodeToken` is bumped whenever a decode is started or cancelled, so a
-    /// superseded decode's completion (which captured an older token) is ignored.
+    /// Off-main decode for media-library items (AVAssetReader → a stream of short
+    /// PCM chunks, see MediaTrackDecoder). `decodeToken` is bumped whenever a
+    /// decode is started or cancelled, so a superseded decode's chunks (which
+    /// captured an older token) are dropped rather than scheduled.
     @ObservationIgnored private let decodeQueue = DispatchQueue(label: "tandas.mediadecode", qos: .userInitiated)
     @ObservationIgnored private var decodeToken = 0
     @ObservationIgnored private var activeDecoder: MediaTrackDecoder?
+    @ObservationIgnored private var mediaStream: MediaStream?
+
+    /// Bookkeeping for the media track currently being streamed onto a deck. A
+    /// media item arrives as several chunks scheduled back-to-back, so "the track
+    /// ended" is: the decoder finished AND every chunk it handed over has played
+    /// back. All fields are touched on the main thread only.
+    private struct MediaStream {
+        let token: Int
+        let itemID: UUID
+        /// Token of the schedule the first chunk opened (0 until then).
+        var scheduleID = 0
+        var scheduled = 0
+        var played = 0
+        var decodeFinished = false
+
+        var isComplete: Bool { decodeFinished && scheduled > 0 && played == scheduled }
+    }
 
     @ObservationIgnored private var formats: [ObjectIdentifier: AVAudioFormat] = [:]
     @ObservationIgnored private let fader = FadeController()
@@ -312,18 +330,6 @@ final class PlaybackEngine {
         return scheduleID
     }
 
-    /// Schedules a pre-decoded media BUFFER on `player`. Returns the token.
-    private func scheduleMediaBuffer(_ buffer: AVAudioPCMBuffer, for item: QueueItem,
-                                     on player: AVAudioPlayerNode, startNow: Bool) -> Int {
-        let scheduleID = beginSchedule(item, on: player, format: buffer.format)
-        player.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
-            DispatchQueue.main.async { self?.handleScheduleEnded(scheduleID) }
-        }
-        if startNow { player.play() }
-        ptLog("schedule media \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow)")
-        return scheduleID
-    }
-
     /// Common scheduling prologue: issue a new token, (re)connect at `format`, stop
     /// the node, and apply per-track ReplayGain. The gain lives on the player node's
     /// own volume, so it rides with the node through the active/standby swap and
@@ -337,11 +343,13 @@ final class PlaybackEngine {
         return scheduleID
     }
 
-    /// Decode a media item off-main, then (on main) schedule it on `player` if it is
-    /// still the wanted track. `decodeToken` guards against a newer decode
-    /// superseding this one; the current-item check guards against a queue edit
-    /// during the decode. There is no gapless preload for media — the buffer is
-    /// scheduled and started the moment it lands (a small gap is accepted).
+    /// Stream a media item off-main: the decoder hands over one short PCM chunk at
+    /// a time and each is scheduled (on main) behind the last, so playback starts
+    /// after the first chunk instead of after the whole track and only a few
+    /// seconds of audio is ever resident. `decodeToken` guards against a newer
+    /// decode superseding this one; the current-item check guards against a queue
+    /// edit mid-stream. There is no gapless preload for media — the first chunk is
+    /// started the moment it lands (a small gap is accepted).
     private func startMediaPlayback(_ item: QueueItem, ref: MediaRef, on player: AVAudioPlayerNode) {
         guard let assetURL = ref.assetURL else {
             ptLog("media \(item.filename) has no asset URL → skip")
@@ -352,25 +360,93 @@ final class PlaybackEngine {
         let token = decodeToken
         let decoder = MediaTrackDecoder()
         activeDecoder = decoder
-        let expected = ref.duration
+        mediaStream = MediaStream(token: token, itemID: item.id)
         decodeQueue.async { [weak self] in
-            let decoded = try? decoder.decode(assetURL: assetURL, expectedDuration: expected)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard token == self.decodeToken else { return }       // superseded by a newer decode/stop
-                self.activeDecoder = nil
-                guard self.state.currentItemID == item.id else { return }   // queue moved on during decode
-                guard let (buffer, _) = decoded else {
-                    ptLog("media decode FAILED \(item.filename)")
-                    self.handleMediaDecodeFailure(for: item.id)
-                    return
+            do {
+                try decoder.decode(assetURL: assetURL) { buffer, isLast in
+                    DispatchQueue.main.async {
+                        guard let self else { decoder.cancel(); return }
+                        self.scheduleMediaChunk(buffer, isLast: isLast, for: item,
+                                                on: player, decoder: decoder, token: token)
+                    }
                 }
-                // If an interruption paused us mid-decode, schedule without playing
-                // so resume() starts it; otherwise start now.
-                let startNow = self.state.isPlaying
-                self.activeScheduleID = self.scheduleMediaBuffer(buffer, for: item, on: player, startNow: startNow)
+                DispatchQueue.main.async { self?.noteMediaDecodeFinished(token: token) }
+            } catch {
+                DispatchQueue.main.async { self?.noteMediaDecodeFailed(token: token, error: error) }
             }
         }
+    }
+
+    /// Schedule one decoded chunk on `player`. The first chunk owns the schedule
+    /// prologue (format connect, node stop, ReplayGain) and issues the token the
+    /// whole stream is identified by; later chunks simply queue behind it, which is
+    /// gapless. A chunk that arrives for a superseded stream is dropped and the
+    /// decoder cancelled, which also unparks its decode thread.
+    private func scheduleMediaChunk(_ buffer: AVAudioPCMBuffer, isLast: Bool, for item: QueueItem,
+                                    on player: AVAudioPlayerNode, decoder: MediaTrackDecoder, token: Int) {
+        guard token == decodeToken, var stream = mediaStream, stream.token == token,
+              state.currentItemID == item.id else {
+            decoder.cancel()
+            return
+        }
+        if stream.scheduled == 0 {
+            stream.scheduleID = beginSchedule(item, on: player, format: buffer.format)
+            activeScheduleID = stream.scheduleID
+            ptLog("stream media \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(stream.scheduleID)")
+        }
+        // If an interruption paused us mid-stream, schedule without playing so
+        // resume() starts it; otherwise the first chunk starts the deck.
+        let startNow = stream.scheduled == 0 && state.isPlaying
+        stream.scheduled += 1
+        mediaStream = stream
+        player.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            decoder.releaseChunk()   // free a slot so the decoder can produce the next
+            DispatchQueue.main.async { self?.handleMediaChunkPlayed(token: token) }
+        }
+        if startNow { player.play() }
+        if isLast { noteMediaDecodeFinished(token: token) }
+    }
+
+    private func handleMediaChunkPlayed(token: Int) {
+        guard var stream = mediaStream, stream.token == token else { return }
+        stream.played += 1
+        mediaStream = stream
+        finishMediaStreamIfComplete()
+    }
+
+    /// The decoder has no more chunks to give. The track ends once the ones
+    /// already scheduled have played out.
+    private func noteMediaDecodeFinished(token: Int) {
+        guard token == decodeToken else { return }
+        activeDecoder = nil
+        guard var stream = mediaStream, stream.token == token, !stream.decodeFinished else { return }
+        stream.decodeFinished = true
+        mediaStream = stream
+        finishMediaStreamIfComplete()
+    }
+
+    /// A decode that ended badly. Nothing scheduled yet ⇒ the track never started,
+    /// so skip it like a file that wouldn't open. Otherwise let the chunks we do
+    /// have play out and treat that as the end of the track.
+    private func noteMediaDecodeFailed(token: Int, error: Error) {
+        guard token == decodeToken, let stream = mediaStream, stream.token == token else { return }
+        activeDecoder = nil
+        guard stream.scheduled > 0 else {
+            ptLog("media decode FAILED: \(error)")
+            mediaStream = nil
+            handleMediaDecodeFailure(for: stream.itemID)
+            return
+        }
+        ptLog("media decode ended early: \(error)")
+        noteMediaDecodeFinished(token: token)
+    }
+
+    /// End of a media track: every handed-over chunk has played back. Routed
+    /// through the same completion path a file's single schedule uses.
+    private func finishMediaStreamIfComplete() {
+        guard let stream = mediaStream, stream.isComplete else { return }
+        mediaStream = nil
+        handleScheduleEnded(stream.scheduleID)
     }
 
     /// A media item that couldn't be decoded behaves like a file that wouldn't
@@ -380,10 +456,11 @@ final class PlaybackEngine {
         advance()
     }
 
-    /// Cancel any in-flight media decode and invalidate its pending completion.
+    /// Cancel any in-flight media decode and invalidate its pending chunks.
     private func cancelDecode() {
         activeDecoder?.cancel()
         activeDecoder = nil
+        mediaStream = nil
         decodeToken += 1
     }
 
