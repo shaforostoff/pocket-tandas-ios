@@ -63,6 +63,10 @@ struct QueueView: View {
             // always the bottom. Additions only: a remove or reorder yields no new
             // id and doesn't scroll.
             .onChange(of: rows.map(\.id)) { oldIDs, newIDs in
+                // The queue didn't grow, so no id can be new — a removal or a
+                // reorder. Checking the count first keeps those (the common case)
+                // from building a set of every id in the queue.
+                guard newIDs.count > oldIDs.count else { return }
                 let old = Set(oldIDs)
                 guard let target = newIDs.last(where: { !old.contains($0) }) else { return }
                 // Defer past the current runloop turn so List commits the inserted
