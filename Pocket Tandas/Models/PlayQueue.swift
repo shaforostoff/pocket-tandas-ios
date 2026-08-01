@@ -187,9 +187,10 @@ final class PlayQueue {
         guard let data = try? Data(contentsOf: storeURL),
               let stored = try? JSONDecoder().decode([StoredItem].self, from: data) else { return }
         let fm = FileManager.default
+        let mediaIndex = Self.mediaIndex(for: stored)
         items = stored.compactMap { entry in
             if let pid = entry.mediaPersistentID {
-                return Self.restoreMediaItem(entry, persistentID: pid)
+                return Self.restoreMediaItem(entry, persistentID: pid, index: mediaIndex)
             }
             let url: URL
             if let rel = entry.relativePath, let base = baseURL {
@@ -204,27 +205,50 @@ final class PlayQueue {
         }
     }
 
-    /// Rebuild a media item from its stored persistent id. When the library is
-    /// authorized, re-resolve the asset URL (persistent id is stable on this
-    /// device) and drop the entry only if the track is genuinely gone. When access
-    /// hasn't been granted yet (cold launch), keep a placeholder with a nil asset
-    /// URL so the queue survives — it resolves on first play / once granted.
-    private static func restoreMediaItem(_ entry: StoredItem, persistentID pid: UInt64) -> QueueItem? {
+    /// The library fields a stored media entry needs back, keyed by persistent id.
+    private struct LibraryMatch {
+        let assetURL: URL?
+        let title: String?
+        let duration: TimeInterval
+    }
+
+    /// Look up every stored media entry in ONE library sweep rather than a filtered
+    /// query each — a thousand-track queue of library items was a thousand
+    /// MPMediaQuery round-trips, synchronously, before the first frame. Only the
+    /// wanted ids are copied out (as values, so no MPMediaItem is retained).
+    /// Returns nil when there is nothing to look up or access hasn't been granted.
+    private static func mediaIndex(for stored: [StoredItem]) -> [UInt64: LibraryMatch]? {
+        let wanted = Set(stored.compactMap(\.mediaPersistentID))
+        guard !wanted.isEmpty, MPMediaLibrary.authorizationStatus() == .authorized else { return nil }
+        var index: [UInt64: LibraryMatch] = [:]
+        index.reserveCapacity(wanted.count)
+        for item in MPMediaQuery.songs().items ?? [] where wanted.contains(item.persistentID) {
+            index[item.persistentID] = LibraryMatch(assetURL: item.assetURL, title: item.title,
+                                                    duration: item.playbackDuration)
+        }
+        return index
+    }
+
+    /// Rebuild a media item from its stored persistent id, against the one-pass
+    /// library index. A hit re-resolves the asset URL (persistent id is stable on
+    /// this device); a miss means the track is genuinely gone and the entry is
+    /// dropped. With no index at all — access not granted yet, at cold launch —
+    /// keep a placeholder with a nil asset URL so the queue survives; it resolves
+    /// on first play / once granted.
+    private static func restoreMediaItem(_ entry: StoredItem, persistentID pid: UInt64,
+                                         index: [UInt64: LibraryMatch]?) -> QueueItem? {
         let cached = TrackMetadataSnapshot(title: entry.title, artist: entry.artist, genre: entry.genre,
                                            dateText: entry.dateText, year: entry.year, bpm: entry.bpm,
                                            trackGainDB: nil)
         let title = entry.title ?? "Unknown"
-        guard MPMediaLibrary.authorizationStatus() == .authorized else {
+        guard let index else {
             let ref = MediaRef(persistentID: pid, assetURL: nil, displayTitle: title,
                                duration: entry.duration ?? 0)
             return QueueItem(media: ref, snapshot: cached)
         }
-        let query = MPMediaQuery.songs()
-        query.addFilterPredicate(MPMediaPropertyPredicate(value: NSNumber(value: pid),
-                                                          forProperty: MPMediaItemPropertyPersistentID))
-        guard let mp = query.items?.first else { return nil }   // track removed from the library
-        let ref = MediaRef(persistentID: pid, assetURL: mp.assetURL,
-                           displayTitle: mp.title ?? title, duration: mp.playbackDuration)
+        guard let match = index[pid] else { return nil }   // track removed from the library
+        let ref = MediaRef(persistentID: pid, assetURL: match.assetURL,
+                           displayTitle: match.title ?? title, duration: match.duration)
         return QueueItem(media: ref, snapshot: cached)
     }
 
