@@ -32,6 +32,10 @@ final class PlayQueue {
     @ObservationIgnored private var persistenceEnabled = false
     @ObservationIgnored private let storeURL: URL
 
+    /// True between a mutation and the coalesced write it scheduled. Touched on the
+    /// main thread only — the same convention `items` itself is edited under.
+    @ObservationIgnored private var saveScheduled = false
+
     init(storeURL: URL? = nil) {
         self.storeURL = storeURL ?? Self.defaultStoreURL
     }
@@ -252,9 +256,31 @@ final class PlayQueue {
         return QueueItem(media: ref, snapshot: cached)
     }
 
-    /// Write the queue as relocatable references (base-relative where possible).
+    /// Mark the queue dirty; the write happens once, on the next runloop turn.
+    /// Every mutator calls this, so adding a playlist a track at a time used to
+    /// re-encode the whole (growing) array once per track — quadratic work, with a
+    /// full-size Data allocated and thrown away each time. Coalescing collapses a
+    /// burst of edits into a single write.
     private func persist() {
         guard persistenceEnabled else { return }   // off until the app calls restore()
+        guard !saveScheduled else { return }
+        saveScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            self?.flushPendingSave()
+        }
+    }
+
+    /// Write now if a save is pending. Called by the coalescing hop, and directly
+    /// when the app leaves the foreground so a dirty queue can't be lost to a
+    /// termination in the gap before the next runloop turn.
+    func flushPendingSave() {
+        guard saveScheduled else { return }
+        saveScheduled = false
+        writeToDisk()
+    }
+
+    /// Write the queue as relocatable references (base-relative where possible).
+    private func writeToDisk() {
         let stored = items.map { item -> StoredItem in
             switch item.source {
             case .file(let url):
