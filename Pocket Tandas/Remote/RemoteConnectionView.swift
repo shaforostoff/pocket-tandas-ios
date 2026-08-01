@@ -6,9 +6,15 @@
 //  RemoteConnectionView.swift
 //  Pocket Tandas
 //
-//  The connection banner shown at the top of the main screen in the two remote
-//  modes. The receiver just shows status; the sender also lists discovered peers
-//  to invite until one is connected.
+//  The connection banner shown above the queue in the two remote modes. The
+//  receiver just shows status; the sender also lists discovered peers to invite
+//  until one is connected.
+//
+//  Once connected it folds away after ten seconds — a settled link needs no
+//  running commentary, and the room is better spent on the queue. Any other state
+//  (searching, connecting, dropped) brings it straight back, so its absence always
+//  means "connected". It carries its own trailing Divider so the separator goes
+//  with it.
 //
 
 import SwiftUI
@@ -18,7 +24,30 @@ struct RemoteConnectionView: View {
     let link: PeerLink
     let role: PeerLink.Role
 
+    /// How long "Connected to …" stays up before the banner hides itself.
+    private static let connectedLinger: Duration = .seconds(10)
+
+    @State private var hideWhileConnected = false
+
     var body: some View {
+        Group {
+            if !(isConnected && hideWhileConnected) {
+                banner
+                Divider()
+            }
+        }
+        // Restarts (and cancels the pending hide) on every state change, so a drop
+        // or an explicit Disconnect shows the banner again immediately.
+        .task(id: link.connectionState) {
+            hideWhileConnected = false
+            guard isConnected else { return }
+            try? await Task.sleep(for: Self.connectedLinger)
+            guard !Task.isCancelled else { return }
+            withAnimation { hideWhileConnected = true }
+        }
+    }
+
+    private var banner: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: icon)

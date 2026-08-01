@@ -55,6 +55,9 @@ final class PeerLink: NSObject {
     @ObservationIgnored var onReceive: ((RemoteMessage) -> Void)?
     /// Invoked on the main thread when a peer connects (e.g. to (re)sync state).
     @ObservationIgnored var onConnected: ((MCPeerID) -> Void)?
+    /// Invoked on the main thread when the peer drops (or an invitation fails), so
+    /// mirrored state can be discarded rather than lingering as stale truth.
+    @ObservationIgnored var onDisconnected: (() -> Void)?
 
     @ObservationIgnored private let role: Role
     @ObservationIgnored private let myPeerID: MCPeerID
@@ -235,6 +238,7 @@ extension PeerLink: MCSessionDelegate {
                 self.connectionState = .connecting(peerID.displayName)
             case .notConnected:
                 self.connectionState = .disconnected
+                self.onDisconnected?()
                 self.restartDiscoveryAfterDrop()
             @unknown default:
                 break
