@@ -62,9 +62,32 @@ protocol EqualizerControlling {
 
 /// Master output level, 0…1. Implemented by `PlaybackEngine` (local) and by
 /// `RemoteAudioControl` (forwards to the receiver).
+///
+/// The value is a FADER POSITION, not an amplitude — see VolumeTaper.
 protocol VolumeControlling {
     var masterVolume: Float { get }
     func setMasterVolume(_ value: Float)
+}
+
+/// Fader position (0…1) → the linear amplitude the mixer wants.
+///
+/// Loudness is perceived roughly logarithmically, so a fader that passes its
+/// position straight through wastes its top half: position 0.5 is only −6 dB,
+/// which barely reads as quieter. A cubic taper spreads the audible range over the
+/// whole travel — half-way is −18 dB, and the top of the slider still gives fine
+/// control where a DJ actually works.
+enum VolumeTaper {
+    static func amplitude(for position: Float) -> Float {
+        let p = position.clamped(to: 0...1)
+        return p * p * p
+    }
+
+    /// Attenuation in dB for display, or nil at silence.
+    static func decibels(for position: Float) -> Float? {
+        let amplitude = amplitude(for: position)
+        guard amplitude > 0 else { return nil }
+        return 20 * log10(amplitude)
+    }
 }
 
 extension VolumeControlling {
