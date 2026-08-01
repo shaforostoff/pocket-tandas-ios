@@ -29,6 +29,12 @@ final class MetadataService {
     /// staleness). UI reads this; updates are observed.
     private(set) var snapshots: [String: TrackMetadataSnapshot] = [:]
 
+    /// Bumped once per batch that changes `snapshots`. A view that has to recompute
+    /// something derived (the browser's filter + sort) watches this instead of the
+    /// dictionary, so the change check is an Int comparison rather than an equality
+    /// walk over the whole cache.
+    private(set) var snapshotsVersion = 0
+
     /// True while the most recent folder scan still has tracks outstanding. The
     /// browser reads it to defer metadata-based sorting until every row is known.
     private(set) var isScanningFolder = false
@@ -62,16 +68,20 @@ final class MetadataService {
     @MainActor
     func inject(_ snapshot: TrackMetadataSnapshot, forKey key: String) {
         snapshots[key] = snapshot
+        snapshotsVersion += 1
     }
 
     /// Seed display snapshots for the media-library items in `items` from their
     /// carried metadata. File items are ignored (they scan from disk).
     @MainActor
     func seedMedia(_ items: [QueueItem]) {
+        var changed = false
         for item in items {
             guard item.isMediaLibrary, let snapshot = item.mediaSnapshot else { continue }
             snapshots[item.trackKey] = snapshot
+            changed = true
         }
+        if changed { snapshotsVersion += 1 }
     }
 
     // MARK: - Scanning
@@ -143,12 +153,15 @@ final class MetadataService {
     private func hydrate(keys: [String]) {
         let missing = keys.filter { snapshots[$0] == nil }
         guard !missing.isEmpty else { return }
+        var changed = false
         for (key, m) in existingRows(forKeys: missing, context: container.mainContext) {
             snapshots[key] = TrackMetadataSnapshot(title: m.title, artist: m.artist, genre: m.genre,
                                                    dateText: m.dateText, year: m.year, bpm: m.bpm,
                                                    trackGainDB: m.trackGainDB,
                                                    sourceModDate: m.sourceModDate, fileSize: m.fileSize ?? 0)
+            changed = true
         }
+        if changed { snapshotsVersion += 1 }
     }
 
     /// Existing rows for `keys` as a key -> row map, fetched in chunks to stay
@@ -205,6 +218,7 @@ final class MetadataService {
             apply(key: r.key, modDate: r.modDate, size: r.size, extracted: r.extracted,
                   existing: existing[r.key], context: context)
         }
+        if !unique.isEmpty { snapshotsVersion += 1 }
         try? context.save()
     }
 

@@ -31,6 +31,15 @@ struct BrowserView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var rawEntries: [LibraryEntry] = []
+    /// `rawEntries` filtered + sorted for display. Held here rather than computed
+    /// in `body`: arranging a big folder allocates several n-element arrays, and
+    /// body re-runs on things that don't affect the order at all (an audition
+    /// starting, the scan spinner appearing). Recomputed only when an input to the
+    /// arrangement actually changes — see `arrangeEntries`.
+    @State private var entries: [LibraryEntry] = []
+    /// The audio of `entries`, tagged with where it lives — the unit pushed to the
+    /// prelisten player. Derived alongside the arrangement.
+    @State private var displayed = DisplayedListing(folder: nil, urls: [])
     @State private var showingPicker = false
     @State private var musicAccessDenied = false
     /// On "Back", the child we left — so the parent list can scroll back to it.
@@ -65,6 +74,30 @@ struct BrowserView: View {
         .task(id: browser.currentFolder) {
             loadFolder()
         }
+        // Everything the arrangement depends on. `snapshotsVersion` stands in for
+        // the snapshot cache itself, so a scan batch landing re-sorts once without
+        // comparing the whole dictionary; `isScanningFolder` covers the deferred
+        // metadata sort flipping back on when the scan completes.
+        .onChange(of: browser.fileFilter) { _, _ in arrangeEntries() }
+        .onChange(of: browser.fileSort) { _, _ in arrangeEntries() }
+        .onChange(of: browser.fileDirection) { _, _ in arrangeEntries() }
+        .onChange(of: metadata.isScanningFolder) { _, _ in arrangeEntries() }
+        .onChange(of: metadata.snapshotsVersion) { _, _ in arrangeEntries() }
+    }
+
+    /// Filter + sort the listing for display. While a scan is in flight,
+    /// metadata-based sorts have no data yet, so hold the natural order for this
+    /// place — a playlist's listed order, a folder's filename order — and apply the
+    /// chosen sort once every track's metadata is in (one reorder, not per-track).
+    private func arrangeEntries() {
+        let naturalSort: SortOption = isViewingPlaylist ? .listed : .filename
+        let deferSort = metadata.isScanningFolder && browser.fileSort.usesMetadata
+        entries = DirectoryLister.arrange(rawEntries, filter: browser.fileFilter,
+                                          sort: deferSort ? naturalSort : browser.fileSort,
+                                          direction: deferSort ? .ascending : browser.fileDirection,
+                                          metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
+        displayed = DisplayedListing(folder: browser.currentFolder,
+                                     urls: entries.filter { $0.kind == .audio }.map(\.url))
     }
 
     /// List the current location once, then kick off a metadata scan of its
@@ -83,6 +116,7 @@ struct BrowserView: View {
         } else {
             rawEntries = library.rawEntries(in: folder)
         }
+        arrangeEntries()
         let audioURLs = rawEntries.filter { $0.kind == .audio }.map(\.url)
         metadata.scanFolder(urls: audioURLs, baseURL: library.baseURL)
     }
@@ -136,21 +170,6 @@ struct BrowserView: View {
 
     @ViewBuilder
     private var entryList: some View {
-        // Natural order for this place: a playlist keeps its listed order, a
-        // folder falls back to filename. While a scan is in flight, metadata-based
-        // sorts have no data yet, so hold that natural order and apply the chosen
-        // sort once every track's metadata is in (one reorder, not per-track).
-        let naturalSort: SortOption = isViewingPlaylist ? .listed : .filename
-        let deferSort = metadata.isScanningFolder && browser.fileSort.usesMetadata
-        let entries = DirectoryLister.arrange(rawEntries, filter: browser.fileFilter,
-                                              sort: deferSort ? naturalSort : browser.fileSort,
-                                              direction: deferSort ? .ascending : browser.fileDirection,
-                                              metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
-        // The audio files as shown (display order), tagged with where they live —
-        // handed to the prelisten player so a finished track advances within this
-        // exact arrangement, or stops once the user has moved elsewhere.
-        let displayed = DisplayedListing(folder: browser.currentFolder,
-                                         urls: entries.filter { $0.kind == .audio }.map(\.url))
         ScrollViewReader { proxy in
             Group {
                 if entries.isEmpty {
