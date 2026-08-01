@@ -214,6 +214,7 @@ final class PlaybackEngine {
         fader.ramp(from: engine.mainMixerNode.outputVolume,
                    to: 0,
                    duration: fadeOutDuration,
+                   shape: FadeCurve.easedProgress,
                    apply: { [weak self] v in self?.engine.mainMixerNode.outputVolume = v },
                    completion: { [weak self] in self?.finishFadeStop() })
     }
