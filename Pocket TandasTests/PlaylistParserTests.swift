@@ -6,8 +6,10 @@
 //  PlaylistParserTests.swift
 //  Pocket TandasTests
 //
-//  Covers relative-path resolution, comment skipping, and the filename fallback
-//  for foreign absolute paths, using real temp files.
+//  Covers relative-path resolution, comment skipping, the audio-extension
+//  fallback, and the filename fallback for foreign absolute paths, using real
+//  temp files. Temp dirs are built as directory URLs (isDirectory: true) so
+//  relative entries resolve against them instead of dropping a path component.
 //
 
 import XCTest
@@ -17,7 +19,7 @@ final class PlaylistParserTests: XCTestCase {
 
     func testResolutionRelativeCommentsAndFallback() throws {
         let fm = FileManager.default
-        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString)
+        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString, isDirectory: true)
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: dir) }
 
@@ -46,9 +48,36 @@ final class PlaylistParserTests: XCTestCase {
         XCTAssertFalse(urls.contains { $0.lastPathComponent == "missing.mp3" })
     }
 
+    func testMissingFileMatchesOtherAudioExtension() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString, isDirectory: true)
+        let sub = dir.appendingPathComponent("AAA")
+        try fm.createDirectory(at: sub, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+
+        // On disk the track is .m4a; the playlist references the old .mp3 name.
+        try Data().write(to: sub.appendingPathComponent("BBB.m4a"))
+
+        let urls = PlaylistParser.parseLines("AAA/BBB.mp3", relativeTo: dir)
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls.first?.lastPathComponent, "BBB.m4a")
+    }
+
+    func testMissingFileWithNoAudioVariantIsSkipped() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+
+        // A sibling with a non-audio extension must NOT be accepted as a match.
+        try Data().write(to: dir.appendingPathComponent("BBB.txt"))
+
+        XCTAssertTrue(PlaylistParser.parseLines("BBB.mp3", relativeTo: dir).isEmpty)
+    }
+
     func testWindowsSeparatorsNormalized() throws {
         let fm = FileManager.default
-        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString)
+        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString, isDirectory: true)
         let sub = dir.appendingPathComponent("sub")
         try fm.createDirectory(at: sub, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: dir) }
