@@ -35,12 +35,13 @@ struct MainScreenView: View {
     let queue = PlayQueue()
     let container = try! ModelContainer(for: TrackMetadata.self,
                                         configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let metadata = MetadataService(container: container)
     return MainScreenView(mode: .dj)
         .environment(session)
-        .environment(PlaybackEngine(audioSession: session, queue: queue))
+        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata))
         .environment(queue)
         .environment(LibraryStore())
-        .environment(MetadataService(container: container))
+        .environment(metadata)
         .modelContainer(container)
 }
 

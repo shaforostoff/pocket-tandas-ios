@@ -30,6 +30,11 @@ final class TrackMetadata {
 
     var bpm: Int?
 
+    /// ReplayGain track gain in dB (album gain is ignored). Applied as a
+    /// per-track playback volume scale by the engine. Optional, so existing
+    /// cache entries migrate in place (re-scanned files pick it up).
+    var trackGainDB: Double?
+
     /// File modification date at the time of the scan, used for staleness checks.
     var sourceModDate: Date
     var lastScanned: Date
@@ -45,6 +50,7 @@ final class TrackMetadata {
          dateText: String? = nil,
          year: Int? = nil,
          bpm: Int? = nil,
+         trackGainDB: Double? = nil,
          sourceModDate: Date = .distantPast,
          lastScanned: Date = .now,
          fileBookmark: Data? = nil) {
@@ -55,6 +61,7 @@ final class TrackMetadata {
         self.dateText = dateText
         self.year = year
         self.bpm = bpm
+        self.trackGainDB = trackGainDB
         self.sourceModDate = sourceModDate
         self.lastScanned = lastScanned
         self.fileBookmark = fileBookmark

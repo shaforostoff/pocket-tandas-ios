@@ -45,12 +45,25 @@ enum MetadataParsing {
         return n
     }
 
+    /// ReplayGain *track* gain in dB, parsed from a freeform tag value such as
+    /// "-2.33 dB" (also accepts "+1.5" or "6.00 dB" — the unit is optional).
+    /// Implausible magnitudes (corrupt tags) are rejected so a bad value can't
+    /// turn into an extreme playback volume.
+    static func parseReplayGainGain(_ raw: String?) -> Double? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        guard let match = firstMatch(replayGainRegex, in: raw), let db = Double(match) else { return nil }
+        guard db.isFinite, abs(db) <= 60 else { return nil }
+        return db
+    }
+
     // MARK: - Helpers
 
     // Leading boundary only, so an ISO timestamp like "1935-05-14T00:00:00"
     // still yields the date portion.
     private static let fullDateRegex = try! NSRegularExpression(pattern: #"\b\d{4}-\d{2}-\d{2}"#)
     private static let yearRegex = try! NSRegularExpression(pattern: #"\b\d{4}\b"#)
+    // Leading signed decimal, e.g. the "-2.33" in "-2.33 dB".
+    private static let replayGainRegex = try! NSRegularExpression(pattern: #"[-+]?\d+(\.\d+)?"#)
 
     static func fullDate(in s: String?) -> String? {
         firstMatch(fullDateRegex, in: s)

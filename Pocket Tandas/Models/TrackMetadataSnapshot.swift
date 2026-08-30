@@ -21,6 +21,11 @@ struct TrackMetadataSnapshot: Hashable {
     var year: Int?
     var bpm: Int?
 
+    /// ReplayGain track gain in dB, applied to playback volume — not shown in the
+    /// UI, so it is intentionally excluded from `isEmpty` (which gates the
+    /// metadata detail line).
+    var trackGainDB: Double?
+
     var isEmpty: Bool {
         title == nil && artist == nil && genre == nil && dateText == nil && year == nil && bpm == nil
     }

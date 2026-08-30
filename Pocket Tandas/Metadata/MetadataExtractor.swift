@@ -40,7 +40,8 @@ enum MetadataExtractor {
             genre: await firstString(items, MetadataKeys.genre),
             dateText: resolved.dateText,
             year: resolved.year,
-            bpm: MetadataParsing.parseBPM(await firstString(items, MetadataKeys.bpm))
+            bpm: MetadataParsing.parseBPM(await firstString(items, MetadataKeys.bpm)),
+            trackGainDB: MetadataParsing.parseReplayGainGain(await firstString(items, MetadataKeys.replayGainTrack))
         )
     }
 

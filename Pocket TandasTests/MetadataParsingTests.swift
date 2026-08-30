@@ -65,4 +65,22 @@ final class MetadataParsingTests: XCTestCase {
         XCTAssertNil(MetadataParsing.parseBPM(nil))
         XCTAssertNil(MetadataParsing.parseBPM("0"))
     }
+
+    func testReplayGainParsing() {
+        // The reference file (Maragata) carries replaygain_track_gain = "-2.33 dB".
+        XCTAssertEqual(MetadataParsing.parseReplayGainGain("-2.33 dB")!, -2.33, accuracy: 0.0001)
+        XCTAssertEqual(MetadataParsing.parseReplayGainGain("+1.5 dB")!, 1.5, accuracy: 0.0001)
+        XCTAssertEqual(MetadataParsing.parseReplayGainGain("6.00 dB")!, 6.0, accuracy: 0.0001)
+        XCTAssertEqual(MetadataParsing.parseReplayGainGain("-7.2")!, -7.2, accuracy: 0.0001)   // unit optional
+        XCTAssertEqual(MetadataParsing.parseReplayGainGain("0 dB")!, 0.0, accuracy: 0.0001)
+    }
+
+    func testReplayGainRejectsJunkAndImplausibleValues() {
+        XCTAssertNil(MetadataParsing.parseReplayGainGain("dB"))
+        XCTAssertNil(MetadataParsing.parseReplayGainGain("abc"))
+        XCTAssertNil(MetadataParsing.parseReplayGainGain(""))
+        XCTAssertNil(MetadataParsing.parseReplayGainGain(nil))
+        XCTAssertNil(MetadataParsing.parseReplayGainGain("999 dB"))   // corrupt: out of range
+        XCTAssertNil(MetadataParsing.parseReplayGainGain("-120 dB"))  // corrupt: out of range
+    }
 }

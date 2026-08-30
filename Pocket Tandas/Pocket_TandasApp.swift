@@ -29,8 +29,9 @@ struct Pocket_TandasApp: App {
         let container = Self.makeModelContainer()
         let session = AudioSessionController()
         let queue = PlayQueue()
-        let engine = PlaybackEngine(audioSession: session, queue: queue)
+        // metadata before engine: the engine reads each track's ReplayGain from it.
         let metadata = MetadataService(container: container)
+        let engine = PlaybackEngine(audioSession: session, queue: queue, metadata: metadata)
         let nowPlaying = NowPlayingController(engine: engine, metadata: metadata)
 
         self.modelContainer = container
