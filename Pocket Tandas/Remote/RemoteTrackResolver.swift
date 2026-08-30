@@ -133,26 +133,25 @@ struct RemoteTrackResolver {
     // MARK: - Media source (the receiver's own Music library)
 
     /// Match the request against the receiver's library by metadata — persistentID
-    /// is per-device, so title/artist (then album, year, nearest duration) is the
+    /// is per-device, so title (then artist, album, year, nearest duration) is the
     /// only cross-device-correct key. Each filter is applied only while it still
     /// leaves more than one candidate, so a missing/wrong field never zeroes a good
     /// match. Returns only a locally-playable item (non-nil assetURL); otherwise
     /// the request is counted as failed rather than enqueued-then-unplayable.
+    ///
+    /// Only the title is asked of MPMediaQuery; artist narrows in Swift alongside
+    /// the rest. A second hard predicate would have to be encoding-matched too (see
+    /// `titleMatches`), and narrowing here is what the "never zeroes a good match"
+    /// rule above says should happen to it anyway.
     private func resolveMedia(_ request: TrackAddRequest) -> MPMediaItem? {
         guard MPMediaLibrary.authorizationStatus() == .authorized,
               let title = request.title, !title.isEmpty else { return nil }
+        guard var items = titleMatches(title), !items.isEmpty else { return nil }
 
-        let query = MPMediaQuery.songs()
-        query.addFilterPredicate(MPMediaPropertyPredicate(value: title,
-                                                          forProperty: MPMediaItemPropertyTitle,
-                                                          comparisonType: .equalTo))
-        if let artist = request.artist, !artist.isEmpty {
-            query.addFilterPredicate(MPMediaPropertyPredicate(value: artist,
-                                                              forProperty: MPMediaItemPropertyArtist,
-                                                              comparisonType: .equalTo))
+        if items.count > 1, let artist = request.artist, !artist.isEmpty {
+            let byArtist = items.filter { equal($0.artist, artist) }
+            if !byArtist.isEmpty { items = byArtist }
         }
-        guard var items = query.items, !items.isEmpty else { return nil }
-
         if items.count > 1, let album = request.album, !album.isEmpty {
             let byAlbum = items.filter { equal($0.albumTitle, album) }
             if !byAlbum.isEmpty { items = byAlbum }
@@ -165,6 +164,46 @@ struct RemoteTrackResolver {
             items.sort { abs($0.playbackDuration - hint) < abs($1.playbackDuration - hint) }
         }
         return items.first { $0.assetURL != nil }
+    }
+
+    /// Library items whose title matches, trying each Unicode encoding of the name.
+    ///
+    /// An accented letter has more than one valid encoding — Spanish "ñ" is either
+    /// U+00F1 or plain "n" followed by a combining tilde U+0303 — and which one a
+    /// string carries depends on the tool that wrote it. Every comparison we make
+    /// ourselves treats the two as equal, because Swift's String compares by
+    /// canonical equivalence. MPMediaQuery does not: it matches inside the Music
+    /// database, so "Mañana" sent precomposed silently fails to find the same track
+    /// held decomposed, and the add is reported as unresolvable.
+    ///
+    /// So: try the string as sent (usually the only query), then each canonical
+    /// form it isn't already in.
+    private func titleMatches(_ title: String) -> [MPMediaItem]? {
+        for form in Self.unicodeForms(of: title) {
+            let query = MPMediaQuery.songs()
+            query.addFilterPredicate(MPMediaPropertyPredicate(value: form,
+                                                              forProperty: MPMediaItemPropertyTitle,
+                                                              comparisonType: .equalTo))
+            if let items = query.items, !items.isEmpty { return items }
+        }
+        return nil
+    }
+
+    /// The distinct encodings of a string worth querying, in order: as given, then
+    /// precomposed, then decomposed. Compared as raw UTF-8, since `==` reports the
+    /// forms as equal and would collapse them all to one.
+    private static func unicodeForms(of string: String) -> [String] {
+        var forms: [String] = []
+        var seen: [[UInt8]] = []
+        for candidate in [string,
+                          string.precomposedStringWithCanonicalMapping,
+                          string.decomposedStringWithCanonicalMapping] {
+            let bytes = Array(candidate.utf8)
+            guard !seen.contains(bytes) else { continue }
+            seen.append(bytes)
+            forms.append(candidate)
+        }
+        return forms
     }
 
     private func releaseYear(of item: MPMediaItem) -> Int? {
