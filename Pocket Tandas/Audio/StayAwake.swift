@@ -79,6 +79,7 @@ final class SilentKeepAlive {
         observers.forEach(NotificationCenter.default.removeObserver)
         player.stop()
         engine.stop()
+        audioSession.release(.keepAlive)
     }
 
     func start() {
@@ -97,8 +98,10 @@ final class SilentKeepAlive {
         observers = []
         player.stop()
         engine.stop()
-        // The session is left active on purpose: deactivating it here could
-        // interrupt playback that started in the meantime.
+        // Only our claim on the session is dropped: if queue playback or a
+        // prelisten started in the meantime it still holds the session, and the
+        // release is a no-op (see AudioSessionController.Holder).
+        audioSession.release(.keepAlive)
     }
 
     private func render() {
@@ -110,12 +113,13 @@ final class SilentKeepAlive {
         if buffer?.format != format { buffer = Self.silentBuffer(format: format) }
         guard let buffer else { return }
 
-        audioSession.activate()
+        audioSession.activate(for: .keepAlive)
         engine.connect(player, to: engine.mainMixerNode, format: format)
         do {
             try engine.start()
         } catch {
             ptLog("[KeepAlive] engine start failed: \(error)")
+            audioSession.release(.keepAlive)   // nothing to render — don't sit on the session
             return
         }
         player.scheduleBuffer(buffer, at: nil, options: [.loops], completionHandler: nil)

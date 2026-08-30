@@ -59,11 +59,23 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     /// leaves the list alone when the user taps a row (which is already on screen).
     private(set) var autoAdvanceCount = 0
 
+    /// Called whenever the audition starts, changes track or stops — the hook the
+    /// NowPlayingController republishes the lock screen from. (`current` is
+    /// observable, but @Observable tracking only reaches SwiftUI view bodies.)
+    @ObservationIgnored var onStateChange: (() -> Void)?
+
     /// File auditions use AVAudioPlayer; Music-library items use AVPlayer (which can
     /// open `ipod-library://` URLs, unlike AVAudioPlayer). At most one is live.
     @ObservationIgnored private var filePlayer: AVAudioPlayer?
     @ObservationIgnored private var mediaPlayer: AVPlayer?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
+    @ObservationIgnored private var mediaDuration: TimeInterval = 0
+
+    /// Title/artist/genre of a library track being auditioned, captured from the
+    /// MPMediaItem resolved at start — a file's details live in the metadata cache
+    /// instead, but a library track has no file to scan. Read by
+    /// NowPlayingController; nil while a file (or nothing) is auditioning.
+    @ObservationIgnored private(set) var mediaMetadata: TrackMetadataSnapshot?
     @ObservationIgnored private let audioSession: AudioSessionController
 
     /// The audio tracks of the place the browser is *currently* showing, in display
@@ -79,6 +91,22 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
 
     var isPlaying: Bool { current != nil }
 
+    /// Length of the current audition, 0 when stopped. A library track's length
+    /// comes from its MPMediaItem (captured at start — AVPlayer only learns the
+    /// duration asynchronously); a file's from AVAudioPlayer.
+    var currentDuration: TimeInterval {
+        if let filePlayer { return filePlayer.duration }
+        return mediaDuration
+    }
+
+    /// Playback position of the current audition, 0 when stopped.
+    var currentElapsed: TimeInterval {
+        if let filePlayer { return filePlayer.currentTime }
+        guard let mediaPlayer else { return 0 }
+        let time = mediaPlayer.currentTime().seconds
+        return time.isFinite ? time : 0
+    }
+
     init(audioSession: AudioSessionController) {
         self.audioSession = audioSession
         super.init()
@@ -90,7 +118,7 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     /// it is needed) and plays through AVPlayer, which can open `ipod-library://`.
     func play(_ track: PreListenTrack, in folder: URL?) {
         teardownPlayers()
-        audioSession.activate()
+        audioSession.activate(for: .prelisten)
         let started: Bool
         switch track {
         case .file(let url):
@@ -101,11 +129,14 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
         guard started else {
             current = nil
             contextFolder = nil
+            audioSession.release(.prelisten)
+            onStateChange?()
             return
         }
         contextFolder = folder
         current = track
         ptLog("prelisten play \(track.debugLabel) in \(folder?.lastPathComponent ?? "nil")")
+        onStateChange?()
     }
 
     private func startFile(_ url: URL) -> Bool {
@@ -120,10 +151,13 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     private func startMedia(persistentID: UInt64) -> Bool {
-        guard let url = MusicLibrary.item(forPersistentID: persistentID)?.assetURL else {
+        guard let libraryItem = MusicLibrary.item(forPersistentID: persistentID),
+              let url = libraryItem.assetURL else {
             ptLog("prelisten FAILED to resolve medialib:\(persistentID)")
             return false
         }
+        mediaDuration = libraryItem.playbackDuration
+        mediaMetadata = TrackMetadataSnapshot(mediaItem: libraryItem)
         let item = AVPlayerItem(url: url)
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
@@ -136,14 +170,19 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     /// Stop auditioning (user Stop, finished with nowhere to advance, queue
-    /// playback taking over, or leaving the screen). The shared audio session is
-    /// left active so the queue engine can take over without a gap.
+    /// playback taking over, or leaving the screen). Our claim on the shared audio
+    /// session is dropped, but the release is deferred a runloop turn, so the queue
+    /// engine taking over in the same turn still gets a gapless hand-off — and an
+    /// app that stops auditioning and does nothing else stops being the system's
+    /// Now Playing app instead of leaving an empty lock-screen transport behind.
     func stop() {
         guard isPlaying else { return }
         ptLog("prelisten stop")
         teardownPlayers()
         current = nil
         contextFolder = nil
+        audioSession.release(.prelisten)
+        onStateChange?()
     }
 
     /// Tear down whichever player is live, plus the AVPlayer end-of-item observer.
@@ -152,6 +191,8 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
         filePlayer = nil
         mediaPlayer?.pause()
         mediaPlayer = nil
+        mediaDuration = 0
+        mediaMetadata = nil
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil

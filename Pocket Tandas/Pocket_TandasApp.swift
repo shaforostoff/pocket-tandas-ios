@@ -42,11 +42,14 @@ struct Pocket_TandasApp: App {
         let metadata = MetadataService(container: container)
         let equalizer = Equalizer()
         let engine = PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer)
-        let nowPlaying = NowPlayingController(engine: engine, metadata: metadata)
         // Explore-mode prelistening shares the audio session; starting queue
         // playback tears it down so the two never sound at once.
         let preListen = PreListenPlayer(audioSession: session)
         engine.onPlaybackStart = { [weak preListen] in preListen?.stop() }
+        // After both players: it subscribes to each of them to publish whichever
+        // is sounding to the lock screen.
+        let nowPlaying = NowPlayingController(engine: engine, preListen: preListen,
+                                              metadata: metadata, library: library)
 
         self.modelContainer = container
         _audioSession = State(initialValue: session)

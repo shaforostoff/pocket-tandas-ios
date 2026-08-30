@@ -249,13 +249,7 @@ final class PlaybackEngine {
         ptLog("stop → idle")
         cancelDecode()
         fader.cancel()
-        activePlayer.stop()
-        standbyPlayer.stop()
-        clearSchedules()
-        currentItem = nil
-        currentDuration = 0
-        engine.mainMixerNode.outputVolume = normalVolume
-        setState(.idle)
+        goIdle()
     }
 
     /// Pause/resume (remote commands + interruptions). Not a primary UI feature.
@@ -268,7 +262,7 @@ final class PlaybackEngine {
     func resume() {
         guard case .paused(let id) = state else { return }
         onPlaybackStart?()
-        audioSession.activate()
+        audioSession.activate(for: .queue)
         ensureEngineRunning()
         activePlayer.play()
         setState(.playing(id))
@@ -290,7 +284,7 @@ final class PlaybackEngine {
     private func startPlaying(_ item: QueueItem) {
         ptLog("startPlaying \(item.filename)#\(item.id.uuidString.prefix(4))")
         onPlaybackStart?()
-        audioSession.activate()
+        audioSession.activate(for: .queue)
         ensureEngineRunning()
         engine.mainMixerNode.outputVolume = normalVolume
         cancelDecode()
@@ -556,12 +550,22 @@ final class PlaybackEngine {
     private func finishFadeStop() {
         ptLog("fade complete → idle")
         cancelDecode()
+        goIdle()
+    }
+
+    /// Tear the graph back down to rest. The AVAudioEngine is stopped and the
+    /// audio session released, so an idle app doesn't sit rendering silence and
+    /// holding the system's Now Playing slot; `ensureEngineRunning()` starts the
+    /// graph again on the next play (node connections survive a stop).
+    private func goIdle() {
         activePlayer.stop()
         standbyPlayer.stop()
         clearSchedules()
         currentItem = nil
         currentDuration = 0
         engine.mainMixerNode.outputVolume = normalVolume
+        engine.stop()
+        audioSession.release(.queue)
         setState(.idle)
     }
 
