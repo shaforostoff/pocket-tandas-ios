@@ -108,6 +108,9 @@ final class RemoteQueue {
              .setAnchor, .move, .removeItems, .addTracks, .requestSnapshot,
              .setEQEnabled, .setEQBand, .resetEQ, .setVolume, .requestAudioSettings:
             break   // not consumed by the sender
+        case .goodbye:
+            break   // PeerLink acts on it (stops auto-reconnect); the mirror clears
+                    // when the session then drops.
         }
     }
 

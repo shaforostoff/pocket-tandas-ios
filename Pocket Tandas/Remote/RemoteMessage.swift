@@ -45,6 +45,11 @@ enum RemoteMessage: Codable {
     case progress(RemoteProgress)          // on timer
     case addTrackResult(resolved: Int, failed: Int)
     case audioSettings(RemoteAudioSettings)   // EQ + volume, on change
+
+    // MARK: Either direction
+    /// "I am disconnecting on purpose" — stops the sender's auto-reconnect from
+    /// immediately undoing a Disconnect tapped at either end.
+    case goodbye
 }
 
 extension RemoteMessage {
