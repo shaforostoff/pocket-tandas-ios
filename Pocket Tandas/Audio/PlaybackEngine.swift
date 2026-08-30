@@ -44,13 +44,14 @@ final class PlaybackEngine {
     /// down first and the two never overlap. See PreListenPlayer.
     @ObservationIgnored var onPlaybackStart: (() -> Void)?
 
-    /// Master output level, 0…1 — the mixer level that means "full, un-faded
-    /// playback". Set from the Volume panel (locally or over the remote link) and
-    /// persisted, so a level survives relaunches. Fades ramp between it and 0.
+    /// Master fader position, 0…1. Set from the Volume panel (locally or over the
+    /// remote link) and persisted, so a level survives relaunches.
     static let masterVolumeKey = "playback.masterVolume"
     private(set) var masterVolume: Float = 1.0
 
-    var normalVolume: Float { masterVolume }
+    /// The mixer level that means "full, un-faded playback" — the fader position
+    /// through the perceptual taper (see VolumeTaper). Fades ramp between it and 0.
+    var normalVolume: Float { VolumeTaper.amplitude(for: masterVolume) }
 
     /// DJ-mode fade-out length (seconds). Configurable from the Launcher and
     /// persisted under `fadeOutDurationKey`; read live at each Stop so a change
@@ -239,7 +240,7 @@ final class PlaybackEngine {
         guard level != masterVolume else { return }
         masterVolume = level
         UserDefaults.standard.set(Double(level), forKey: Self.masterVolumeKey)
-        if !state.isFadingOut { engine.mainMixerNode.outputVolume = level }
+        if !state.isFadingOut { engine.mainMixerNode.outputVolume = normalVolume }
     }
 
     /// Instant stop (queue exhausted, or the deferred end of a fade-out).

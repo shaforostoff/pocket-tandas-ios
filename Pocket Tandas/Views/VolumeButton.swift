@@ -52,6 +52,14 @@ struct VolumeView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Fader position plus the attenuation it actually applies — the percentage
+    /// alone hides the taper (see VolumeTaper), and a DJ thinks in dB anyway.
+    private var levelLabel: String {
+        let percent = Int((control.masterVolume * 100).rounded())
+        guard let dB = VolumeTaper.decibels(for: control.masterVolume) else { return "Muted" }
+        return String(format: "%d %%  ·  %.1f dB", percent, dB)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -67,7 +75,7 @@ struct VolumeView: View {
                         HStack {
                             Text("Master Volume")
                             Spacer()
-                            Text("\(Int((control.masterVolume * 100).rounded())) %")
+                            Text(levelLabel)
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
@@ -82,7 +90,8 @@ struct VolumeView: View {
                         }
                     }
                 } footer: {
-                    Text("Sets the output level of the device that is playing. "
+                    Text("Sets the app's output level on the device that is playing, "
+                         + "underneath that device's own volume buttons. "
                          + "Fade-outs ramp from this level.")
                 }
 
