@@ -15,11 +15,15 @@ import SwiftUI
 struct BrowserRowView: View {
     let entry: LibraryEntry
     var metadata: TrackMetadataSnapshot?
+    /// True for the audio file currently being auditioned (Explore prelistening) —
+    /// swaps in a speaker icon and an accent tint so it's easy to spot.
+    var isPlaying: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: entry.systemImage)
-                .foregroundStyle(entry.isFolder ? .blue : .secondary)
+            Image(systemName: isPlaying ? "speaker.wave.2.fill" : entry.systemImage)
+                .foregroundStyle(isPlaying ? AnyShapeStyle(.tint)
+                                           : AnyShapeStyle(entry.isFolder ? Color.blue : Color.secondary))
                 .frame(width: 24)
 
             if let metadata, !metadata.isEmpty {

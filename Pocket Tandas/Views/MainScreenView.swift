@@ -16,6 +16,8 @@ import SwiftData
 struct MainScreenView: View {
     let mode: AppMode
 
+    @Environment(PreListenPlayer.self) private var preListen
+
     /// Where the browser currently is, shared so the control bar's Save action
     /// can offer this folder and its parents. Lives here so it survives the
     /// browser/queue subviews and resets on each presentation of this screen.
@@ -23,7 +25,7 @@ struct MainScreenView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BrowserView()
+            BrowserView(mode: mode)
                 .frame(maxHeight: .infinity)
             Divider()
             StopResumeBar(mode: mode)
@@ -32,6 +34,9 @@ struct MainScreenView: View {
                 .frame(maxHeight: .infinity)
         }
         .environment(browser)
+        // Leaving the screen ends any prelistening — it's a foreground audition,
+        // not background playback like the DJ queue.
+        .onDisappear { preListen.stop() }
     }
 }
 
@@ -49,6 +54,7 @@ struct MainScreenView: View {
         .environment(LibraryStore())
         .environment(metadata)
         .environment(equalizer)
+        .environment(PreListenPlayer(audioSession: session))
         .modelContainer(container)
 }
 

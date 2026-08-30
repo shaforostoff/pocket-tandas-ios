@@ -50,6 +50,7 @@
 		D2DE438C867A74F7E7BCC311 /* PlayQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */; };
 		D4F14E70A3FB44560BADC9D2 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A840598B56A56E71B0F0EA /* QueueView.swift */; };
 		DABA4D49B9D097A034D0AA5D /* MetadataKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */; };
+		DC9E448E9D47F2AF03F1B15D /* PreListenPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76124D929F0AFEA8128073DF /* PreListenPlayer.swift */; };
 		DE8F4332A9265EF9457F9E2E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
 		E2204B2095DE9E32AB0CA737 /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */; };
 		E4BA44DD985DA497D324F855 /* StableTrackID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FB4789B2B0DA7E8401866A /* StableTrackID.swift */; };
@@ -102,6 +103,7 @@
 		67984284884245074A7BDCAE /* Equalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Equalizer.swift; path = Equalizer.swift; sourceTree = "<group>"; };
 		72C74E75B1F091A21869F10B /* PlaylistParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaylistParserTests.swift; path = PlaylistParserTests.swift; sourceTree = "<group>"; };
 		74E64A91ABB037C8D2EC8E5F /* StopResumeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StopResumeBar.swift; path = StopResumeBar.swift; sourceTree = "<group>"; };
+		76124D929F0AFEA8128073DF /* PreListenPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreListenPlayer.swift; path = PreListenPlayer.swift; sourceTree = "<group>"; };
 		76764CC68526E0C71A84329B /* EqualizerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EqualizerView.swift; path = EqualizerView.swift; sourceTree = "<group>"; };
 		76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackMetadataSnapshot.swift; path = TrackMetadataSnapshot.swift; sourceTree = "<group>"; };
 		77A840598B56A56E71B0F0EA /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueueView.swift; path = QueueView.swift; sourceTree = "<group>"; };
@@ -147,6 +149,7 @@
 				1C3A4024A7FA93B8956DA286 /* FadeController.swift */,
 				3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */,
 				67984284884245074A7BDCAE /* Equalizer.swift */,
+				76124D929F0AFEA8128073DF /* PreListenPlayer.swift */,
 			);
 			name = Audio;
 			path = Audio;
@@ -450,6 +453,7 @@
 				4FBA4152A48621059B0B0C90 /* Equalizer.swift in Sources */,
 				3F5D44CBA62ADB4D9E438575 /* EQButton.swift in Sources */,
 				46FD481BB5597FB8B3FA30B7 /* EqualizerView.swift in Sources */,
+				DC9E448E9D47F2AF03F1B15D /* PreListenPlayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

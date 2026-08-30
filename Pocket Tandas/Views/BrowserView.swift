@@ -16,10 +16,14 @@ import UniformTypeIdentifiers
 
 @MainActor
 struct BrowserView: View {
+    let mode: AppMode
+
     @Environment(LibraryStore.self) private var library
     @Environment(PlayQueue.self) private var queue
     @Environment(MetadataService.self) private var metadata
     @Environment(BrowserState.self) private var browser
+    @Environment(PlaybackEngine.self) private var engine
+    @Environment(PreListenPlayer.self) private var preListen
     @Environment(\.dismiss) private var dismiss
 
     @State private var rawEntries: [LibraryEntry] = []
@@ -105,6 +109,19 @@ struct BrowserView: View {
                     }
                     .buttonStyle(.borderless)
                 }
+
+                // While a browser audition is playing, a Stop sits at the trailing
+                // edge (only ever shown in Explore — prelistening can't start
+                // elsewhere). Distinct from the queue's Stop/Pause control below.
+                if preListen.isPlaying {
+                    Button(role: .destructive) {
+                        preListen.stop()
+                    } label: {
+                        Image(systemName: "stop.fill").imageScale(.large)
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(.red)
+                }
             } else {
                 Spacer()
             }
@@ -125,6 +142,11 @@ struct BrowserView: View {
                                               sort: deferSort ? naturalSort : sort,
                                               direction: deferSort ? .ascending : direction,
                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
+        // The audio files as shown (display order), tagged with where they live —
+        // handed to the prelisten player so a finished track advances within this
+        // exact arrangement, or stops once the user has moved elsewhere.
+        let displayed = DisplayedListing(folder: browser.currentFolder,
+                                         urls: entries.filter { $0.kind == .audio }.map(\.url))
         ScrollViewReader { proxy in
             Group {
                 if entries.isEmpty {
@@ -138,9 +160,10 @@ struct BrowserView: View {
                 } else {
                     List(entries) { entry in
                         BrowserRowView(entry: entry,
-                                       metadata: entry.isFolder ? nil : metadata.snapshot(for: entry.url, baseURL: library.baseURL))
+                                       metadata: entry.isFolder ? nil : metadata.snapshot(for: entry.url, baseURL: library.baseURL),
+                                       isPlaying: preListen.currentURL == entry.url)
                             .contentShape(Rectangle())
-                            .onTapGesture { open(entry) }
+                            .onTapGesture { tap(entry) }
                             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                 Button { add(entry) } label: {
                                     Label("Add", systemImage: "text.append")
@@ -159,7 +182,39 @@ struct BrowserView: View {
                 guard newRaw.contains(where: { $0.id == target }) else { return }
                 Task { @MainActor in proxy.scrollTo(target, anchor: .center) }
             }
+            // Keep the prelisten player's view of the list current, and on any
+            // re-arrange/navigation make sure the playing audition stays visible.
+            .onAppear { syncPrelistenListing(displayed) }
+            .onChange(of: displayed) { _, new in
+                syncPrelistenListing(new)
+                scrollToAudition(entries, proxy: proxy)
+            }
+            // ...and when playback rolls over to the next track on its own — but
+            // not on a manual tap, since the tapped row is already on screen.
+            .onChange(of: preListen.autoAdvanceCount) { _, _ in
+                scrollToAudition(entries, proxy: proxy)
+            }
         }
+    }
+
+    /// Display-order audio plus its location — the unit the browser pushes to the
+    /// prelisten player whenever sort, filter, or folder change.
+    private struct DisplayedListing: Equatable {
+        let folder: URL?
+        let urls: [URL]
+    }
+
+    private func syncPrelistenListing(_ listing: DisplayedListing) {
+        guard mode == .explore else { return }
+        preListen.updateListing(listing.urls, folder: listing.folder)
+    }
+
+    /// Center the currently-auditioned file if it's in the shown list. No-op when
+    /// nothing is prelistening or it's been filtered out of view.
+    private func scrollToAudition(_ entries: [LibraryEntry], proxy: ScrollViewProxy) {
+        guard let url = preListen.currentURL,
+              entries.contains(where: { $0.id == url }) else { return }
+        Task { @MainActor in proxy.scrollTo(url, anchor: .center) }
     }
 
     private var chooseFolderPrompt: some View {
@@ -221,6 +276,28 @@ struct BrowserView: View {
         guard let folder = browser.currentFolder, !library.isBaseFolder(folder) else { return }
         scrollTarget = folder   // restore the parent list to the item we came from
         navigate(to: folder.deletingLastPathComponent())
+    }
+
+    /// Tap routing: folders/playlists drill in; in Explore, tapping an audio file
+    /// auditions it (prelistening). A *paused* play queue is stopped first to make
+    /// room; an actively *playing* queue wins and the tap is ignored. Outside
+    /// Explore an audio tap does nothing (tracks are queued via swipe-right).
+    private func tap(_ entry: LibraryEntry) {
+        switch entry.kind {
+        case .folder, .playlist:
+            open(entry)
+        case .audio:
+            guard mode == .explore else { return }
+            switch engine.state {
+            case .playing, .fadingOut:
+                return                       // don't interrupt active queue playback
+            case .paused:
+                engine.stop()                // stop the paused queue to make room
+            case .idle:
+                break
+            }
+            preListen.play(entry.url, in: browser.currentFolder)
+        }
     }
 
     private func open(_ entry: LibraryEntry) {

@@ -39,6 +39,11 @@ final class PlaybackEngine {
     /// Called after every state change (used by NowPlayingController).
     @ObservationIgnored var onStateChange: (() -> Void)?
 
+    /// Called the instant queue playback (re)starts, before the track is made
+    /// audible — so Explore-mode prelistening (a separate AVAudioPlayer) is torn
+    /// down first and the two never overlap. See PreListenPlayer.
+    @ObservationIgnored var onPlaybackStart: (() -> Void)?
+
     @ObservationIgnored let normalVolume: Float = 1.0
 
     /// DJ-mode fade-out length (seconds). Configurable from the Launcher and
@@ -208,6 +213,7 @@ final class PlaybackEngine {
 
     func resume() {
         guard case .paused(let id) = state else { return }
+        onPlaybackStart?()
         audioSession.activate()
         ensureEngineRunning()
         activePlayer.play()
@@ -229,6 +235,7 @@ final class PlaybackEngine {
 
     private func startPlaying(_ item: QueueItem) {
         ptLog("startPlaying \(item.filename)#\(item.id.uuidString.prefix(4))")
+        onPlaybackStart?()
         audioSession.activate()
         ensureEngineRunning()
         engine.mainMixerNode.outputVolume = normalVolume
