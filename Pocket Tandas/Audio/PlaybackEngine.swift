@@ -65,6 +65,7 @@ final class PlaybackEngine {
     @ObservationIgnored private let audioSession: AudioSessionController
     @ObservationIgnored private let queue: PlayQueue
     @ObservationIgnored private let metadata: MetadataService
+    @ObservationIgnored private let equalizer: Equalizer
 
     /// Elapsed playback time of the active track (best effort, for Now Playing).
     var currentElapsed: TimeInterval {
@@ -74,10 +75,11 @@ final class PlaybackEngine {
         return Double(playerTime.sampleTime) / playerTime.sampleRate
     }
 
-    init(audioSession: AudioSessionController, queue: PlayQueue, metadata: MetadataService) {
+    init(audioSession: AudioSessionController, queue: PlayQueue, metadata: MetadataService, equalizer: Equalizer) {
         self.audioSession = audioSession
         self.queue = queue
         self.metadata = metadata
+        self.equalizer = equalizer
         self.activePlayer = playerA
         self.standbyPlayer = playerB
         configureGraph()
@@ -90,7 +92,16 @@ final class PlaybackEngine {
     private func configureGraph() {
         engine.attach(playerA)
         engine.attach(playerB)
-        _ = engine.mainMixerNode   // instantiate mixer + its output connection
+        engine.attach(equalizer.node)
+        // Insert the master EQ between the mixer (our fade lever) and the output:
+        //   players → mainMixerNode → eq → outputNode
+        // Both players already sum at the mixer, so a single EQ on the mixer's
+        // output colours everything. Connecting the mixer's output here replaces
+        // the implicit mainMixerNode → outputNode connection.
+        let mixer = engine.mainMixerNode
+        let format = mixer.outputFormat(forBus: 0)
+        engine.connect(mixer, to: equalizer.node, format: format)
+        engine.connect(equalizer.node, to: engine.outputNode, format: format)
         engine.prepare()
     }
 

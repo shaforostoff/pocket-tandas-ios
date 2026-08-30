@@ -41,12 +41,14 @@ struct MainScreenView: View {
     let container = try! ModelContainer(for: TrackMetadata.self,
                                         configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     let metadata = MetadataService(container: container)
+    let equalizer = Equalizer()
     return MainScreenView(mode: .dj)
         .environment(session)
-        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata))
+        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer))
         .environment(queue)
         .environment(LibraryStore())
         .environment(metadata)
+        .environment(equalizer)
         .modelContainer(container)
 }
 

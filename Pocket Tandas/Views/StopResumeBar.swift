@@ -24,6 +24,9 @@ struct StopResumeBar: View {
                 SavePlaylistButton()
                 ClearQueueButton()
             }
+            if mode == .dj {
+                EQButton()
+            }
             stopOrResume
         }
         .controlSize(.large)
