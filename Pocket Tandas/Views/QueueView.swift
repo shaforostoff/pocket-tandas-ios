@@ -21,32 +21,46 @@ struct QueueView: View {
     @Environment(MetadataService.self) private var metadata
 
     var body: some View {
-        if queue.items.isEmpty {
-            ContentUnavailableView("Play Queue", systemImage: "music.note.list",
-                                   description: Text("Swipe a track right in the browser to add it here."))
-        } else {
-            List {
-                ForEach(queue.items) { item in
-                    let isCurrent = item.id == engine.state.currentItemID
-                    QueueRowView(item: item,
-                                 metadata: metadata.snapshot(forKey: item.trackKey),
-                                 isCurrent: isCurrent,
-                                 isFading: isCurrent && engine.state.isFadingOut)
-                        .onTapGesture { engine.requestPlay(item) }
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                        .deleteDisabled(isCurrent)
-                }
-                .onDelete { queue.remove(atOffsets: $0) }
-                .onMove { source, destination in
-                    ptLog("onMove src=\(Array(source)) dst=\(destination) pinned=\(engine.state.currentItemID?.uuidString.prefix(4) ?? "nil")")
-                    ptLog("  before: \(queue.debugOrder)")
-                    queue.move(fromOffsets: source, toOffset: destination,
-                               pinnedID: engine.state.currentItemID)
-                    ptLog("  after:  \(queue.debugOrder)")
+        ScrollViewReader { proxy in
+            Group {
+                if queue.items.isEmpty {
+                    ContentUnavailableView("Play Queue", systemImage: "music.note.list",
+                                           description: Text("Swipe a track right in the browser to add it here."))
+                } else {
+                    List {
+                        ForEach(queue.items) { item in
+                            let isCurrent = item.id == engine.state.currentItemID
+                            QueueRowView(item: item,
+                                         metadata: metadata.snapshot(forKey: item.trackKey),
+                                         isCurrent: isCurrent,
+                                         isFading: isCurrent && engine.state.isFadingOut)
+                                .onTapGesture { engine.requestPlay(item) }
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                                .deleteDisabled(isCurrent)
+                        }
+                        .onDelete { queue.remove(atOffsets: $0) }
+                        .onMove { source, destination in
+                            ptLog("onMove src=\(Array(source)) dst=\(destination) pinned=\(engine.state.currentItemID?.uuidString.prefix(4) ?? "nil")")
+                            ptLog("  before: \(queue.debugOrder)")
+                            queue.move(fromOffsets: source, toOffset: destination,
+                                       pinnedID: engine.state.currentItemID)
+                            ptLog("  after:  \(queue.debugOrder)")
+                        }
+                    }
+                    .listStyle(.plain)
                 }
             }
-            .listStyle(.plain)
+            // Tracks are only ever added at the end (append). When the count
+            // grows, scroll to the new last row so the user sees that something
+            // landed — even if the queue was scrolled up or the additions are
+            // off-screen below.
+            .onChange(of: queue.items.count) { oldCount, newCount in
+                guard newCount > oldCount, let lastID = queue.items.last?.id else { return }
+                Task { @MainActor in
+                    withAnimation { proxy.scrollTo(lastID, anchor: .bottom) }
+                }
+            }
         }
     }
 }
