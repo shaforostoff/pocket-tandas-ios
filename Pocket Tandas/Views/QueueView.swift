@@ -65,7 +65,11 @@ struct QueueView: View {
             .onChange(of: rows.map(\.id)) { oldIDs, newIDs in
                 let old = Set(oldIDs)
                 guard let target = newIDs.last(where: { !old.contains($0) }) else { return }
-                Task { @MainActor in
+                // Defer past the current runloop turn so List commits the inserted
+                // row into its backing collection view before we scroll — a same-turn
+                // Task hop runs before that commit, so scrollTo can't find the new row
+                // and silently no-ops.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     withAnimation { proxy.scrollTo(target, anchor: .bottom) }
                 }
             }
