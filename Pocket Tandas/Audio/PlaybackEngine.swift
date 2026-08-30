@@ -77,6 +77,13 @@ final class PlaybackEngine {
     @ObservationIgnored private var activeScheduleID = 0
     @ObservationIgnored private var preloadedScheduleID = 0
 
+    /// Off-main decode for media-library items (AVAssetReader → one PCM buffer).
+    /// `decodeToken` is bumped whenever a decode is started or cancelled, so a
+    /// superseded decode's completion (which captured an older token) is ignored.
+    @ObservationIgnored private let decodeQueue = DispatchQueue(label: "tandas.mediadecode", qos: .userInitiated)
+    @ObservationIgnored private var decodeToken = 0
+    @ObservationIgnored private var activeDecoder: MediaTrackDecoder?
+
     @ObservationIgnored private var formats: [ObjectIdentifier: AVAudioFormat] = [:]
     @ObservationIgnored private let fader = FadeController()
     @ObservationIgnored private let audioSession: AudioSessionController
@@ -194,6 +201,7 @@ final class PlaybackEngine {
     /// Instant stop (queue exhausted, or the deferred end of a fade-out).
     func stop() {
         ptLog("stop → idle")
+        cancelDecode()
         fader.cancel()
         activePlayer.stop()
         standbyPlayer.stop()
@@ -239,37 +247,118 @@ final class PlaybackEngine {
         audioSession.activate()
         ensureEngineRunning()
         engine.mainMixerNode.outputVolume = normalVolume
-        guard let scheduleID = schedule(item, on: activePlayer, startNow: true) else { return }
-        activeScheduleID = scheduleID
-        currentItem = item
-        currentDuration = duration(of: item.url)
-        setState(.playing(item.id))
-        queue.clearAnchor(ifMatches: item.id)
-        preloadNext(after: item.id)
+        cancelDecode()
+        switch item.source {
+        case .file(let url):
+            guard let scheduleID = scheduleFile(item, url: url, on: activePlayer, startNow: true) else { return }
+            activeScheduleID = scheduleID
+            commitCurrent(item)
+            preloadNext(after: item.id)
+        case .mediaLibrary(let ref):
+            // Commit to the track now; audio begins when the async decode lands.
+            commitCurrent(item)
+            startMediaPlayback(item, ref: ref, on: activePlayer)
+            preloadNext(after: item.id)
+        }
     }
 
-    /// Schedules `item` on `player`. Returns the unique schedule token, or nil if
-    /// the file couldn't be opened.
-    private func schedule(_ item: QueueItem, on player: AVAudioPlayerNode, startNow: Bool) -> Int? {
-        guard let file = try? AVAudioFile(forReading: item.url) else {
+    /// Shared post-schedule bookkeeping for the now-current track.
+    private func commitCurrent(_ item: QueueItem) {
+        currentItem = item
+        currentDuration = duration(of: item)
+        setState(.playing(item.id))
+        queue.clearAnchor(ifMatches: item.id)
+    }
+
+    /// Schedules a FILE item on `player`. Returns the unique schedule token, or nil
+    /// if the file couldn't be opened.
+    private func scheduleFile(_ item: QueueItem, url: URL, on player: AVAudioPlayerNode, startNow: Bool) -> Int? {
+        guard let file = try? AVAudioFile(forReading: url) else {
             ptLog("schedule FAILED to open \(item.filename)")
             return nil
         }
-        scheduleSeq += 1
-        let scheduleID = scheduleSeq
-        connectIfNeeded(player, format: file.processingFormat)
-        player.stop()
-        // Per-track ReplayGain lives on the player node's own volume, so it rides
-        // with the node through the active/standby swap and composes
-        // multiplicatively with the mixer's fade lever. Set before play.
-        let gain = trackGainScale(for: item)
-        player.volume = gain
+        let scheduleID = beginSchedule(item, on: player, format: file.processingFormat)
         player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async { self?.handleScheduleEnded(scheduleID) }
         }
         if startNow { player.play() }
-        ptLog("schedule \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow) gain=\(gain)")
+        ptLog("schedule file \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow)")
         return scheduleID
+    }
+
+    /// Schedules a pre-decoded media BUFFER on `player`. Returns the token.
+    private func scheduleMediaBuffer(_ buffer: AVAudioPCMBuffer, for item: QueueItem,
+                                     on player: AVAudioPlayerNode, startNow: Bool) -> Int {
+        let scheduleID = beginSchedule(item, on: player, format: buffer.format)
+        player.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            DispatchQueue.main.async { self?.handleScheduleEnded(scheduleID) }
+        }
+        if startNow { player.play() }
+        ptLog("schedule media \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow)")
+        return scheduleID
+    }
+
+    /// Common scheduling prologue: issue a new token, (re)connect at `format`, stop
+    /// the node, and apply per-track ReplayGain. The gain lives on the player node's
+    /// own volume, so it rides with the node through the active/standby swap and
+    /// composes multiplicatively with the mixer's fade lever. Returns the token.
+    private func beginSchedule(_ item: QueueItem, on player: AVAudioPlayerNode, format: AVAudioFormat) -> Int {
+        scheduleSeq += 1
+        let scheduleID = scheduleSeq
+        connectIfNeeded(player, format: format)
+        player.stop()
+        player.volume = trackGainScale(for: item)
+        return scheduleID
+    }
+
+    /// Decode a media item off-main, then (on main) schedule it on `player` if it is
+    /// still the wanted track. `decodeToken` guards against a newer decode
+    /// superseding this one; the current-item check guards against a queue edit
+    /// during the decode. There is no gapless preload for media — the buffer is
+    /// scheduled and started the moment it lands (a small gap is accepted).
+    private func startMediaPlayback(_ item: QueueItem, ref: MediaRef, on player: AVAudioPlayerNode) {
+        guard let assetURL = ref.assetURL else {
+            ptLog("media \(item.filename) has no asset URL → skip")
+            handleMediaDecodeFailure(for: item.id)
+            return
+        }
+        decodeToken += 1
+        let token = decodeToken
+        let decoder = MediaTrackDecoder()
+        activeDecoder = decoder
+        let expected = ref.duration
+        decodeQueue.async { [weak self] in
+            let decoded = try? decoder.decode(assetURL: assetURL, expectedDuration: expected)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard token == self.decodeToken else { return }       // superseded by a newer decode/stop
+                self.activeDecoder = nil
+                guard self.state.currentItemID == item.id else { return }   // queue moved on during decode
+                guard let (buffer, _) = decoded else {
+                    ptLog("media decode FAILED \(item.filename)")
+                    self.handleMediaDecodeFailure(for: item.id)
+                    return
+                }
+                // If an interruption paused us mid-decode, schedule without playing
+                // so resume() starts it; otherwise start now.
+                let startNow = self.state.isPlaying
+                self.activeScheduleID = self.scheduleMediaBuffer(buffer, for: item, on: player, startNow: startNow)
+            }
+        }
+    }
+
+    /// A media item that couldn't be decoded behaves like a file that wouldn't
+    /// open: move past it (or stop if it was the last track).
+    private func handleMediaDecodeFailure(for itemID: UUID) {
+        guard state.currentItemID == itemID else { return }
+        advance()
+    }
+
+    /// Cancel any in-flight media decode and invalidate its pending completion.
+    private func cancelDecode() {
+        activeDecoder?.cancel()
+        activeDecoder = nil
+        decodeToken += 1
     }
 
     /// ReplayGain track gain → linear amplitude scale for a player node's volume,
@@ -287,13 +376,16 @@ final class PlaybackEngine {
             preloadedScheduleID = 0
             return
         }
-        if let scheduleID = schedule(next, on: standbyPlayer, startNow: false) {
-            preloadedItemID = next.id
-            preloadedScheduleID = scheduleID
-        } else {
+        // Only file items preload gaplessly on standby. Media items are decoded and
+        // scheduled at advance() time (no gapless), so clear any prior preload.
+        guard case .file(let url) = next.source,
+              let scheduleID = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
             preloadedItemID = nil
             preloadedScheduleID = 0
+            return
         }
+        preloadedItemID = next.id
+        preloadedScheduleID = scheduleID
     }
 
     /// Called (on main) when a scheduled file finishes. Only the audible
@@ -318,6 +410,7 @@ final class PlaybackEngine {
     private func advance() {
         guard let currentID = state.currentItemID else { return }
         ensureEngineRunning()
+        cancelDecode()
         activePlayer.stop()
 
         guard let next = queue.item(after: currentID) else {
@@ -327,27 +420,37 @@ final class PlaybackEngine {
         }
         ptLog("advance current=\(currentID.uuidString.prefix(4)) next=\(next.filename)#\(next.id.uuidString.prefix(4)) preloaded=\(preloadedItemID?.uuidString.prefix(4) ?? "nil") | queue: \(queue.debugOrder)")
 
-        if preloadedItemID != next.id {
-            guard let scheduleID = schedule(next, on: standbyPlayer, startNow: false) else {
-                stop(); return
+        switch next.source {
+        case .file(let url):
+            if preloadedItemID != next.id {
+                guard let scheduleID = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
+                    stop(); return
+                }
+                preloadedItemID = next.id
+                preloadedScheduleID = scheduleID
             }
-            preloadedItemID = next.id
-            preloadedScheduleID = scheduleID
+            swap(&activePlayer, &standbyPlayer)   // standby (holding `next`) becomes active
+            activeScheduleID = preloadedScheduleID
+            engine.mainMixerNode.outputVolume = normalVolume
+            activePlayer.play()
+            commitCurrent(next)
+            preloadNext(after: next.id)
+        case .mediaLibrary(let ref):
+            // No gapless for media: reuse the just-stopped active deck and decode
+            // asynchronously. Any stale preload on standby is overwritten by the
+            // next preloadNext.
+            preloadedItemID = nil
+            preloadedScheduleID = 0
+            engine.mainMixerNode.outputVolume = normalVolume
+            commitCurrent(next)
+            startMediaPlayback(next, ref: ref, on: activePlayer)
+            preloadNext(after: next.id)
         }
-
-        swap(&activePlayer, &standbyPlayer)   // standby (holding `next`) becomes active
-        activeScheduleID = preloadedScheduleID
-        engine.mainMixerNode.outputVolume = normalVolume
-        activePlayer.play()
-        currentItem = next
-        currentDuration = duration(of: next.url)
-        setState(.playing(next.id))
-        queue.clearAnchor(ifMatches: next.id)
-        preloadNext(after: next.id)
     }
 
     private func finishFadeStop() {
         ptLog("fade complete → idle")
+        cancelDecode()
         activePlayer.stop()
         standbyPlayer.stop()
         clearSchedules()
@@ -361,6 +464,15 @@ final class PlaybackEngine {
         preloadedItemID = nil
         activeScheduleID = 0      // 0 never matches a real token (tokens start at 1)
         preloadedScheduleID = 0
+    }
+
+    /// Track length: from the MPMediaItem for media (no AVAudioFile probe), or the
+    /// file's frame count for files.
+    private func duration(of item: QueueItem) -> TimeInterval {
+        switch item.source {
+        case .file(let url): return duration(of: url)
+        case .mediaLibrary(let ref): return ref.duration
+        }
     }
 
     private func duration(of url: URL) -> TimeInterval {

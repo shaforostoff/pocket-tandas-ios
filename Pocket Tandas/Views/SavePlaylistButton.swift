@@ -96,7 +96,14 @@ struct SavePlaylistButton: View {
     private func save(to directory: URL) {
         do {
             let url = try PlaylistWriter.write(items: queue.items, name: name, to: directory)
-            resultMessage = "Saved “\(url.lastPathComponent)” to “\(directory.lastPathComponent)”."
+            var message = "Saved “\(url.lastPathComponent)” to “\(directory.lastPathComponent)”."
+            let skipped = queue.items.filter(\.isMediaLibrary).count
+            if skipped > 0 {
+                message += skipped == 1
+                    ? " 1 Music-library track was skipped (only files can be saved to a playlist)."
+                    : " \(skipped) Music-library tracks were skipped (only files can be saved to a playlist)."
+            }
+            resultMessage = message
         } catch {
             resultMessage = "Couldn’t save the playlist: \(error.localizedDescription)"
         }

@@ -39,6 +39,7 @@
 		72EF4433945C4250658585AA /* PlaylistWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326E43918354BD12D57FCB96 /* PlaylistWriter.swift */; };
 		79094C2AB21CF885C66E076F /* LibraryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8A47AC93C9081661511DAF /* LibraryEntry.swift */; };
 		84E44EC5B54C3441EED0D0F6 /* TrackMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF644EF6A222E63934494281 /* TrackMetadata.swift */; };
+		9398411B846238CC22097F21 /* MediaTrackDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F80042B1A005AAD4ABA98817 /* MediaTrackDecoder.swift */; };
 		96434058A8946AF6406A1A47 /* BrowserState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAD3451DBC3FBFA192B41543 /* BrowserState.swift */; };
 		99B44B73BB1D397161655B01 /* AppMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F204B4A9645469298030DA4 /* AppMode.swift */; };
 		99EA4D4CBD4BE75EDD40F6A0 /* PeerLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D45CBB99FB2EF3837BF45 /* PeerLink.swift */; };
@@ -158,6 +159,7 @@
 		E23540369F03A26D4315C3F2 /* EQButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQButton.swift; path = EQButton.swift; sourceTree = "<group>"; };
 		EB774D14B26DCD27A530AB67 /* SortMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortMenu.swift; path = SortMenu.swift; sourceTree = "<group>"; };
 		F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FolderBookmark.swift; path = FolderBookmark.swift; sourceTree = "<group>"; };
+		F80042B1A005AAD4ABA98817 /* MediaTrackDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaTrackDecoder.swift; path = MediaTrackDecoder.swift; sourceTree = "<group>"; };
 		F85146FC93DB6E8EAC261BA8 /* ClearQueueButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ClearQueueButton.swift; path = ClearQueueButton.swift; sourceTree = "<group>"; };
 		F9CA4380AB56B57660B01D65 /* RemoteQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteQueue.swift; path = RemoteQueue.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -188,6 +190,7 @@
 				3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */,
 				67984284884245074A7BDCAE /* Equalizer.swift */,
 				76124D929F0AFEA8128073DF /* PreListenPlayer.swift */,
+				F80042B1A005AAD4ABA98817 /* MediaTrackDecoder.swift */,
 			);
 			name = Audio;
 			path = Audio;
@@ -507,6 +510,7 @@
 				71414723ACFF6F9C62EB384B /* QueuePresenter.swift in Sources */,
 				A67D437E95B8FA6B46D9C1FE /* MediaPicker.swift in Sources */,
 				589D4965ABC8BD3CE7F12817 /* MediaLibraryImporter.swift in Sources */,
+				9398411B846238CC22097F21 /* MediaTrackDecoder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

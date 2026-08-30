@@ -52,6 +52,28 @@ final class MetadataService {
         snapshots[key]
     }
 
+    // MARK: - Seeding (no file to scan)
+
+    /// Publish a snapshot directly, bypassing the file scan — for Music-library
+    /// items, whose metadata comes from the MPMediaItem, not a file's tags. Kept
+    /// in memory only: these `medialib:` keys are intentionally NOT written to the
+    /// durable TrackMetadata store (which is file-oriented and feeds the remote
+    /// resolver's metadata match).
+    @MainActor
+    func inject(_ snapshot: TrackMetadataSnapshot, forKey key: String) {
+        snapshots[key] = snapshot
+    }
+
+    /// Seed display snapshots for the media-library items in `items` from their
+    /// carried metadata. File items are ignored (they scan from disk).
+    @MainActor
+    func seedMedia(_ items: [QueueItem]) {
+        for item in items {
+            guard item.isMediaLibrary, let snapshot = item.mediaSnapshot else { continue }
+            snapshots[item.trackKey] = snapshot
+        }
+    }
+
     // MARK: - Scanning
 
     /// Scan a folder's audio files, skipping cache hits. Cancels the previous

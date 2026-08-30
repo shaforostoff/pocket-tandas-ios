@@ -20,7 +20,10 @@ enum PlaylistWriter {
     static func makeContent(for items: [QueueItem], relativeTo directory: URL) -> String {
         var lines = ["#EXTM3U"]
         for item in items {
-            lines.append(relativePath(from: directory, to: item.url))
+            // Only file items have a portable path. Media-library references are
+            // skipped — an .m3u8 of ipod-library:// URLs wouldn't resolve elsewhere.
+            guard case .file(let url) = item.source else { continue }
+            lines.append(relativePath(from: directory, to: url))
         }
         return lines.joined(separator: "\n") + "\n"
     }
