@@ -133,7 +133,7 @@ struct LauncherView: View {
                 Button {
                     activeMode = .remoteReceive
                 } label: {
-                    Label("DJ Mode + Remote", systemImage: "antenna.radiowaves.left.and.right")
+                    Label("Remote Controllable", systemImage: "antenna.radiowaves.left.and.right")
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity, minHeight: 50)

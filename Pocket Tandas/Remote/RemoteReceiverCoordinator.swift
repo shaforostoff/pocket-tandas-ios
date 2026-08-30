@@ -13,7 +13,10 @@
 //
 //  It watches queue.items / queue.anchorID / engine.state / metadata.snapshots
 //  via observation tracking and broadcasts a coalesced snapshot on any change,
-//  plus a lightweight progress tick on a timer. Plain @Observable (used as @State
+//  plus a lightweight progress tick on a timer. The audio chain (EQ bands +
+//  master volume) is tracked and broadcast separately, and the sender's EQ /
+//  volume commands are applied to the same Equalizer / PlaybackEngine the local
+//  EQ panel drives — so both ends stay in step. Plain @Observable (used as @State
 //  in MainScreenView), not @MainActor — see observable-not-mainactor.
 //
 
@@ -30,23 +33,29 @@ final class RemoteReceiverCoordinator {
     @ObservationIgnored private let engine: PlaybackEngine
     @ObservationIgnored private let metadata: MetadataService
     @ObservationIgnored private let library: LibraryStore
+    @ObservationIgnored private let equalizer: Equalizer
     @ObservationIgnored private let container: ModelContainer
 
     @ObservationIgnored private var seq: UInt64 = 0
     @ObservationIgnored private var broadcastScheduled = false
+    @ObservationIgnored private var settingsBroadcastScheduled = false
     @ObservationIgnored private var progressTimer: Timer?
     @ObservationIgnored private var running = false
 
     init(queue: PlayQueue, engine: PlaybackEngine, metadata: MetadataService,
-         library: LibraryStore, container: ModelContainer) {
+         library: LibraryStore, equalizer: Equalizer, container: ModelContainer) {
         self.queue = queue
         self.engine = engine
         self.metadata = metadata
         self.library = library
+        self.equalizer = equalizer
         self.container = container
         self.link = PeerLink(role: .receiver)
         link.onReceive = { [weak self] message in self?.handle(message) }
-        link.onConnected = { [weak self] _ in self?.broadcastSnapshot() }
+        link.onConnected = { [weak self] _ in
+            self?.broadcastSnapshot()
+            self?.broadcastAudioSettings()
+        }
     }
 
     func start() {
@@ -57,6 +66,7 @@ final class RemoteReceiverCoordinator {
         Task { _ = await MediaLibraryImporter.requestAuthorization() }
         link.startAdvertising()
         observe()
+        observeAudioSettings()
         startProgressTimer()
     }
 
@@ -98,8 +108,41 @@ final class RemoteReceiverCoordinator {
         }
     }
 
+    /// EQ + volume are tracked separately from the queue so a slider drag on the
+    /// sender doesn't echo the whole queue back on every tick.
+    private func observeAudioSettings() {
+        withObservationTracking {
+            _ = equalizer.isEnabled
+            _ = equalizer.bands
+            _ = engine.masterVolume
+        } onChange: { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.running else { return }
+                self.scheduleSettingsBroadcast()
+                self.observeAudioSettings()
+            }
+        }
+    }
+
+    private func scheduleSettingsBroadcast() {
+        guard !settingsBroadcastScheduled else { return }
+        settingsBroadcastScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.settingsBroadcastScheduled = false
+            self.broadcastAudioSettings()
+        }
+    }
+
     private func broadcastSnapshot() {
         link.send(.snapshot(makeSnapshot()))
+    }
+
+    private func broadcastAudioSettings() {
+        link.send(.audioSettings(RemoteAudioSettings(eqEnabled: equalizer.isEnabled,
+                                                     bands: equalizer.bands,
+                                                     volume: engine.masterVolume,
+                                                     seq: nextSeq())))
     }
 
     private func makeSnapshot() -> RemoteSnapshot {
@@ -171,7 +214,19 @@ final class RemoteReceiverCoordinator {
             Task { @MainActor in self.applyAddTracks(requests) }
         case .requestSnapshot:
             broadcastSnapshot()
-        case .snapshot, .progress, .addTrackResult:
+        case .setEQEnabled(let on):
+            equalizer.setEnabled(on)
+        case .setEQBand(let id, let gain, let frequency, let bandwidth):
+            equalizer.setGain(gain, bandID: id)
+            equalizer.setFrequency(frequency, bandID: id)
+            equalizer.setBandwidth(bandwidth, bandID: id)
+        case .resetEQ:
+            equalizer.reset()
+        case .setVolume(let level):
+            engine.setMasterVolume(level)
+        case .requestAudioSettings:
+            broadcastAudioSettings()
+        case .snapshot, .progress, .addTrackResult, .audioSettings:
             break   // receiver→sender messages; ignored here
         }
     }

@@ -30,6 +30,7 @@ struct MainScreenView: View {
     @Environment(PlaybackEngine.self) private var engine
     @Environment(MetadataService.self) private var metadata
     @Environment(LibraryStore.self) private var library
+    @Environment(Equalizer.self) private var equalizer
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -92,7 +93,7 @@ struct MainScreenView: View {
         topBrowser
             .frame(maxHeight: .infinity)
         Divider()
-        StopResumeBar(mode: mode, control: control)
+        StopResumeBar(mode: mode, control: control, remoteAudio: remoteQueue?.audio)
         Divider()
         QueueView(presenter: presenter)
             .frame(maxHeight: .infinity)
@@ -107,7 +108,7 @@ struct MainScreenView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             VStack(spacing: 0) {
-                StopResumeBar(mode: mode, control: control)
+                StopResumeBar(mode: mode, control: control, remoteAudio: remoteQueue?.audio)
                 Divider()
                 QueueView(presenter: presenter)
                     .frame(maxHeight: .infinity)
@@ -176,7 +177,8 @@ struct MainScreenView: View {
         switch mode {
         case .remoteReceive:
             let coordinator = RemoteReceiverCoordinator(queue: queue, engine: engine, metadata: metadata,
-                                                        library: library, container: modelContext.container)
+                                                        library: library, equalizer: equalizer,
+                                                        container: modelContext.container)
             coordinator.start()
             receiver = coordinator
         case .remoteSend:

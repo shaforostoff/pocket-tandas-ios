@@ -23,11 +23,20 @@ enum RemoteMessage: Codable {
     case removeItems(itemIDs: [UUID])
     case addTracks([TrackAddRequest])
     case requestSnapshot                   // resync on (re)connect
+    // Audio chain: the sender edits the receiver's EQ / master volume. Band edits
+    // carry all three parameters so a dropped intermediate value can't leave the
+    // two sides disagreeing about the band.
+    case setEQEnabled(Bool)
+    case setEQBand(id: Int, gain: Float, frequency: Float, bandwidth: Float)
+    case resetEQ
+    case setVolume(Float)
+    case requestAudioSettings              // resync on (re)connect
 
     // MARK: Receiver → Sender (state)
     case snapshot(RemoteSnapshot)          // on structural change
     case progress(RemoteProgress)          // on timer
     case addTrackResult(resolved: Int, failed: Int)
+    case audioSettings(RemoteAudioSettings)   // EQ + volume, on change
 }
 
 extension RemoteMessage {

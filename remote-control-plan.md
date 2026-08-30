@@ -243,3 +243,15 @@ Reused as-is: [PlayQueue](Pocket Tandas/Models/PlayQueue.swift) (enqueue/move/se
 5. **Commands:** `requestPlay`; `stopWithFade`/`resumeFromFade` (confirm Resume-during-fade on the sender mirrors the receiver's `fadingOut`); `setAnchor`; `move`/`remove` (incl. rejecting a move of the receiver's playing track).
 6. **Edge cases:** background/foreground the sender and resync; separate the phones to drop + reconnect; 100+ track queue for snapshot perf.
 7. **Milestone 2:** `RemoteTrackResolver` unit-tested with temp dirs (mirror `PlaylistParserTests`) — all 4 fallback steps incl. extension-swap, diacritic-insensitive title/artist, year disambiguation, recursive stem search. Then end-to-end add from the sender browser on devices.
+
+---
+
+## Milestone 3 (built after the fact) — remote EQ + master volume
+
+The launcher buttons read **Remote Control** (sender) and **Remote Controllable** (receiver). The sender's control bar carries **Volume | EQ | Stop**, both audio buttons wired to the *receiver's* chain:
+
+- **Wire:** `RemoteAudioSettings` (eq enabled + `[EQBand]` + volume, version-tolerant) broadcast receiver→sender as `.audioSettings` on connect and on change (its own coalescer, so a slider drag doesn't reserialize the queue). Sender→receiver commands: `.setEQEnabled`, `.setEQBand(id:gain:frequency:bandwidth:)` (all three params per edit, so a dropped value can't desync a band), `.resetEQ`, `.setVolume`, `.requestAudioSettings`.
+- **Receiver** ([RemoteReceiverCoordinator](Pocket Tandas/Remote/RemoteReceiverCoordinator.swift)) applies them to the same `Equalizer` / `PlaybackEngine` its own EQ panel drives, and observes `equalizer.isEnabled`/`bands` + `engine.masterVolume` to broadcast.
+- **Sender** ([RemoteAudioControl](Pocket Tandas/Remote/RemoteAudioControl.swift)) mirrors that state but applies its own edits *optimistically* (sliders must follow the finger); echoes arriving within 0.6 s of a local edit are held and applied once the drag settles, so the receiver still has the final word.
+- **Views:** `EqualizerControlling` / `VolumeControlling` ([AudioControlling.swift](Pocket Tandas/Audio/AudioControlling.swift)) let `EQButton`/`EqualizerView` and the new `VolumeButton`/`VolumeView` drive either the local chain or the remote one — the same trick `PlaybackControlling` plays for Stop/Resume. `EQBand` is now a shared top-level type (also the wire payload).
+- **Engine:** `PlaybackEngine.masterVolume` (0…1, persisted under `playback.masterVolume`) replaces the `normalVolume` constant, so fades ramp between the chosen level and 0. Volume is remote-only in the UI: locally the hardware keys already do it, but they can't reach the phone wired to the speakers.

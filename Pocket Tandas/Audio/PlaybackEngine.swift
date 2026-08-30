@@ -44,7 +44,13 @@ final class PlaybackEngine {
     /// down first and the two never overlap. See PreListenPlayer.
     @ObservationIgnored var onPlaybackStart: (() -> Void)?
 
-    @ObservationIgnored let normalVolume: Float = 1.0
+    /// Master output level, 0…1 — the mixer level that means "full, un-faded
+    /// playback". Set from the Volume panel (locally or over the remote link) and
+    /// persisted, so a level survives relaunches. Fades ramp between it and 0.
+    static let masterVolumeKey = "playback.masterVolume"
+    private(set) var masterVolume: Float = 1.0
+
+    var normalVolume: Float { masterVolume }
 
     /// DJ-mode fade-out length (seconds). Configurable from the Launcher and
     /// persisted under `fadeOutDurationKey`; read live at each Stop so a change
@@ -106,6 +112,7 @@ final class PlaybackEngine {
         self.equalizer = equalizer
         self.activePlayer = playerA
         self.standbyPlayer = playerB
+        self.masterVolume = Self.persistedMasterVolume()
         configureGraph()
         observeConfigurationChange()
         wireSessionEvents()
@@ -126,7 +133,15 @@ final class PlaybackEngine {
         let format = mixer.outputFormat(forBus: 0)
         engine.connect(mixer, to: equalizer.node, format: format)
         engine.connect(equalizer.node, to: engine.outputNode, format: format)
+        mixer.outputVolume = normalVolume
         engine.prepare()
+    }
+
+    /// Stored master volume, or unity when nothing was ever set (`double(forKey:)`
+    /// would read a missing key as 0 — silence).
+    private static func persistedMasterVolume() -> Float {
+        guard let stored = UserDefaults.standard.object(forKey: masterVolumeKey) as? Double else { return 1.0 }
+        return Float(stored).clamped(to: 0...1)
     }
 
     private func ensureEngineRunning() {
@@ -196,6 +211,17 @@ final class PlaybackEngine {
                    duration: 0.3,
                    apply: { [weak self] v in self?.engine.mainMixerNode.outputVolume = v },
                    completion: {})
+    }
+
+    /// Set the master output level (0…1) and persist it. Applied to the mixer at
+    /// once so a drag is audible live — except while a fade-out owns the lever, in
+    /// which case the new level takes effect on the next play/resume.
+    func setMasterVolume(_ value: Float) {
+        let level = value.clamped(to: 0...1)
+        guard level != masterVolume else { return }
+        masterVolume = level
+        UserDefaults.standard.set(Double(level), forKey: Self.masterVolumeKey)
+        if !state.isFadingOut { engine.mainMixerNode.outputVolume = level }
     }
 
     /// Instant stop (queue exhausted, or the deferred end of a fade-out).
