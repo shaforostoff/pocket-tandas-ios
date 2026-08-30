@@ -50,12 +50,15 @@ enum DirectoryLister {
 
         let needle = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         if !needle.isEmpty {
+            // Match the filename and, when scanned, the track's title/artist/genre.
+            // `localizedStandardContains` folds case *and* diacritics (so "anibal"
+            // finds "Aníbal"), matching the locale-aware sort used elsewhere.
             entries = entries.filter { entry in
-                if entry.name.localizedCaseInsensitiveContains(needle) { return true }
+                if entry.name.localizedStandardContains(needle) { return true }
                 guard let m = metadata(entry.url) else { return false }
                 return [m.title, m.artist, m.genre]
                     .compactMap { $0 }
-                    .contains { $0.localizedCaseInsensitiveContains(needle) }
+                    .contains { $0.localizedStandardContains(needle) }
             }
         }
 
