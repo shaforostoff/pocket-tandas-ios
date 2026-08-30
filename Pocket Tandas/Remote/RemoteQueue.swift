@@ -22,6 +22,10 @@ final class RemoteQueue {
     private(set) var playback = RemotePlaybackState()
     private(set) var progress = RemoteProgress()
 
+    /// Brief notice for the Remote Send UI when the receiver couldn't resolve some
+    /// added tracks (not in its library / not playable). Auto-clears after a moment.
+    private(set) var addFailureNotice: String?
+
     @ObservationIgnored let link: PeerLink
     @ObservationIgnored private var lastSnapshotSeq: UInt64 = 0
     @ObservationIgnored private var lastProgressSeq: UInt64 = 0
@@ -56,9 +60,24 @@ final class RemoteQueue {
             guard progress.seq > lastProgressSeq else { return }
             lastProgressSeq = progress.seq
             self.progress = progress
-        case .addTrackResult, .requestPlay, .stopWithFade, .resumeFromFade,
+        case .addTrackResult(_, let failed):
+            noteAddResult(failed: failed)
+        case .requestPlay, .stopWithFade, .resumeFromFade,
              .setAnchor, .move, .removeItems, .addTracks, .requestSnapshot:
             break   // not consumed by the sender
+        }
+    }
+
+    /// Surface a brief notice when the receiver couldn't resolve some adds. Runs on
+    /// main (PeerLink delivers on main); auto-clears after a few seconds.
+    private func noteAddResult(failed: Int) {
+        guard failed > 0 else { return }
+        let notice = failed == 1
+            ? "1 track couldn’t be added — not found on the receiver."
+            : "\(failed) tracks couldn’t be added — not found on the receiver."
+        addFailureNotice = notice
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            if self?.addFailureNotice == notice { self?.addFailureNotice = nil }
         }
     }
 

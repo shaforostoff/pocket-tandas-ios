@@ -36,7 +36,11 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     /// leaves the list alone when the user taps a row (which is already on screen).
     private(set) var autoAdvanceCount = 0
 
-    @ObservationIgnored private var player: AVAudioPlayer?
+    /// File auditions use AVAudioPlayer; Music-library items use AVPlayer (which can
+    /// open `ipod-library://` URLs, unlike AVAudioPlayer). At most one is live.
+    @ObservationIgnored private var filePlayer: AVAudioPlayer?
+    @ObservationIgnored private var mediaPlayer: AVPlayer?
+    @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private let audioSession: AudioSessionController
 
     /// The audio files of the place the browser is *currently* showing, in display
@@ -58,20 +62,31 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     /// Start (or restart, from the top) auditioning `url`, tapped while browsing
-    /// `folder`. Replaces any track already prelistening.
+    /// `folder`. Replaces any track already prelistening. A file plays through
+    /// AVAudioPlayer; a Music-library `ipod-library://` URL plays through AVPlayer.
     func play(_ url: URL, in folder: URL?) {
-        player?.stop()
+        teardownPlayers()
         audioSession.activate()
-        guard let newPlayer = try? AVAudioPlayer(contentsOf: url) else {
-            ptLog("prelisten FAILED to open \(url.lastPathComponent)")
-            player = nil
-            currentURL = nil
-            contextFolder = nil
-            return
+        if url.scheme == "ipod-library" {
+            let item = AVPlayerItem(url: url)
+            endObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
+                self?.advanceAfterFinish()
+            }
+            let newPlayer = AVPlayer(playerItem: item)
+            newPlayer.play()
+            mediaPlayer = newPlayer
+        } else {
+            guard let newPlayer = try? AVAudioPlayer(contentsOf: url) else {
+                ptLog("prelisten FAILED to open \(url.lastPathComponent)")
+                currentURL = nil
+                contextFolder = nil
+                return
+            }
+            newPlayer.delegate = self
+            newPlayer.play()
+            filePlayer = newPlayer
         }
-        newPlayer.delegate = self
-        newPlayer.play()
-        player = newPlayer
         contextFolder = folder
         currentURL = url
         ptLog("prelisten play \(url.lastPathComponent) in \(folder?.lastPathComponent ?? "nil")")
@@ -83,10 +98,21 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     func stop() {
         guard isPlaying else { return }
         ptLog("prelisten stop")
-        player?.stop()
-        player = nil
+        teardownPlayers()
         currentURL = nil
         contextFolder = nil
+    }
+
+    /// Tear down whichever player is live, plus the AVPlayer end-of-item observer.
+    private func teardownPlayers() {
+        filePlayer?.stop()
+        filePlayer = nil
+        mediaPlayer?.pause()
+        mediaPlayer = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
     }
 
     /// Browser → player: the audio files now shown (display order) and the place

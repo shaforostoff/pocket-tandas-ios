@@ -54,14 +54,51 @@ struct RemoteSnapshot: Codable, Hashable {
     var seq: UInt64
 }
 
-/// A request to add a track on the receiver (Milestone 2). The receiver resolves
-/// it to a local file via RemoteTrackResolver. `relativePath` is the sender's
-/// base-relative path; the metadata fields are the sender's cached values, used
-/// for the metadata-match fallback when paths/extensions don't line up.
+/// A request to add a track on the receiver. The receiver resolves it via
+/// RemoteTrackResolver to either a local file (file source) or a track in its own
+/// Music library (media source). For files, `relativePath` is the sender's
+/// base-relative path and the metadata fields drive the fallback match. For media,
+/// there is no shared path — `persistentID` differs per device — so matching is by
+/// title/artist(/album/year/duration) against the receiver's synced library.
+///
+/// JSON/version-tolerant: every field is optional and `source` defaults to `.file`
+/// (via the custom decoder) so a request from an older sender still decodes.
 struct TrackAddRequest: Codable, Hashable {
-    let relativePath: String
-    let artist: String?
-    let title: String?
-    let dateText: String?
-    let year: Int?
+    enum Source: String, Codable { case file, mediaLibrary }
+
+    var source: Source = .file
+    var relativePath: String?       // file source only
+    var artist: String?
+    var title: String?
+    var dateText: String?
+    var year: Int?
+    var album: String?              // media: extra MPMediaQuery disambiguator
+    var durationHint: TimeInterval? // media: tie-break near-equal-length matches
+
+    init(source: Source = .file, relativePath: String? = nil, artist: String? = nil,
+         title: String? = nil, dateText: String? = nil, year: Int? = nil,
+         album: String? = nil, durationHint: TimeInterval? = nil) {
+        self.source = source
+        self.relativePath = relativePath
+        self.artist = artist
+        self.title = title
+        self.dateText = dateText
+        self.year = year
+        self.album = album
+        self.durationHint = durationHint
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // decodeIfPresent ?? default — synthesized Codable would treat a missing
+        // `source` key as an error, so apply the .file default explicitly.
+        source = try c.decodeIfPresent(Source.self, forKey: .source) ?? .file
+        relativePath = try c.decodeIfPresent(String.self, forKey: .relativePath)
+        artist = try c.decodeIfPresent(String.self, forKey: .artist)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        dateText = try c.decodeIfPresent(String.self, forKey: .dateText)
+        year = try c.decodeIfPresent(Int.self, forKey: .year)
+        album = try c.decodeIfPresent(String.self, forKey: .album)
+        durationHint = try c.decodeIfPresent(TimeInterval.self, forKey: .durationHint)
+    }
 }

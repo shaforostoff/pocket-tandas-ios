@@ -35,7 +35,6 @@ struct BrowserView: View {
     @State private var sort: SortOption = .filename
     @State private var direction: SortDirection = .ascending
     @State private var showingPicker = false
-    @State private var showingMusicPicker = false
     @State private var musicAccessDenied = false
     /// On "Back", the child we left — so the parent list can scroll back to it.
     @State private var scrollTarget: URL?
@@ -54,10 +53,6 @@ struct BrowserView: View {
                       allowedContentTypes: [.folder],
                       allowsMultipleSelection: false) { result in
             handlePick(result)
-        }
-        .sheet(isPresented: $showingMusicPicker) {
-            MediaPicker(onPick: importMusic, onCancel: { showingMusicPicker = false })
-                .ignoresSafeArea()
         }
         .alert("Music Access Needed", isPresented: $musicAccessDenied) {
             Button("OK", role: .cancel) {}
@@ -383,42 +378,29 @@ struct BrowserView: View {
                                year: snapshot?.year)
     }
 
-    /// The "Browse" control in the header: a Files/Music dropdown in local
-    /// Explore/DJ, or the plain folder picker in Remote Send — there, imported
-    /// library copies live only on this device, so the receiver couldn't resolve
-    /// them, and Music is left off the menu.
+    /// The "Browse" control in the header: a Files/Music dropdown. In Remote Send,
+    /// Music tracks are sent to the receiver as metadata requests it resolves in its
+    /// own (synced) library — so the source is offered there too.
     @ViewBuilder
     private var browseControl: some View {
-        if mode.isRemoteSend {
-            Button { showingPicker = true } label: {
-                Image(systemName: "folder.badge.gearshape").imageScale(.large)
-            }
-            .buttonStyle(.borderless)
-        } else {
-            Menu {
-                sourceMenuItems
-            } label: {
-                Image(systemName: "folder.badge.gearshape").imageScale(.large)
-            }
-            .buttonStyle(.borderless)
+        Menu {
+            sourceMenuItems
+        } label: {
+            Image(systemName: "folder.badge.gearshape").imageScale(.large)
         }
+        .buttonStyle(.borderless)
     }
 
     /// The prominent action on the empty-state prompt, mirroring `browseControl`
     /// for when no base folder has been chosen yet.
     @ViewBuilder
     private var browsePromptButton: some View {
-        if mode.isRemoteSend {
-            Button("Choose Folder…") { showingPicker = true }
-                .buttonStyle(.borderedProminent)
-        } else {
-            Menu {
-                sourceMenuItems
-            } label: {
-                Text("Browse…")
-            }
-            .buttonStyle(.borderedProminent)
+        Menu {
+            sourceMenuItems
+        } label: {
+            Text("Browse…")
         }
+        .buttonStyle(.borderedProminent)
     }
 
     /// The two browse sources: the file/folder picker and the device Music library.
@@ -432,33 +414,14 @@ struct BrowserView: View {
         }
     }
 
-    /// Request Music-library access, then present the system music picker. A denial
-    /// (or restriction) surfaces the access alert instead.
+    /// Request Music-library access, then switch the top half to the in-app Music
+    /// browser. A denial (or restriction) surfaces the access alert instead.
     private func chooseMusic() {
         Task { @MainActor in
             if await MediaLibraryImporter.requestAuthorization() == .authorized {
-                showingMusicPicker = true
+                browser.source = .music
             } else {
                 musicAccessDenied = true
-            }
-        }
-    }
-
-    /// Export the picked non-DRM tracks into the sandbox and enqueue them, then
-    /// scan their tags for display. DRM picks (no asset URL) are skipped by the
-    /// importer. Not reached in Remote Send (Music is off that menu).
-    private func importMusic(_ items: [MPMediaItem]) {
-        showingMusicPicker = false
-        guard !items.isEmpty else { return }
-        Task {
-            let summary = await MediaLibraryImporter.importItems(items)
-            await MainActor.run {
-                guard !summary.imported.isEmpty else { return }
-                let added = summary.imported.map {
-                    QueueItem(url: $0, trackKey: StableTrackID.key(for: $0, baseURL: library.baseURL))
-                }
-                queue.enqueue(contentsOf: added)
-                metadata.scan(urls: summary.imported, baseURL: library.baseURL)
             }
         }
     }

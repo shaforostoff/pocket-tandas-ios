@@ -223,9 +223,10 @@ final class PlayQueueTests: XCTestCase {
         q2.restore(baseURL: baseB)
         XCTAssertEqual(q2.items.count, 1)
         let restored = try XCTUnwrap(q2.items.first)
-        XCTAssertTrue(restored.url.path.hasSuffix("Album/01.mp3"))
-        XCTAssertTrue(restored.url.path.contains(baseB.lastPathComponent))
-        XCTAssertTrue(fm.fileExists(atPath: restored.url.path))
+        let restoredPath = try XCTUnwrap(restored.url).path
+        XCTAssertTrue(restoredPath.hasSuffix("Album/01.mp3"))
+        XCTAssertTrue(restoredPath.contains(baseB.lastPathComponent))
+        XCTAssertTrue(fm.fileExists(atPath: restoredPath))
     }
 
     func testPersistenceDropsMissingFiles() throws {

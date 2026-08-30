@@ -20,6 +20,7 @@
 import Foundation
 import SwiftData
 import Observation
+import MediaPlayer
 
 @Observable
 final class RemoteReceiverCoordinator {
@@ -51,6 +52,9 @@ final class RemoteReceiverCoordinator {
     func start() {
         guard !running else { return }
         running = true
+        // Request Music access once so a sender's media tracks can resolve against
+        // this receiver's (synced) library. No-op if already authorized/denied.
+        Task { _ = await MediaLibraryImporter.requestAuthorization() }
         link.startAdvertising()
         observe()
         startProgressTimer()
@@ -101,7 +105,9 @@ final class RemoteReceiverCoordinator {
     private func makeSnapshot() -> RemoteSnapshot {
         let anchorID = queue.anchorID
         let items = queue.items.map { item -> RemoteQueueItem in
-            let snapshot = metadata.snapshot(forKey: item.trackKey)
+            // Media items carry their own snapshot (seeded at enqueue); fall back to
+            // it if the cache hasn't been populated.
+            let snapshot = metadata.snapshot(forKey: item.trackKey) ?? item.mediaSnapshot
             let display: TrackDisplay
             if let snapshot, !snapshot.isEmpty {
                 display = TrackDisplay(metadata: snapshot, fallback: item.filename)
@@ -191,15 +197,27 @@ final class RemoteReceiverCoordinator {
     private func applyAddTracks(_ requests: [TrackAddRequest]) {
         let resolver = RemoteTrackResolver(baseURL: library.baseURL, container: container)
         var items: [QueueItem] = []
-        var urls: [URL] = []
+        var fileURLs: [URL] = []
         for request in requests {
-            guard let url = resolver.resolve(request) else { continue }
-            items.append(QueueItem(url: url, trackKey: StableTrackID.key(for: url, baseURL: library.baseURL)))
-            urls.append(url)
+            switch resolver.resolve(request) {
+            case .file(let url):
+                items.append(QueueItem(url: url, trackKey: StableTrackID.key(for: url, baseURL: library.baseURL)))
+                fileURLs.append(url)
+            case .media(let mediaItem):
+                guard let assetURL = mediaItem.assetURL else { continue }
+                let ref = MediaRef(persistentID: mediaItem.persistentID, assetURL: assetURL,
+                                   displayTitle: mediaItem.title ?? "Unknown", duration: mediaItem.playbackDuration)
+                let snapshot = TrackMetadataSnapshot(mediaItem: mediaItem)
+                let queueItem = QueueItem(media: ref, snapshot: snapshot)
+                metadata.inject(snapshot, forKey: queueItem.trackKey)
+                items.append(queueItem)
+            case nil:
+                continue
+            }
         }
         if !items.isEmpty {
             queue.enqueue(contentsOf: items)
-            metadata.scan(urls: urls, baseURL: library.baseURL)
+            if !fileURLs.isEmpty { metadata.scan(urls: fileURLs, baseURL: library.baseURL) }   // files only
         }
         link.send(.addTrackResult(resolved: items.count, failed: requests.count - items.count))
     }

@@ -21,6 +21,14 @@
 
 import Foundation
 import SwiftData
+import MediaPlayer
+
+/// What a TrackAddRequest resolved to on the receiver: a local file, or a track in
+/// the receiver's own Music library (played by reference, like a local media add).
+enum ResolvedTrack {
+    case file(URL)
+    case media(MPMediaItem)
+}
 
 struct RemoteTrackResolver {
     let baseURL: URL?
@@ -29,15 +37,28 @@ struct RemoteTrackResolver {
     var container: ModelContainer?
     var fileManager: FileManager = .default
 
-    func resolve(_ request: TrackAddRequest) -> URL? {
-        guard let baseURL else { return nil }
+    func resolve(_ request: TrackAddRequest) -> ResolvedTrack? {
+        switch request.source {
+        case .file:
+            // The base-folder requirement is a FILE concern: a media request must
+            // resolve even on a receiver that has only a Music library.
+            guard let baseURL else { return nil }
+            return resolveFile(request, baseURL: baseURL).map(ResolvedTrack.file)
+        case .mediaLibrary:
+            return resolveMedia(request).map(ResolvedTrack.media)
+        }
+    }
 
-        let relative = request.relativePath as NSString
+    // MARK: - File source (the original 4-step fallback)
+
+    private func resolveFile(_ request: TrackAddRequest, baseURL: URL) -> URL? {
+        guard let relativePath = request.relativePath else { return nil }
+        let relative = relativePath as NSString
         let relativeDir = relative.deletingLastPathComponent
         let stem = (relative.lastPathComponent as NSString).deletingPathExtension
 
         // 1. Exact relative path.
-        let exact = baseURL.appending(path: request.relativePath)
+        let exact = baseURL.appending(path: relativePath)
         if isAudioFile(exact) { return exact }
 
         // 2. Same folder + stem, any other supported audio extension.
@@ -95,6 +116,47 @@ struct RemoteTrackResolver {
             if url.deletingPathExtension().lastPathComponent.lowercased() == target { return url }
         }
         return nil
+    }
+
+    // MARK: - Media source (the receiver's own Music library)
+
+    /// Match the request against the receiver's library by metadata — persistentID
+    /// is per-device, so title/artist (then album, year, nearest duration) is the
+    /// only cross-device-correct key. Each filter is applied only while it still
+    /// leaves more than one candidate, so a missing/wrong field never zeroes a good
+    /// match. Returns only a locally-playable item (non-nil assetURL); otherwise
+    /// the request is counted as failed rather than enqueued-then-unplayable.
+    private func resolveMedia(_ request: TrackAddRequest) -> MPMediaItem? {
+        guard MPMediaLibrary.authorizationStatus() == .authorized,
+              let title = request.title, !title.isEmpty else { return nil }
+
+        let query = MPMediaQuery.songs()
+        query.addFilterPredicate(MPMediaPropertyPredicate(value: title,
+                                                          forProperty: MPMediaItemPropertyTitle,
+                                                          comparisonType: .equalTo))
+        if let artist = request.artist, !artist.isEmpty {
+            query.addFilterPredicate(MPMediaPropertyPredicate(value: artist,
+                                                              forProperty: MPMediaItemPropertyArtist,
+                                                              comparisonType: .equalTo))
+        }
+        guard var items = query.items, !items.isEmpty else { return nil }
+
+        if items.count > 1, let album = request.album, !album.isEmpty {
+            let byAlbum = items.filter { equal($0.albumTitle, album) }
+            if !byAlbum.isEmpty { items = byAlbum }
+        }
+        if items.count > 1, let year = request.year {
+            let byYear = items.filter { releaseYear(of: $0) == year }
+            if !byYear.isEmpty { items = byYear }
+        }
+        if items.count > 1, let hint = request.durationHint {
+            items.sort { abs($0.playbackDuration - hint) < abs($1.playbackDuration - hint) }
+        }
+        return items.first { $0.assetURL != nil }
+    }
+
+    private func releaseYear(of item: MPMediaItem) -> Int? {
+        item.releaseDate.map { Calendar.current.component(.year, from: $0) }
     }
 
     // MARK: - Helpers
