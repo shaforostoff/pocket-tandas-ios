@@ -30,6 +30,14 @@ enum StableTrackID {
         return "\(url.lastPathComponent)|\(size)"
     }
 
+    /// Base-relative path if `url` is inside `base`, else nil — a relocatable
+    /// identifier (used to persist the queue) that survives the base folder
+    /// resolving to a new absolute path across launches.
+    static func relativePath(for url: URL, baseURL: URL?) -> String? {
+        guard let base = baseURL else { return nil }
+        return relativePath(of: url, under: base)
+    }
+
     private static func relativePath(of url: URL, under base: URL) -> String? {
         let basePath = base.standardizedFileURL.path
         let filePath = url.standardizedFileURL.path
