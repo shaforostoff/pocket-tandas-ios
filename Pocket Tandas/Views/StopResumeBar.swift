@@ -47,7 +47,12 @@ struct StopResumeBar: View {
             .tint(.green)
         } else {
             Button(role: .destructive) {
-                engine.stopWithFade()
+                // DJ mode fades out (configurable length); Explore stops at once.
+                if mode == .dj {
+                    engine.stopWithFade()
+                } else {
+                    engine.stop()
+                }
             } label: {
                 Label("Stop", systemImage: "stop.fill")
                     .frame(maxWidth: .infinity)
