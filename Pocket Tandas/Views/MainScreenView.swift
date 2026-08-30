@@ -14,19 +14,24 @@ import SwiftUI
 import SwiftData
 
 struct MainScreenView: View {
-    /// Carried for future per-mode behaviour; both modes currently behave the same.
     let mode: AppMode
+
+    /// Where the browser currently is, shared so the control bar's Save action
+    /// can offer this folder and its parents. Lives here so it survives the
+    /// browser/queue subviews and resets on each presentation of this screen.
+    @State private var browser = BrowserState()
 
     var body: some View {
         VStack(spacing: 0) {
             BrowserView()
                 .frame(maxHeight: .infinity)
             Divider()
-            StopResumeBar()
+            StopResumeBar(mode: mode)
             Divider()
             QueueView()
                 .frame(maxHeight: .infinity)
         }
+        .environment(browser)
     }
 }
 

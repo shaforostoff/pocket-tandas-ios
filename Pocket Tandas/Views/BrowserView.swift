@@ -19,9 +19,9 @@ struct BrowserView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayQueue.self) private var queue
     @Environment(MetadataService.self) private var metadata
+    @Environment(BrowserState.self) private var browser
     @Environment(\.dismiss) private var dismiss
 
-    @State private var currentFolder: URL?
     @State private var rawEntries: [LibraryEntry] = []
     @State private var filterText = ""
     @State private var sort: SortOption = .filename
@@ -34,7 +34,7 @@ struct BrowserView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if currentFolder != nil {
+            if browser.currentFolder != nil {
                 entryList
             } else {
                 chooseFolderPrompt
@@ -46,12 +46,12 @@ struct BrowserView: View {
             handlePick(result)
         }
         .onAppear {
-            if currentFolder == nil { navigate(to: library.baseURL) }
+            if browser.currentFolder == nil { navigate(to: library.baseURL) }
         }
         .onChange(of: library.baseURL) { _, newValue in
             navigate(to: newValue)
         }
-        .task(id: currentFolder) {
+        .task(id: browser.currentFolder) {
             loadFolder()
         }
     }
@@ -60,7 +60,7 @@ struct BrowserView: View {
     /// audio. A real folder is read from disk; an opened playlist is parsed into
     /// its tracks — deduped, original order kept — and browsed like a folder.
     private func loadFolder() {
-        guard let folder = currentFolder else {
+        guard let folder = browser.currentFolder else {
             rawEntries = []
             return
         }
@@ -87,7 +87,7 @@ struct BrowserView: View {
             }
             .buttonStyle(.borderless)
 
-            if currentFolder != nil {
+            if browser.currentFolder != nil {
                 TextField("Filter", text: $filterText)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
@@ -182,19 +182,19 @@ struct BrowserView: View {
     }
 
     private var canGoUp: Bool {
-        guard let folder = currentFolder else { return false }
+        guard let folder = browser.currentFolder else { return false }
         return !library.isBaseFolder(folder)
     }
 
     /// True when the displayed folder is the user's chosen base folder.
     private var isAtRoot: Bool {
-        guard let folder = currentFolder else { return false }
+        guard let folder = browser.currentFolder else { return false }
         return library.isBaseFolder(folder)
     }
 
     /// True when the current location is a playlist opened as a fake folder.
     private var isViewingPlaylist: Bool {
-        guard let folder = currentFolder else { return false }
+        guard let folder = browser.currentFolder else { return false }
         return AudioFileTypes.isPlaylist(folder)
     }
 
@@ -208,7 +208,7 @@ struct BrowserView: View {
     /// Change location, clear the filter, and keep the sort valid for the
     /// destination: a playlist defaults to its listed order; folders never use it.
     private func navigate(to url: URL?) {
-        currentFolder = url
+        browser.currentFolder = url
         filterText = ""
         if let url, AudioFileTypes.isPlaylist(url) {
             sort = .listed
@@ -220,7 +220,7 @@ struct BrowserView: View {
     }
 
     private func goUp() {
-        guard let folder = currentFolder, !library.isBaseFolder(folder) else { return }
+        guard let folder = browser.currentFolder, !library.isBaseFolder(folder) else { return }
         scrollTarget = folder   // restore the parent list to the item we came from
         navigate(to: folder.deletingLastPathComponent())
     }
