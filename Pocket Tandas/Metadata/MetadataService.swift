@@ -7,8 +7,10 @@
 //  Pocket Tandas
 //
 //  Scans audio files for metadata and caches the results. Strategy:
-//   - An in-memory `snapshots` dict (observed by the UI) gives reliable, instant
-//     row updates — no reliance on SwiftData cross-context @Query propagation.
+//   - An in-memory `snapshots` dict (observed by the UI) drives row display
+//     without relying on SwiftData cross-context @Query propagation. A folder
+//     scan publishes all of its results in one batch (see `scanFolder`) so rows
+//     fill in and sort a single time, not one track at a time.
 //   - SwiftData (TrackMetadata) is the durable store: loaded into memory at
 //     launch, written as scans complete, keyed by StableTrackID.
 //
@@ -25,9 +27,14 @@ final class MetadataService {
     /// trackKey -> snapshot. UI reads this; updates are observed.
     private(set) var snapshots: [String: TrackMetadataSnapshot] = [:]
 
+    /// True while the most recent folder scan still has tracks outstanding. The
+    /// browser reads it to defer metadata-based sorting until every row is known.
+    private(set) var isScanningFolder = false
+
     @ObservationIgnored private var modDates: [String: Date] = [:]
     @ObservationIgnored private let container: ModelContainer
     @ObservationIgnored private var folderScanTask: Task<Void, Never>?
+    @ObservationIgnored private var folderScanGeneration = 0
     @ObservationIgnored private let maxConcurrent = 4
 
     init(container: ModelContainer) {
@@ -48,22 +55,54 @@ final class MetadataService {
     // MARK: - Scanning
 
     /// Scan a folder's audio files, skipping cache hits. Cancels the previous
-    /// folder scan (so leaving a folder stops its in-flight work).
+    /// folder scan (so leaving a folder stops its in-flight work). Holds
+    /// `isScanningFolder` true until the whole folder is done, and publishes the
+    /// results as one batch — never one track at a time.
+    @MainActor
     func scanFolder(urls: [URL], baseURL: URL?) {
-        guard !urls.isEmpty else { return }
         folderScanTask?.cancel()
+        let pending = urls.isEmpty ? [] : pendingItems(urls: urls, baseURL: baseURL)
+        guard !pending.isEmpty else {
+            // Nothing to scan for this folder (empty or fully cached).
+            isScanningFolder = false
+            return
+        }
+        isScanningFolder = true
+        folderScanGeneration += 1
+        let generation = folderScanGeneration
         folderScanTask = Task { @MainActor in
-            await self.performScan(urls: urls, baseURL: baseURL)
+            await self.performScan(pending)
+            // Only the newest scan owns the flag: a superseded (cancelled) scan
+            // must not clear it out from under its replacement.
+            if generation == self.folderScanGeneration {
+                self.isScanningFolder = false
+            }
         }
     }
 
     /// Scan specific URLs (e.g. tracks just added to the queue, or a playlist's
-    /// tracks) without disturbing an in-flight folder scan.
+    /// tracks) without disturbing an in-flight folder scan or its scanning flag.
+    @MainActor
     func scan(urls: [URL], baseURL: URL?) {
         guard !urls.isEmpty else { return }
+        let pending = pendingItems(urls: urls, baseURL: baseURL)
+        guard !pending.isEmpty else { return }
         Task { @MainActor in
-            await self.performScan(urls: urls, baseURL: baseURL)
+            await self.performScan(pending)
         }
+    }
+
+    /// Cache misses / stale entries among `urls`, in input order.
+    @MainActor
+    private func pendingItems(urls: [URL], baseURL: URL?) -> [(url: URL, key: String, modDate: Date)] {
+        var pending: [(url: URL, key: String, modDate: Date)] = []
+        for url in urls {
+            let key = StableTrackID.key(for: url, baseURL: baseURL)
+            let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if let known = modDates[key], known == modDate { continue }   // cache hit
+            pending.append((url, key, modDate))
+        }
+        return pending
     }
 
     @MainActor
@@ -79,19 +118,14 @@ final class MetadataService {
     }
 
     @MainActor
-    private func performScan(urls: [URL], baseURL: URL?) async {
-        // Determine cache misses / stale entries up front.
-        var pending: [(url: URL, key: String, modDate: Date)] = []
-        for url in urls {
-            let key = StableTrackID.key(for: url, baseURL: baseURL)
-            let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            if let known = modDates[key], known == modDate { continue }   // cache hit
-            pending.append((url, key, modDate))
-        }
+    private func performScan(_ pending: [(url: URL, key: String, modDate: Date)]) async {
         guard !pending.isEmpty else { return }
-
         let context = container.mainContext
 
+        // Extract off-main in a bounded group, collecting every result. We do NOT
+        // touch the observed `snapshots` here: publishing one track at a time is
+        // exactly the per-row pop-in and mid-scan reordering we want to avoid.
+        var results: [(key: String, modDate: Date, extracted: ExtractedMetadata)] = []
         await withTaskGroup(of: (String, Date, ExtractedMetadata).self) { group in
             var iterator = pending.makeIterator()
             func addNext() {
@@ -102,9 +136,19 @@ final class MetadataService {
 
             for await (key, modDate, extracted) in group {
                 if Task.isCancelled { break }
-                apply(key: key, modDate: modDate, extracted: extracted, context: context)
+                results.append((key: key, modDate: modDate, extracted: extracted))
                 addNext()
             }
+        }
+
+        // Folder left mid-scan: drop the partial batch rather than publish a
+        // folder the user has already navigated away from.
+        guard !Task.isCancelled else { return }
+
+        // Publish everything in a single synchronous pass so the UI observes one
+        // update: rows fill in and (re)sort exactly once, when all metadata is in.
+        for r in results {
+            apply(key: r.key, modDate: r.modDate, extracted: r.extracted, context: context)
         }
         try? context.save()
     }

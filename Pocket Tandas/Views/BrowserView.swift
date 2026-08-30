@@ -14,6 +14,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+@MainActor
 struct BrowserView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayQueue.self) private var queue
@@ -81,6 +82,10 @@ struct BrowserView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
 
+                if metadata.isScanningFolder {
+                    ProgressView().controlSize(.small)
+                }
+
                 SortMenu(sort: $sort, direction: $direction)
 
                 if isAtRoot {
@@ -99,8 +104,13 @@ struct BrowserView: View {
 
     @ViewBuilder
     private var entryList: some View {
+        // While the folder is still being scanned, metadata-based sorts have no
+        // data yet — list in natural filename order and apply the chosen sort
+        // once every track's metadata is in (a single reorder, not per-track).
+        let deferSort = metadata.isScanningFolder && sort != .filename
         let entries = DirectoryLister.arrange(rawEntries, filter: filterText,
-                                              sort: sort, direction: direction,
+                                              sort: deferSort ? .filename : sort,
+                                              direction: deferSort ? .ascending : direction,
                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
         if entries.isEmpty {
             ContentUnavailableView(
