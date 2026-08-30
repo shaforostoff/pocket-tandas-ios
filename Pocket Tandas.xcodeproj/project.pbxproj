@@ -68,6 +68,7 @@
 		D3BE4C9787ACC38E3A881157 /* MusicBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDB4C1584276C049521CECA /* MusicBrowserView.swift */; };
 		D4F14E70A3FB44560BADC9D2 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A840598B56A56E71B0F0EA /* QueueView.swift */; };
 		D6164F32B895D20C772A6917 /* RemoteReceiverCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05024A29AC96010E6E14170A /* RemoteReceiverCoordinator.swift */; };
+		D7104E5AA629E132B657CE83 /* MediaAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEB4CA58A42864EDBA197EC /* MediaAvailability.swift */; };
 		DABA4D49B9D097A034D0AA5D /* MetadataKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */; };
 		DC9E448E9D47F2AF03F1B15D /* PreListenPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76124D929F0AFEA8128073DF /* PreListenPlayer.swift */; };
 		DE8F4332A9265EF9457F9E2E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
@@ -170,6 +171,7 @@
 		D53643CEB516E9D67C100371 /* RemoteMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteMessage.swift; path = RemoteMessage.swift; sourceTree = "<group>"; };
 		D76246F18FB4D2EF38066899 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LibraryStore.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		DA504F82A4DD10D872654477 /* MusicLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MusicLibrary.swift; path = MusicLibrary.swift; sourceTree = "<group>"; };
+		DAEB4CA58A42864EDBA197EC /* MediaAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaAvailability.swift; path = "Pocket Tandas/Library/MediaAvailability.swift"; sourceTree = SOURCE_ROOT; };
 		E112487F8DED525D48E18718 /* PlaybackState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackState.swift; path = PlaybackState.swift; sourceTree = "<group>"; };
 		E23540369F03A26D4315C3F2 /* EQButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQButton.swift; path = EQButton.swift; sourceTree = "<group>"; };
 		EB774D14B26DCD27A530AB67 /* SortMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortMenu.swift; path = SortMenu.swift; sourceTree = "<group>"; };
@@ -295,6 +297,7 @@
 				DA974CEA80228E5E6F942B7D /* Metadata */,
 				1567439DB03FA1B6A4BEED3F /* Remote */,
 				094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */,
+				DAEB4CA58A42864EDBA197EC /* MediaAvailability.swift */,
 			);
 			path = "Pocket Tandas";
 			sourceTree = "<group>";
@@ -543,6 +546,7 @@
 				207643AB9D9703F0F8EE015A /* RemoteAudioControl.swift in Sources */,
 				8A9240CCA79E0FC973499D2E /* VolumeButton.swift in Sources */,
 				B8794538BBB6C30C230772F7 /* StayAwake.swift in Sources */,
+				D7104E5AA629E132B657CE83 /* MediaAvailability.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

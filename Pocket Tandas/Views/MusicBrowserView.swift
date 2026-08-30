@@ -34,6 +34,10 @@ struct MusicBrowserView: View {
     @State private var rawEntries: [MusicEntry] = []
     @State private var displayed: [MusicEntry] = []
 
+    /// What the last add or audition couldn't play, and why — nil when there is
+    /// nothing to report. See MediaAvailability.swift.
+    @State private var skipReport: MediaSkipReport?
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -50,6 +54,18 @@ struct MusicBrowserView: View {
         .onChange(of: browser.musicFilter) { _, _ in applyArrange() }
         .onChange(of: browser.musicSort) { _, _ in applyArrange() }
         .onChange(of: browser.musicDirection) { _, _ in applyArrange() }
+        // `presenting:` holds the report for the dismissal animation, so the text
+        // doesn't blank out as the alert slides away.
+        .alert(skipReport?.alertTitle ?? "", isPresented: skipAlertShown,
+               presenting: skipReport) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { report in
+            Text(report.message)
+        }
+    }
+
+    private var skipAlertShown: Binding<Bool> {
+        Binding(get: { skipReport != nil }, set: { if !$0 { skipReport = nil } })
     }
 
     // MARK: - Header
@@ -304,6 +320,16 @@ struct MusicBrowserView: View {
             browser.musicModel.push(.container(container))
         case .track:
             guard mode.isExploreLike, let track = entry.track else { return }
+            // Resolve before disturbing the engine: a track we can't play should
+            // say why, not stop a paused queue on its way to doing nothing.
+            guard let item = MusicLibrary.item(forPersistentID: track.persistentID) else {
+                skipReport = MediaSkipReport(title: track.title, reason: .unplayable)
+                return
+            }
+            if let reason = item.unavailability {
+                skipReport = MediaSkipReport(title: item.title ?? track.title, reason: reason)
+                return
+            }
             switch engine.state {
             case .playing, .fadingOut:
                 return                       // don't interrupt active queue playback
@@ -337,6 +363,8 @@ struct MusicBrowserView: View {
                 remoteQueue.addTracks([Self.mediaAddRequest(for: track, snapshot: entry.snapshot)])
             } else if let item = MusicLibrary.item(forPersistentID: track.persistentID) {
                 enqueue([item])
+            } else {
+                skipReport = MediaSkipReport(title: track.title, reason: .unplayable)
             }
         }
     }
@@ -355,12 +383,21 @@ struct MusicBrowserView: View {
                         album: track.album, durationHint: track.duration)
     }
 
-    /// Enqueue library items by reference — no copy. DRM/cloud items (no asset URL)
-    /// are skipped. Each item's snapshot is seeded so its queue row shows metadata.
+    /// Enqueue library items by reference — no copy. Items with no asset URL can't
+    /// go through the engine and are left out, but they are collected and reported
+    /// rather than dropped in silence: "nothing happened" reads as a broken app,
+    /// and half of these are a track the user need only download (see
+    /// MediaAvailability.swift). Each queued item's snapshot is seeded so its queue
+    /// row shows metadata.
     private func enqueue(_ items: [MPMediaItem]) {
         var queued: [QueueItem] = []
+        var skipped = MediaSkipReport()
         for item in items {
-            guard let assetURL = item.assetURL else { continue }
+            guard let assetURL = item.assetURL else {
+                skipped.add(title: item.title ?? "Unknown",
+                            reason: item.unavailability ?? .unplayable)
+                continue
+            }
             let ref = MediaRef(persistentID: item.persistentID, assetURL: assetURL,
                                displayTitle: item.title ?? "Unknown", duration: item.playbackDuration)
             let snapshot = TrackMetadataSnapshot(mediaItem: item)
@@ -368,7 +405,7 @@ struct MusicBrowserView: View {
             metadata.inject(snapshot, forKey: queueItem.trackKey)
             queued.append(queueItem)
         }
-        guard !queued.isEmpty else { return }
-        queue.enqueue(contentsOf: queued)
+        if !queued.isEmpty { queue.enqueue(contentsOf: queued) }
+        if !skipped.isEmpty { skipReport = skipped }
     }
 }
