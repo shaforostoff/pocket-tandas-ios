@@ -73,6 +73,15 @@ struct QueueView: View {
                     withAnimation { proxy.scrollTo(target, anchor: .bottom) }
                 }
             }
+            // On (re)creation — e.g. an iPad rotation rebuilds this list — bring the
+            // currently playing track into view. Deferred for the same reason as the
+            // insert scroll above: a freshly built List hasn't committed its rows yet.
+            .onAppear {
+                guard let currentID = rows.first(where: { $0.isCurrent })?.id else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    proxy.scrollTo(currentID, anchor: .center)
+                }
+            }
         }
     }
 
