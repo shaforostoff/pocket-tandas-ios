@@ -66,38 +66,58 @@ enum DirectoryLister {
             .filter(\.isFolder)
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-        var files = entries.filter { !$0.isFolder }
-        // `.listed` keeps the entries' given order (e.g. a playlist's own order);
-        // every other option sorts by the chosen key.
-        if sort != .listed {
-            files.sort { ascendingOrder($0, $1, sort: sort, metadata: metadata) }
-        }
-        if direction == .descending { files.reverse() }
+        let files = entries.filter { !$0.isFolder }
+        var sortedFiles = sortFiles(files, sort: sort, metadata: metadata)
+        if direction == .descending { sortedFiles.reverse() }
 
-        return folders + files
+        return folders + sortedFiles
     }
 
-    private static func ascendingOrder(_ a: LibraryEntry,
-                                       _ b: LibraryEntry,
-                                       sort: SortOption,
-                                       metadata: (URL) -> TrackMetadataSnapshot?) -> Bool {
+    private typealias Decorated = (entry: LibraryEntry, name: String, snapshot: TrackMetadataSnapshot?)
+
+    /// Sort the file entries by the chosen option. Metadata sorts use decorate–
+    /// sort–undecorate: each file's key (name + cached snapshot) is computed ONCE
+    /// up front, so the metadata lookup runs n times rather than on every one of
+    /// the O(n log n) comparisons — that per-comparison lookup (which recomputes
+    /// the StableTrackID key and probes the dict twice each compare) is what made
+    /// date/BPM/artist sorts slow on large folders versus filename.
+    private static func sortFiles(_ files: [LibraryEntry],
+                                  sort: SortOption,
+                                  metadata: (URL) -> TrackMetadataSnapshot?) -> [LibraryEntry] {
+        switch sort {
+        case .listed:
+            return files   // given order (e.g. a playlist's own order)
+        case .filename:
+            return files
+                .map { (entry: $0, name: $0.name) }
+                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                .map(\.entry)
+        case .dateYear, .bpm, .artist:
+            return files
+                .map { (entry: $0, name: $0.name, snapshot: metadata($0.url)) }
+                .sorted { ascendingOrder($0, $1, sort: sort) }
+                .map(\.entry)
+        }
+    }
+
+    private static func ascendingOrder(_ a: Decorated, _ b: Decorated, sort: SortOption) -> Bool {
         func byName() -> Bool { a.name.localizedStandardCompare(b.name) == .orderedAscending }
         switch sort {
-        case .listed, .filename:   // `.listed` is handled before this point
-            return byName()
         case .dateYear:
-            let ya = metadata(a.url)?.year ?? Int.min
-            let yb = metadata(b.url)?.year ?? Int.min
+            let ya = a.snapshot?.year ?? Int.min
+            let yb = b.snapshot?.year ?? Int.min
             return ya == yb ? byName() : ya < yb
         case .bpm:
-            let ba = metadata(a.url)?.bpm ?? Int.min
-            let bb = metadata(b.url)?.bpm ?? Int.min
+            let ba = a.snapshot?.bpm ?? Int.min
+            let bb = b.snapshot?.bpm ?? Int.min
             return ba == bb ? byName() : ba < bb
         case .artist:
-            let aa = metadata(a.url)?.artist ?? ""
-            let ab = metadata(b.url)?.artist ?? ""
+            let aa = a.snapshot?.artist ?? ""
+            let ab = b.snapshot?.artist ?? ""
             let c = aa.localizedStandardCompare(ab)
             return c == .orderedSame ? byName() : c == .orderedAscending
+        case .listed, .filename:
+            return byName()   // not reached (handled in sortFiles)
         }
     }
 }
