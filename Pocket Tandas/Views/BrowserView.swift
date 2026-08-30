@@ -18,6 +18,7 @@ struct BrowserView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayQueue.self) private var queue
     @Environment(MetadataService.self) private var metadata
+    @Environment(\.dismiss) private var dismiss
 
     @State private var currentFolder: URL?
     @State private var rawEntries: [LibraryEntry] = []
@@ -63,28 +64,33 @@ struct BrowserView: View {
         metadata.scanFolder(urls: audioURLs, baseURL: library.baseURL)
     }
 
+    /// Single-row header: back (up a folder, or out to the launcher at the root),
+    /// the live filter field, sort, and — only at the root — the folder picker.
     private var header: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
-                if canGoUp {
-                    Button { goUp() } label: { Image(systemName: "chevron.left") }
-                        .buttonStyle(.borderless)
-                }
-                Text(currentFolder?.lastPathComponent ?? "No folder")
-                    .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                SortMenu(sort: $sort, direction: $direction)
-                Button { showingPicker = true } label: {
-                    Image(systemName: "folder.badge.gearshape").imageScale(.large)
-                }
+        HStack(spacing: 10) {
+            Button {
+                if canGoUp { goUp() } else { dismiss() }
+            } label: {
+                Image(systemName: "chevron.left").imageScale(.large)
             }
+            .buttonStyle(.borderless)
+
             if currentFolder != nil {
                 TextField("Filter", text: $filterText)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+
+                SortMenu(sort: $sort, direction: $direction)
+
+                if isAtRoot {
+                    Button { showingPicker = true } label: {
+                        Image(systemName: "folder.badge.gearshape").imageScale(.large)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                Spacer()
             }
         }
         .padding(.horizontal)
@@ -143,6 +149,12 @@ struct BrowserView: View {
     private var canGoUp: Bool {
         guard let folder = currentFolder else { return false }
         return !library.isBaseFolder(folder)
+    }
+
+    /// True when the displayed folder is the user's chosen base folder.
+    private var isAtRoot: Bool {
+        guard let folder = currentFolder else { return false }
+        return library.isBaseFolder(folder)
     }
 
     private func goUp() {
