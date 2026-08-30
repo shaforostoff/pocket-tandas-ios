@@ -23,14 +23,16 @@ struct BrowserRowView: View {
                 .frame(width: 24)
 
             if let metadata, !metadata.isEmpty {
+                // Greedy layout: let it fill the row so its right-aligned detail
+                // (BPM/genre/date) sits at the trailing edge rather than mid-row.
+                // Audio rows are never navigable, so no chevron follows.
                 TrackDisplayRow(display: TrackDisplay(metadata: metadata, fallback: entry.name))
             } else {
                 Text(entry.name)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                Spacer(minLength: 0)
             }
-
-            Spacer(minLength: 0)
 
             if entry.isNavigable {
                 Image(systemName: "chevron.right")

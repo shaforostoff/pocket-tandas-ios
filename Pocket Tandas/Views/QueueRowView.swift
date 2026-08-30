@@ -47,8 +47,10 @@ struct QueueRowView: View {
                 Image(systemName: icon)
                     .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary)
                     .frame(width: 24)
+                // TrackDisplayRow is greedy (it has its own trailing spacers), so
+                // let it fill the row — no outer Spacer, which would otherwise split
+                // the width and pull the remaining-time accessory toward the middle.
                 TrackDisplayRow(display: display, titleAccessory: remaining)
-                Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
