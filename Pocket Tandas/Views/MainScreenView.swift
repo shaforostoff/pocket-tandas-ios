@@ -31,8 +31,10 @@ struct MainScreenView: View {
     @Environment(MetadataService.self) private var metadata
     @Environment(LibraryStore.self) private var library
     @Environment(Equalizer.self) private var equalizer
+    @Environment(AudioSessionController.self) private var audioSession
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Where the browser currently is, shared so the control bar's Save action
     /// can offer this folder and its parents. Resets on each presentation.
@@ -45,6 +47,11 @@ struct MainScreenView: View {
     /// Live only in Remote Receive: broadcasts local state and applies commands.
     @State private var receiver: RemoteReceiverCoordinator?
     @State private var startedRemote = false
+
+    /// The two opt-in anti-suspension measures (launcher toggles, both time-limited
+    /// — see StayAwake.swift) and the timer that releases them.
+    @State private var keepAlive: SilentKeepAlive?
+    @State private var stayAwakeTimer: Timer?
 
     init(mode: AppMode) {
         self.mode = mode
@@ -76,13 +83,24 @@ struct MainScreenView: View {
         // flip the layout mid-typing (notably large iPads in portrait).
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .environment(browser)
-        .onAppear { startRemoteIfNeeded() }
+        .onAppear {
+            startRemoteIfNeeded()
+            beginStayAwakeWindow()
+        }
+        // Each return to the app restarts the window — the DJ is clearly present.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { beginStayAwakeWindow() }
+        }
+        // The silent keep-alive is only needed while the local engine is idle: real
+        // playback keeps the app alive on its own.
+        .onChange(of: engine.state) { _, _ in syncKeepAlive() }
         // Leaving the screen ends prelistening (a foreground audition) and tears
         // down any radios so they don't keep running back on the launcher.
         .onDisappear {
             preListen.stop()
             receiver?.stop()
             remoteQueue?.link.stop()
+            endStayAwake()
         }
     }
 
@@ -169,6 +187,59 @@ struct MainScreenView: View {
             return RemoteQueuePresenter(remote: remoteQueue)
         }
         return LocalQueuePresenter(queue: queue, engine: engine, metadata: metadata)
+    }
+
+    // MARK: - Staying awake (opt-in, time-limited)
+
+    /// Apply whichever launcher toggles are on and arm the release timer. With
+    /// neither, nothing happens: iOS suspends the app on auto-lock as usual and the
+    /// peer link goes quiet until the phone is unlocked (PeerLink rebuilds itself
+    /// then — see its suspension-recovery note).
+    private func beginStayAwakeWindow() {
+        stayAwakeTimer?.invalidate()
+        let wantsScreenAwake = StayAwakeSettings.screenStaysAwake
+        let wantsKeepAlive = mode.isRemote && StayAwakeSettings.silentKeepAlive
+        guard wantsScreenAwake || wantsKeepAlive else {
+            endStayAwake()
+            return
+        }
+        setIdleTimerDisabled(wantsScreenAwake)
+        // Arm the deadline before starting the keep-alive: syncKeepAlive() treats a
+        // nil timer as "outside the window".
+        stayAwakeTimer = Timer.scheduledTimer(withTimeInterval: StayAwakeSettings.window,
+                                              repeats: false) { _ in
+            endStayAwake()
+        }
+        syncKeepAlive()
+    }
+
+    /// Release both measures — on the 30-minute deadline, or on leaving the screen.
+    private func endStayAwake() {
+        stayAwakeTimer?.invalidate()
+        stayAwakeTimer = nil
+        setIdleTimerDisabled(false)
+        keepAlive?.stop()
+    }
+
+    /// Run the silent keep-alive only while it is wanted, still inside the window,
+    /// and the local engine is idle (playing audio already prevents suspension).
+    private func syncKeepAlive() {
+        let wanted = mode.isRemote
+            && StayAwakeSettings.silentKeepAlive
+            && stayAwakeTimer != nil
+            && engine.state == .idle
+        guard wanted else {
+            keepAlive?.stop()
+            return
+        }
+        if keepAlive == nil { keepAlive = SilentKeepAlive(audioSession: audioSession) }
+        keepAlive?.start()
+    }
+
+    private func setIdleTimerDisabled(_ disabled: Bool) {
+        #if canImport(UIKit)
+        UIApplication.shared.isIdleTimerDisabled = disabled
+        #endif
     }
 
     private func startRemoteIfNeeded() {

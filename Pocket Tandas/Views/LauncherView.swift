@@ -20,31 +20,45 @@ struct LauncherView: View {
     @AppStorage(PlaybackEngine.fadeOutDurationKey)
     private var fadeOutSeconds: Double = PlaybackEngine.defaultFadeOutDuration
 
+    /// The two opt-in ways to keep the app running while it sits idle — see
+    /// StayAwake.swift. Both off by default, both time-limited.
+    @AppStorage(StayAwakeSettings.screenAwakeKey) private var screenStaysAwake = false
+    @AppStorage(StayAwakeSettings.silentKeepAliveKey) private var silentKeepAlive = false
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 28) {
-                Spacer(minLength: 0)
+            // Scrolls only when the content outgrows the screen (small phones);
+            // the min-height keeps the Spacers centring it on roomier ones.
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(spacing: 28) {
+                        Spacer(minLength: 0)
 
-                VStack(spacing: 8) {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 52))
-                        .foregroundStyle(.tint)
-                    Text("Pocket Tandas")
-                        .font(.largeTitle.bold())
-                    Text("Live DJ play queue")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        VStack(spacing: 8) {
+                            Image(systemName: "music.note.list")
+                                .font(.system(size: 52))
+                                .foregroundStyle(.tint)
+                            Text("Pocket Tandas")
+                                .font(.largeTitle.bold())
+                            Text("Live DJ play queue")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        outputSection
+
+                        modeButtons
+
+                        fadeSection
+
+                        stayAwakeSection
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding()
+                    .frame(minHeight: proxy.size.height)
                 }
-
-                outputSection
-
-                modeButtons
-
-                fadeSection
-
-                Spacer(minLength: 0)
             }
-            .padding()
             .navigationBarTitleDisplayMode(.inline)
         }
         .fullScreenCover(item: $activeMode) { mode in
@@ -91,6 +105,31 @@ struct LauncherView: View {
             }
         }
     }
+
+    /// Keeping the app running while it idles. Both switches are off by default:
+    /// without one, iOS suspends the app once the screen locks, and a Remote
+    /// Controllable phone drops off the air until it is unlocked again.
+    private var stayAwakeSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: $screenStaysAwake) {
+                    Label("Screen Stays Awake", systemImage: "sun.max")
+                        .font(.subheadline)
+                }
+                Toggle(isOn: $silentKeepAlive) {
+                    Label("Silent Keep-Alive Audio", systemImage: "waveform")
+                        .font(.subheadline)
+                }
+                Text("Stop iOS suspending the app while it idles, so a Remote Controllable "
+                     + "phone stays reachable — the keep-alive also works with the screen "
+                     + "off. Both release after \(minutes) minutes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var minutes: Int { Int(StayAwakeSettings.window / 60) }
 
     private var modeButtons: some View {
         VStack(spacing: 14) {

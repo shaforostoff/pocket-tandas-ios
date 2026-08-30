@@ -15,6 +15,14 @@
 //  delegate callbacks arrive off the main thread, so each hops to main before
 //  mutating observed state or invoking callbacks.
 //
+//  SUSPENSION RECOVERY: with nothing playing there is no background audio to keep
+//  the app alive, so locking the phone (or switching apps) suspends it and its
+//  MultipeerConnectivity stack goes dead — the advertiser stops being visible and
+//  neither it nor the MCSession recovers when the app is resumed. So on every
+//  return to the foreground, if we aren't connected, the whole radio is rebuilt:
+//  a fresh MCSession plus a fresh advertiser/browser (exactly what reopening the
+//  screen used to do by hand).
+//
 
 import Foundation
 import MultipeerConnectivity
@@ -50,20 +58,34 @@ final class PeerLink: NSObject {
 
     @ObservationIgnored private let role: Role
     @ObservationIgnored private let myPeerID: MCPeerID
-    @ObservationIgnored private let session: MCSession
+    /// Recreated on foreground when a suspension has killed it — see the note above.
+    @ObservationIgnored private var session: MCSession
     @ObservationIgnored private var advertiser: MCNearbyServiceAdvertiser?
     @ObservationIgnored private var browser: MCNearbyServiceBrowser?
     /// True while the link should be running, so an intentional stop() isn't
     /// undone by the auto-restart that a dropped connection triggers.
     @ObservationIgnored private var isActive = false
+    /// Set while the app is in the background, so the return to the foreground knows
+    /// the stack may have been suspended (and killed) meanwhile.
+    @ObservationIgnored private var wasBackgrounded = false
+    @ObservationIgnored private var lifecycleObservers: [NSObjectProtocol] = []
 
     init(role: Role) {
         self.role = role
         let peer = MCPeerID(displayName: Self.deviceName())
         self.myPeerID = peer
-        self.session = MCSession(peer: peer, securityIdentity: nil, encryptionPreference: .required)
+        self.session = Self.makeSession(peer: peer)
         super.init()
         session.delegate = self
+        observeLifecycle()
+    }
+
+    deinit {
+        lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    private static func makeSession(peer: MCPeerID) -> MCSession {
+        MCSession(peer: peer, securityIdentity: nil, encryptionPreference: .required)
     }
 
     private static func deviceName() -> String {
@@ -123,6 +145,53 @@ final class PeerLink: NSObject {
         }
     }
 
+    // MARK: - Suspension recovery
+
+    /// Rebuild the radio whenever the app returns from the BACKGROUND with no live
+    /// connection: a suspension (lock screen, app switch) leaves the session and the
+    /// advertiser/browser silently dead, and nothing short of new objects brings
+    /// them back. Keyed on a real background transition, not on merely becoming
+    /// active again — a Control Center pull or the local-network permission alert
+    /// deactivates the app without harming the link, and rebuilding then would only
+    /// cut off a handshake in progress.
+    private func observeLifecycle() {
+        #if canImport(UIKit)
+        let center = NotificationCenter.default
+        lifecycleObservers = [
+            center.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                               object: nil, queue: .main) { [weak self] _ in
+                self?.wasBackgrounded = true
+            },
+            center.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                               object: nil, queue: .main) { [weak self] _ in
+                self?.restartAfterForeground()
+            },
+        ]
+        #endif
+    }
+
+    private func restartAfterForeground() {
+        guard wasBackgrounded else { return }
+        wasBackgrounded = false
+        guard isActive, session.connectedPeers.isEmpty else { return }
+        ptLog("[PeerLink] back from background with no peer — rebuilding the radio")
+        rebuildSession()
+        switch role {
+        case .receiver: startAdvertising()
+        case .sender: startBrowsing()
+        }
+    }
+
+    /// Replace the MCSession. The old one's delegate is cleared first so its
+    /// teardown can't report state for a session we no longer use.
+    private func rebuildSession() {
+        let old = session
+        old.delegate = nil
+        old.disconnect()
+        session = Self.makeSession(peer: myPeerID)
+        session.delegate = self
+    }
+
     // MARK: - Helpers
 
     private func stopDiscovery() {
@@ -156,6 +225,7 @@ final class PeerLink: NSObject {
 extension PeerLink: MCSessionDelegate {
     func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
         DispatchQueue.main.async {
+            guard session === self.session else { return }   // a rebuilt session's predecessor
             switch state {
             case .connected:
                 self.stopDiscovery()            // 1:1 — no need to keep looking
@@ -174,7 +244,10 @@ extension PeerLink: MCSessionDelegate {
 
     func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
         guard let message = RemoteMessage.decode(data) else { return }
-        DispatchQueue.main.async { self.onReceive?(message) }
+        DispatchQueue.main.async {
+            guard session === self.session else { return }
+            self.onReceive?(message)
+        }
     }
 
     func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {}
