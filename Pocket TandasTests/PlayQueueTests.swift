@@ -56,6 +56,26 @@ final class PlayQueueTests: XCTestCase {
         XCTAssertEqual(q.items.map(\.trackKey), ["c", "a", "b"])
     }
 
+    func testPinnedTrackCannotBeMoved() {
+        let q = PlayQueue()
+        let a = makeItem("a"), b = makeItem("b"), c = makeItem("c")
+        q.append(a); q.append(b); q.append(c)
+        // b (index 1) is the playing track — dragging it is rejected.
+        q.move(fromOffsets: IndexSet(integer: 1), toOffset: 0, pinnedID: b.id)
+        XCTAssertEqual(q.items.map(\.trackKey), ["a", "b", "c"])
+    }
+
+    func testMovingAnotherTrackAcrossThePinnedTrackIsAllowed() {
+        let q = PlayQueue()
+        let a = makeItem("a"), b = makeItem("b"), c = makeItem("c")
+        q.append(a); q.append(b); q.append(c)
+        // b is playing (pinned). Drag c from below to above b.
+        q.move(fromOffsets: IndexSet(integer: 2), toOffset: 1, pinnedID: b.id)
+        XCTAssertEqual(q.items.map(\.trackKey), ["a", "c", "b"])
+        // The engine reads the new neighbour live: b is now last.
+        XCTAssertNil(q.item(after: b.id))
+    }
+
     func testItemAfterUnknownIDIsNil() {
         let q = PlayQueue()
         q.append(makeItem("a"))

@@ -8,7 +8,9 @@
 //
 //  Bottom half of the main screen: the live play queue. Tap a track to play it,
 //  swipe left to remove, long-press to drag-reorder. The currently playing track
-//  is pinned (cannot be moved or removed).
+//  can't be removed, and a reorder that would relocate it is rejected by
+//  PlayQueue (by identity) — not via `.moveDisabled`, which corrupts `.onMove`
+//  offsets when a drag crosses the pinned row.
 //
 
 import SwiftUI
@@ -33,11 +35,13 @@ struct QueueView: View {
                         .onTapGesture { engine.requestPlay(item) }
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
-                        .moveDisabled(isCurrent)
                         .deleteDisabled(isCurrent)
                 }
                 .onDelete { queue.remove(atOffsets: $0) }
-                .onMove { queue.move(fromOffsets: $0, toOffset: $1) }
+                .onMove { source, destination in
+                    queue.move(fromOffsets: source, toOffset: destination,
+                               pinnedID: engine.state.currentItemID)
+                }
             }
             .listStyle(.plain)
         }
