@@ -98,7 +98,9 @@ struct RemoteQueuePresenter: QueuePresenting {
         let fading = remote.playback.isFadingOut
         return remote.items.map { item in
             let isCurrent = item.id == currentID
-            return QueueRowVM(id: item.id, title: item.title, artist: item.artist,
+            // Mirror rows are always merged to full text before they land here; the
+            // fallback only covers a row we somehow never learned the name of.
+            return QueueRowVM(id: item.id, title: item.title ?? "…", artist: item.artist,
                               detail: item.detail, isCurrent: isCurrent,
                               isFading: isCurrent && fading, isAnchor: item.isAnchor)
         }
