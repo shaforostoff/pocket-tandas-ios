@@ -31,7 +31,8 @@ struct QueueView: View {
                                  isCurrent: isCurrent,
                                  isFading: isCurrent && engine.state.isFadingOut)
                         .onTapGesture { engine.requestPlay(item) }
-                        .listRowBackground(QueueRowBackground(isCurrent: isCurrent))
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                         .moveDisabled(isCurrent)
                         .deleteDisabled(isCurrent)
                 }
