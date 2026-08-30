@@ -6,16 +6,26 @@
 //  MediaTrackDecoder.swift
 //  Pocket Tandas
 //
-//  Decodes a non-DRM Music-library asset (an `ipod-library://` URL) into a single
-//  PCM buffer the engine schedules with `scheduleBuffer`. The whole track is read
-//  into one AVAudioPCMBuffer: tango tracks are short, and one buffer means exactly
-//  one `.dataPlayedBack` completion (== end of track), matching the engine's file
-//  contract. Media items are never preloaded gaplessly, so there is no need to
-//  stream/refill — one buffer is simplest and correct.
+//  Decodes a non-DRM Music-library asset (an `ipod-library://` URL) into a STREAM
+//  of fixed-length PCM chunks the engine schedules back-to-back with
+//  `scheduleBuffer`. Consecutive scheduled buffers play with no gap, so the track
+//  still sounds like one continuous schedule — but only a few seconds of audio is
+//  ever resident instead of the whole track (Float32/44.1k/stereo costs ~0.34 MB
+//  per second, so a 10-minute track as one buffer was over 200 MB).
+//
+//  The decoder runs ahead of playback by at most `maxChunksInFlight` chunks: it
+//  parks on a semaphore that the consumer signals (via `releaseChunk`) as each
+//  delivered chunk finishes playing. Peak residency is therefore the in-flight
+//  chunks plus the one being filled.
+//
+//  The consumer needs to know which buffer ENDS the track, and that isn't knowable
+//  until the reader stops producing — so one chunk is always held back and handed
+//  over with `isLast: true` once the read loop is done.
 //
 //  `decode` is synchronous and blocking — call it off the main thread (the engine
-//  runs it on a dedicated serial queue). `cancel()` is safe from any thread and
-//  makes an in-flight decode return via `.cancelled`.
+//  runs it on a dedicated serial queue). `cancel()` is safe from any thread: it
+//  stops the reader AND unparks a decode waiting for a playback slot, so an
+//  in-flight decode returns promptly via `.cancelled`.
 //
 //  AVAssetReader can read non-DRM library assets; DRM/cloud items have no readable
 //  asset URL and are filtered out before they ever reach here.
@@ -33,22 +43,56 @@ final class MediaTrackDecoder {
                                             channels: 2,
                                             interleaved: false)!
 
-    enum DecodeError: Error { case noAudioTrack, readerFailed, allocFailed, cancelled }
+    /// Length of one decoded chunk (~3.4 MB at the format above). Long enough that
+    /// the decode thread wakes only a handful of times per track, short enough that
+    /// resident audio stays a few MB.
+    static let chunkDuration: TimeInterval = 10
+
+    /// How far the decoder may run ahead of playback, in delivered-but-not-yet-
+    /// played chunks. Two keeps the player fed across a chunk boundary while
+    /// holding at most three chunks (two queued plus the one being filled).
+    static let maxChunksInFlight = 2
+
+    enum DecodeError: Error { case noAudioTrack, readerFailed, allocFailed, emptyTrack, cancelled }
+
+    /// Receives each decoded chunk in order. `isLast` marks the final one — the
+    /// consumer hangs its end-of-track handling off that buffer. Called on the
+    /// decoder's own (caller's) thread.
+    typealias ChunkHandler = (_ buffer: AVAudioPCMBuffer, _ isLast: Bool) -> Void
 
     private let lock = NSLock()
     private var reader: AVAssetReader?
     private var cancelled = false
 
-    /// Stop an in-flight decode. The reading loop exits promptly and `decode`
-    /// throws `.cancelled`.
+    /// Playback slots: one is taken by each hand-off, returned by `releaseChunk`.
+    private let slots = DispatchSemaphore(value: MediaTrackDecoder.maxChunksInFlight)
+
+    /// Stop an in-flight decode. The reading loop exits promptly — including from
+    /// a park on the slot semaphore — and `decode` throws `.cancelled`.
     func cancel() {
         lock.lock()
         cancelled = true
         reader?.cancelReading()
         lock.unlock()
+        slots.signal()   // unpark a decode waiting for playback that will never come
     }
 
-    func decode(assetURL: URL, expectedDuration: TimeInterval) throws -> (AVAudioPCMBuffer, AVAudioFormat) {
+    /// Return the slot held by a delivered chunk, once it has finished playing.
+    /// Safe from any thread (the engine calls it from a schedule completion).
+    func releaseChunk() {
+        slots.signal()
+    }
+
+    private var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    /// Read the asset start to finish, handing `onChunk` one buffer at a time.
+    /// Returns once the whole track has been delivered; throws if the read failed
+    /// or the decode was cancelled.
+    func decode(assetURL: URL, onChunk: ChunkHandler) throws {
         let asset = AVURLAsset(url: assetURL)
         // `loadTracks` is async; bridge it back into this synchronous, off-main
         // decode with a semaphore. Safe to block: we run on a private dispatch
@@ -82,26 +126,123 @@ final class MediaTrackDecoder {
 
         guard reader.startReading() else { throw DecodeError.readerFailed }
 
-        // Size from the known duration + 1 s slack; appends are clamped so a short
-        // estimate can never overrun.
-        let capacity = AVAudioFrameCount((max(1.0, expectedDuration) + 1.0) * format.sampleRate)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else {
-            throw DecodeError.allocFailed
+        let chunkFrames = AVAudioFrameCount(Self.chunkDuration * format.sampleRate)
+
+        /// Take a playback slot, then hand the chunk over. Parks while the consumer
+        /// is still working through what it already has.
+        func handOff(_ buffer: AVAudioPCMBuffer, isLast: Bool) throws {
+            slots.wait()
+            if isCancelled { throw DecodeError.cancelled }
+            onChunk(buffer, isLast)
         }
-        buffer.frameLength = 0
+
+        // `held` is the completed chunk waiting to learn whether another follows it.
+        var held: AVAudioPCMBuffer?
+        var current = try makeChunk(frames: chunkFrames, format: format)
 
         while reader.status == .reading {
             guard let sample = output.copyNextSampleBuffer() else { break }
-            autoreleasepool {
-                append(sample, to: buffer)
+            try autoreleasepool {
+                // Only the flush below can know it holds the final chunk, so
+                // everything `consume` rolls over is delivered as non-last.
+                try consume(sample, into: &current, held: &held, frames: chunkFrames,
+                            format: format, handOff: { try handOff($0, isLast: false) })
             }
         }
 
         switch reader.status {
-        case .completed: return (buffer, format)
+        case .completed: break
         case .cancelled: throw DecodeError.cancelled
         default:         throw DecodeError.readerFailed
         }
+
+        // Flush: whichever buffer holds the tail of the track is the last one.
+        if current.frameLength > 0 {
+            if let held { try handOff(held, isLast: false) }
+            try handOff(current, isLast: true)
+        } else if let held {
+            try handOff(held, isLast: true)
+        } else {
+            throw DecodeError.emptyTrack
+        }
+    }
+
+    /// Copy one sample buffer into the chunk stream, rolling over to a fresh chunk
+    /// (and handing the previous one off) whenever `current` fills up. A sample
+    /// buffer straddling a boundary is split rather than truncated.
+    private func consume(_ sample: CMSampleBuffer,
+                         into current: inout AVAudioPCMBuffer,
+                         held: inout AVAudioPCMBuffer?,
+                         frames chunkFrames: AVAudioFrameCount,
+                         format: AVAudioFormat,
+                         handOff: (AVAudioPCMBuffer) throws -> Void) throws {
+        let totalFrames = CMSampleBufferGetNumSamples(sample)
+        guard totalFrames > 0 else { return }
+        let channels = Int(format.channelCount)
+
+        let list = AudioBufferList.allocate(maximumBuffers: channels)
+        defer { free(list.unsafeMutablePointer) }
+        var blockBuffer: CMBlockBuffer?
+        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sample,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: list.unsafeMutablePointer,
+            bufferListSize: AudioBufferList.sizeInBytes(maximumBuffers: channels),
+            blockBufferAllocator: kCFAllocatorDefault,
+            blockBufferMemoryAllocator: kCFAllocatorDefault,
+            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+            blockBufferOut: &blockBuffer)
+        guard status == noErr, list.count > 0 else { return }
+
+        // The list's pointers are owned by `blockBuffer`; keep it alive across
+        // every copy below rather than trusting ARC not to release it early.
+        try withExtendedLifetime(blockBuffer) {
+            var srcOffset = 0
+            while srcOffset < totalFrames {
+                let copied = copyFrames(from: list, srcOffset: srcOffset,
+                                        frames: totalFrames - srcOffset, to: current)
+                guard copied > 0 else { return }   // no room and no progress possible
+                srcOffset += copied
+                if current.frameLength == current.frameCapacity {
+                    if let ready = held { try handOff(ready) }
+                    held = current
+                    current = try makeChunk(frames: chunkFrames, format: format)
+                }
+            }
+        }
+    }
+
+    /// Copy up to `frames` frames, starting `srcOffset` frames in, from the
+    /// deinterleaved Float32 `list` into `pcm` at its running frameLength. Returns
+    /// the number of frames actually copied (clamped to the chunk's free space).
+    private func copyFrames(from list: UnsafeMutableAudioBufferListPointer,
+                            srcOffset: Int, frames: Int, to pcm: AVAudioPCMBuffer) -> Int {
+        guard frames > 0, let channelData = pcm.floatChannelData else { return 0 }
+        let channels = Int(pcm.format.channelCount)
+        let dstOffset = Int(pcm.frameLength)
+        let room = Int(pcm.frameCapacity) - dstOffset
+        guard room > 0 else { return 0 }
+        let count = min(frames, room)
+
+        let srcCount = list.count
+        for ch in 0..<channels {
+            // Deinterleaved: one source buffer per channel. A mono source delivered
+            // as a single buffer is mirrored across both output channels.
+            let src = list[min(ch, srcCount - 1)]
+            guard let mData = src.mData else { continue }
+            let srcFloats = mData.assumingMemoryBound(to: Float.self)
+            (channelData[ch] + dstOffset).update(from: srcFloats + srcOffset, count: count)
+        }
+        pcm.frameLength = AVAudioFrameCount(dstOffset + count)
+        return count
+    }
+
+    private func makeChunk(frames: AVAudioFrameCount, format: AVAudioFormat) throws -> AVAudioPCMBuffer {
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else {
+            throw DecodeError.allocFailed
+        }
+        buffer.frameLength = 0
+        return buffer
     }
 
     /// Load the first audio track, bridging `AVAsset.loadTracks` (async) into the
@@ -121,42 +262,5 @@ final class MediaTrackDecoder {
         }
         semaphore.wait()
         return try box.result?.get().first
-    }
-
-    /// Copy one sample buffer's deinterleaved Float32 channels into `pcm` at its
-    /// running frameLength, clamped to capacity.
-    private func append(_ sample: CMSampleBuffer, to pcm: AVAudioPCMBuffer) {
-        let frames = CMSampleBufferGetNumSamples(sample)
-        guard frames > 0, let channelData = pcm.floatChannelData else { return }
-        let channels = Int(pcm.format.channelCount)
-        let dstOffset = Int(pcm.frameLength)
-        let room = Int(pcm.frameCapacity) - dstOffset
-        guard room > 0 else { return }
-        let copyFrames = min(frames, room)
-
-        let list = AudioBufferList.allocate(maximumBuffers: channels)
-        defer { free(list.unsafeMutablePointer) }
-        var blockBuffer: CMBlockBuffer?
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sample,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: list.unsafeMutablePointer,
-            bufferListSize: AudioBufferList.sizeInBytes(maximumBuffers: channels),
-            blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: &blockBuffer)
-        guard status == noErr else { return }
-
-        let srcCount = list.count
-        for ch in 0..<channels {
-            // Deinterleaved: one source buffer per channel. A mono source delivered
-            // as a single buffer is mirrored across both output channels.
-            let src = list[min(ch, srcCount - 1)]
-            guard let mData = src.mData else { continue }
-            let srcFloats = mData.assumingMemoryBound(to: Float.self)
-            (channelData[ch] + dstOffset).update(from: srcFloats, count: copyFrames)
-        }
-        pcm.frameLength = AVAudioFrameCount(dstOffset + copyFrames)
     }
 }
