@@ -15,8 +15,10 @@
 //     auto-lock. Handled by MainScreenView.
 //   - "Silent keep-alive audio" — SilentKeepAlive below renders silence on its own
 //     engine, so the app's `audio` background mode keeps it alive with the screen
-//     off. Note the App Store frowns on background audio that isn't user-facing
-//     (guideline 2.5.4), which is why this is off by default and time-limited.
+//     off. This is a background-audio use that produces nothing audible, which
+//     App Store guideline 2.5.4 forbids, so it ships ONLY in sideloaded builds:
+//     `silentKeepAliveAvailable` is false unless the SIDELOAD compilation
+//     condition is set (package.sh passes it; a plain Xcode archive does not).
 //
 //  Both are launcher toggles, both default OFF, and both release after 30 minutes
 //  so a switch left on can't drain the battery all night. The window restarts each
@@ -33,8 +35,21 @@ enum StayAwakeSettings {
     /// How long either option holds before releasing on its own.
     static let window: TimeInterval = 30 * 60
 
+    /// Whether the silent keep-alive exists at all in this build. False for the
+    /// App Store (guideline 2.5.4 — see the note above); true when built with the
+    /// SIDELOAD compilation condition. Gating it here rather than at every use
+    /// site means the App Store build can never start the silent engine, however
+    /// the stored preference got set (e.g. carried over from a sideloaded build).
+    #if SIDELOAD
+    static let silentKeepAliveAvailable = true
+    #else
+    static let silentKeepAliveAvailable = false
+    #endif
+
     static var screenStaysAwake: Bool { UserDefaults.standard.bool(forKey: screenAwakeKey) }
-    static var silentKeepAlive: Bool { UserDefaults.standard.bool(forKey: silentKeepAliveKey) }
+    static var silentKeepAlive: Bool {
+        silentKeepAliveAvailable && UserDefaults.standard.bool(forKey: silentKeepAliveKey)
+    }
 }
 
 /// Renders a looping buffer of digital silence on a dedicated AVAudioEngine, which

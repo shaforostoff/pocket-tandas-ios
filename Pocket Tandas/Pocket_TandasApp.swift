@@ -59,13 +59,46 @@ struct Pocket_TandasApp: App {
         _preListen = State(initialValue: preListen)
     }
 
+    /// Open the metadata store, degrading rather than dying if it can't be opened.
+    ///
+    /// The store holds nothing but a cache — every row is re-derived by rescanning
+    /// the files — so a corrupt store, or one written by a schema this build can't
+    /// migrate, is worth throwing away. Crashing here instead (the old behaviour)
+    /// would make the app unlaunchable after an upgrade, with no way out but
+    /// deleting it. Order: open it; if that fails, delete it and open a fresh one;
+    /// if that fails too, run the cache in memory for this session.
     private static func makeModelContainer() -> ModelContainer {
         let schema = Schema([TrackMetadata.self])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let onDisk = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        if let container = try? ModelContainer(for: schema, configurations: [onDisk]) {
+            return container
+        }
+
+        ptLog("metadata store unreadable — discarding it and starting a fresh cache")
+        deleteStore(at: onDisk.url)
+        if let container = try? ModelContainer(for: schema, configurations: [onDisk]) {
+            return container
+        }
+
+        ptLog("metadata store could not be recreated — caching in memory this session")
+        let inMemory = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         do {
-            return try ModelContainer(for: schema, configurations: [configuration])
+            return try ModelContainer(for: schema, configurations: [inMemory])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // Nothing left to fall back to: an in-memory container needs no disk,
+            // no permissions and no migration, so this is unreachable in practice.
+            fatalError("Could not create an in-memory ModelContainer: \(error)")
+        }
+    }
+
+    /// Remove a SQLite store and its write-ahead log siblings.
+    private static func deleteStore(at url: URL) {
+        let manager = FileManager.default
+        for path in [url,
+                     url.appendingPathExtension("shm"),
+                     url.appendingPathExtension("wal")] {
+            try? manager.removeItem(at: path)
         }
     }
 

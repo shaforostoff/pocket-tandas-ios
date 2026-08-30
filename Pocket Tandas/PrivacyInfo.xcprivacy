@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Pocket Tandas privacy manifest.
+
+	  The app collects nothing and tracks nobody: everything it reads (the
+	  chosen music folder, the Music library, the metadata cache) stays on the
+	  device, and the only network it touches is the direct peer-to-peer link
+	  between two phones running the app.
+
+	  The two entries below are Apple's "required reason" APIs — see
+	  developer.apple.com/documentation/bundleresources/privacy_manifest_files.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!--
+			  UserDefaults: app settings only (master volume, fade-out length,
+			  EQ preset, the stay-awake switches, the security-scoped bookmark
+			  for the chosen folder). Never read by anything but this app.
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!--
+			  File timestamps: MetadataService reads contentModificationDate to
+			  decide whether a track's cached metadata is still current.
+			  3B52.1 covers the folder the user granted via the document picker;
+			  C617.1 covers files inside the app's own Documents container
+			  (added over File Sharing).
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>3B52.1</string>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

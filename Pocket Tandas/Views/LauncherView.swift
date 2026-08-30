@@ -109,6 +109,9 @@ struct LauncherView: View {
     /// Keeping the app running while it idles. Both switches are off by default:
     /// without one, iOS suspends the app once the screen locks, and a Remote
     /// Controllable phone drops off the air until it is unlocked again.
+    ///
+    /// The silent keep-alive only exists in sideloaded builds — see StayAwake.swift
+    /// — so the App Store build shows the screen switch alone.
     private var stayAwakeSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
@@ -116,17 +119,27 @@ struct LauncherView: View {
                     Label("Screen Stays Awake", systemImage: "sun.max")
                         .font(.subheadline)
                 }
-                Toggle(isOn: $silentKeepAlive) {
-                    Label("Silent Keep-Alive Audio", systemImage: "waveform")
-                        .font(.subheadline)
+                if StayAwakeSettings.silentKeepAliveAvailable {
+                    Toggle(isOn: $silentKeepAlive) {
+                        Label("Silent Keep-Alive Audio", systemImage: "waveform")
+                            .font(.subheadline)
+                    }
                 }
-                Text("Stop iOS suspending the app while it idles, so a Remote Controllable "
-                     + "phone stays reachable — the keep-alive also works with the screen "
-                     + "off. Both release after \(minutes) minutes.")
+                Text(stayAwakeCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var stayAwakeCaption: String {
+        let shared = "Stop iOS suspending the app while it idles, so a Remote Controllable "
+                   + "phone stays reachable"
+        if StayAwakeSettings.silentKeepAliveAvailable {
+            return shared + " — the keep-alive also works with the screen off. "
+                 + "Both release after \(minutes) minutes."
+        }
+        return shared + " while the screen is on. Releases after \(minutes) minutes."
     }
 
     private var minutes: Int { Int(StayAwakeSettings.window / 60) }

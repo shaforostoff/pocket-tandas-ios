@@ -52,6 +52,7 @@
 		A35E4B3599531C1208C64670 /* QueueRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550446ACA175ABD3E68124BF /* QueueRowView.swift */; };
 		A43A4F9E8637CAA28AA271C6 /* TrackMetadataSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */; };
 		A70E4EDD92427F71D017BF3B /* RemoteConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381D40C9A5BC87BA965371A7 /* RemoteConnectionView.swift */; };
+		AB6E41BFA064CEC4758958D9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */; };
 		B3E24B6E8FC29593ED4A411E /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAEC4AA894A066ABE40E5456 /* DebugLog.swift */; };
 		B8794538BBB6C30C230772F7 /* StayAwake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B194BB3837007A3B31A6A1B /* StayAwake.swift */; };
 		C9544E77B948A8144AC0C7A8 /* RemoteQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9CA4380AB56B57660B01D65 /* RemoteQueue.swift */; };
@@ -102,6 +103,7 @@
 /* Begin PBXFileReference section */
 		05024A29AC96010E6E14170A /* RemoteReceiverCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteReceiverCoordinator.swift; path = RemoteReceiverCoordinator.swift; sourceTree = "<group>"; };
 		05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayQueue.swift; path = PlayQueue.swift; sourceTree = "<group>"; };
+		094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = "Pocket Tandas/PrivacyInfo.xcprivacy"; sourceTree = SOURCE_ROOT; };
 		117D4F0B8209DA7F1CDC67F6 /* SavePlaylistButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SavePlaylistButton.swift; path = SavePlaylistButton.swift; sourceTree = "<group>"; };
 		167B48A78E746629E499E6D3 /* RemoteWireTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteWireTypes.swift; path = RemoteWireTypes.swift; sourceTree = "<group>"; };
 		16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserRowView.swift; path = BrowserRowView.swift; sourceTree = "<group>"; };
@@ -292,6 +294,7 @@
 				BE114DB28DE4D17C054D24B9 /* Support */,
 				DA974CEA80228E5E6F942B7D /* Metadata */,
 				1567439DB03FA1B6A4BEED3F /* Remote */,
+				094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */,
 			);
 			path = "Pocket Tandas";
 			sourceTree = "<group>";
@@ -465,6 +468,7 @@
 			files = (
 				CE986D222FDDF87C003B2F2A /* Preview Assets.xcassets in Resources */,
 				CE986D1F2FDDF87C003B2F2A /* Assets.xcassets in Resources */,
+				AB6E41BFA064CEC4758958D9 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -33,12 +33,18 @@ else
   echo "==> pngquant not installed — full-colour icon (brew install pngquant to shave ~350 KB)"
 fi
 
+# SIDELOAD switches on the features that can't ship through the App Store —
+# currently the silent keep-alive audio, which keeps a Remote Controllable phone
+# reachable with the screen locked but violates App Store guideline 2.5.4 (see
+# StayAwake.swift). An Xcode archive doesn't set it, so the App Store build is
+# the safe default and this script opts in.
 xcodebuild \
   -project "Pocket Tandas.xcodeproj" \
   -scheme "Pocket Tandas" \
   -configuration Release \
   -sdk iphoneos \
   -derivedDataPath build \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) SIDELOAD' \
   CODE_SIGNING_ALLOWED=NO \
   ENABLE_CODE_COVERAGE=NO \
   clean build
