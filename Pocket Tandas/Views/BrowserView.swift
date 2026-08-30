@@ -17,6 +17,9 @@ import UniformTypeIdentifiers
 @MainActor
 struct BrowserView: View {
     let mode: AppMode
+    /// Set in Remote Send: swipe-to-add sends a request to the receiver instead
+    /// of enqueuing on this device.
+    var remoteQueue: RemoteQueue? = nil
 
     @Environment(LibraryStore.self) private var library
     @Environment(PlayQueue.self) private var queue
@@ -205,7 +208,7 @@ struct BrowserView: View {
     }
 
     private func syncPrelistenListing(_ listing: DisplayedListing) {
-        guard mode == .explore else { return }
+        guard mode.isExploreLike else { return }
         preListen.updateListing(listing.urls, folder: listing.folder)
     }
 
@@ -287,7 +290,7 @@ struct BrowserView: View {
         case .folder, .playlist:
             open(entry)
         case .audio:
-            guard mode == .explore else { return }
+            guard mode.isExploreLike else { return }
             switch engine.state {
             case .playing, .fadingOut:
                 return                       // don't interrupt active queue playback
@@ -308,6 +311,12 @@ struct BrowserView: View {
     }
 
     private func add(_ entry: LibraryEntry) {
+        // Remote Send: route adds to the receiver as track requests instead of
+        // enqueuing on this device (the receiver honours its own insert anchor).
+        if mode.isRemoteSend {
+            addToRemote(entry)
+            return
+        }
         switch entry.kind {
         case .audio:
             let key = StableTrackID.key(for: entry.url, baseURL: library.baseURL)
@@ -332,6 +341,38 @@ struct BrowserView: View {
             })
             metadata.scan(urls: urls, baseURL: library.baseURL)
         }
+    }
+
+    /// Remote Send: turn a swiped entry into TrackAddRequests and send them to the
+    /// receiver. Folders/playlists expand to their audio tracks in the browser's
+    /// current order; the receiver resolves each to a local file.
+    private func addToRemote(_ entry: LibraryEntry) {
+        guard let remoteQueue else { return }
+        switch entry.kind {
+        case .audio:
+            remoteQueue.addTracks([trackAddRequest(for: entry.url)])
+        case .playlist:
+            let urls = PlaylistParser.parse(playlistURL: entry.url)
+            remoteQueue.addTracks(urls.map(trackAddRequest(for:)))
+        case .folder:
+            let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
+            let urls = DirectoryLister.arrange(audio, filter: "", sort: sort, direction: direction,
+                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
+                .map(\.url)
+            remoteQueue.addTracks(urls.map(trackAddRequest(for:)))
+        }
+    }
+
+    /// Build a track request from the file's base-relative path plus whatever
+    /// metadata is cached locally (the receiver uses it for fallback matching).
+    private func trackAddRequest(for url: URL) -> TrackAddRequest {
+        let relativePath = StableTrackID.relativePath(for: url, baseURL: library.baseURL) ?? url.lastPathComponent
+        let snapshot = metadata.snapshot(for: url, baseURL: library.baseURL)
+        return TrackAddRequest(relativePath: relativePath,
+                               artist: snapshot?.artist,
+                               title: snapshot?.title,
+                               dateText: snapshot?.dateText,
+                               year: snapshot?.year)
     }
 
     private func handlePick(_ result: Result<[URL], Error>) {

@@ -12,40 +12,37 @@
 //  row that advances with playback.
 //
 //  Playback position isn't an observable property, so the current row ticks via
-//  a TimelineView (~4 Hz). The progress fill lives in the row *content* (not in
-//  .listRowBackground, which a List doesn't re-render on a timeline tick) and is
-//  made full-width by zeroing the row insets in QueueView.
+//  a TimelineView (~4 Hz), reading elapsed/duration live from the presenter — the
+//  local engine in DJ/Explore, the remote progress broadcast in Remote Send. The
+//  progress fill lives in the row *content* (not in .listRowBackground, which a
+//  List doesn't re-render on a timeline tick) and is made full-width by zeroing
+//  the row insets in QueueView.
 //
 
 import SwiftUI
 
 struct QueueRowView: View {
-    let item: QueueItem
-    var metadata: TrackMetadataSnapshot?
-    let isCurrent: Bool
-    let isFading: Bool
-    /// When true this row is the insert anchor: a marker line is drawn above it
-    /// to show that newly added tracks land here.
-    let isAnchor: Bool
-    @Environment(PlaybackEngine.self) private var engine
+    let row: QueueRowVM
+    /// Source of the live position for the current row's countdown/progress.
+    let presenter: any QueuePresenting
 
     var body: some View {
-        if isCurrent {
+        if row.isCurrent {
             TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-                row(remaining: remainingText, progress: fraction)
+                content(remaining: remainingText, progress: fraction)
             }
         } else {
-            row(remaining: nil, progress: nil)
+            content(remaining: nil, progress: nil)
         }
     }
 
     @ViewBuilder
-    private func row(remaining: String?, progress: CGFloat?) -> some View {
+    private func content(remaining: String?, progress: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if isAnchor { anchorMarker }
+            if row.isAnchor { anchorMarker }
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(row.isCurrent ? Color.accentColor : Color.secondary)
                     .frame(width: 24)
                 // TrackDisplayRow is greedy (it has its own trailing spacers), so
                 // let it fill the row — no outer Spacer, which would otherwise split
@@ -86,28 +83,25 @@ struct QueueRowView: View {
 
     /// Played fraction (0...1) of the current track.
     private var fraction: CGFloat {
-        let duration = engine.currentDuration
+        let duration = presenter.duration
         guard duration > 0 else { return 0 }
-        return min(1, max(0, CGFloat(engine.currentElapsed / duration)))
+        return min(1, max(0, CGFloat(presenter.elapsed / duration)))
     }
 
     /// Remaining time of the current track as "-M:SS", or nil if unknown.
     private var remainingText: String? {
-        let duration = engine.currentDuration
+        let duration = presenter.duration
         guard duration > 0 else { return nil }
-        let remaining = max(0, Int(duration - engine.currentElapsed))
+        let remaining = max(0, Int(duration - presenter.elapsed))
         return String(format: "-%d:%02d", remaining / 60, remaining % 60)
     }
 
     private var display: TrackDisplay {
-        if let metadata, !metadata.isEmpty {
-            return TrackDisplay(metadata: metadata, fallback: item.filename)
-        }
-        return TrackDisplay(filename: item.filename)
+        TrackDisplay(titleLine: row.title, artistLine: row.artist, detailLine: row.detail)
     }
 
     private var icon: String {
-        guard isCurrent else { return "music.note" }
-        return isFading ? "speaker.slash.fill" : "speaker.wave.2.fill"
+        guard row.isCurrent else { return "music.note" }
+        return row.isFading ? "speaker.slash.fill" : "speaker.wave.2.fill"
     }
 }

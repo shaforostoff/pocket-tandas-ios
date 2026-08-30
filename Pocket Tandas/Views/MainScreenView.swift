@@ -7,7 +7,16 @@
 //  Pocket Tandas
 //
 //  The shared main screen: file browser (top), Stop/Resume control (middle),
-//  play queue (bottom). Carries the AppMode flag for future per-mode behaviour.
+//  play queue (bottom). The AppMode flag selects behaviour:
+//   - Explore / DJ: drive the local engine and local PlayQueue.
+//   - Remote Receive (extends DJ): also broadcast queue/playback to a sender and
+//     apply its commands, via a screen-scoped RemoteReceiverCoordinator.
+//   - Remote Send (extends Explore): hide the local queue, show a mirror of the
+//     receiver's queue (RemoteQueue), and route transport + swipe-to-add over the
+//     peer link. Local prelistening stays available for headphone monitoring.
+//
+//  The remote radios are screen-scoped (created here, torn down on disappear) so
+//  they only run while a remote screen is open.
 //
 
 import SwiftUI
@@ -17,26 +26,94 @@ struct MainScreenView: View {
     let mode: AppMode
 
     @Environment(PreListenPlayer.self) private var preListen
+    @Environment(PlayQueue.self) private var queue
+    @Environment(PlaybackEngine.self) private var engine
+    @Environment(MetadataService.self) private var metadata
+    @Environment(LibraryStore.self) private var library
+    @Environment(\.modelContext) private var modelContext
 
     /// Where the browser currently is, shared so the control bar's Save action
-    /// can offer this folder and its parents. Lives here so it survives the
-    /// browser/queue subviews and resets on each presentation of this screen.
+    /// can offer this folder and its parents. Resets on each presentation.
     @State private var browser = BrowserState()
+
+    /// Live only in Remote Send: the mirror of the receiver's queue plus the peer
+    /// link. Created eagerly (below) so the local queue never flashes before the
+    /// mirror is wired.
+    @State private var remoteQueue: RemoteQueue?
+    /// Live only in Remote Receive: broadcasts local state and applies commands.
+    @State private var receiver: RemoteReceiverCoordinator?
+    @State private var startedRemote = false
+
+    init(mode: AppMode) {
+        self.mode = mode
+        if mode == .remoteSend {
+            _remoteQueue = State(initialValue: RemoteQueue(link: PeerLink(role: .sender)))
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            BrowserView(mode: mode)
+            connectionBanner
+            BrowserView(mode: mode, remoteQueue: remoteQueue)
                 .frame(maxHeight: .infinity)
             Divider()
-            StopResumeBar(mode: mode)
+            StopResumeBar(mode: mode, control: control)
             Divider()
-            QueueView()
+            QueueView(presenter: presenter)
                 .frame(maxHeight: .infinity)
         }
         .environment(browser)
-        // Leaving the screen ends any prelistening — it's a foreground audition,
-        // not background playback like the DJ queue.
-        .onDisappear { preListen.stop() }
+        .onAppear { startRemoteIfNeeded() }
+        // Leaving the screen ends prelistening (a foreground audition) and tears
+        // down any radios so they don't keep running back on the launcher.
+        .onDisappear {
+            preListen.stop()
+            receiver?.stop()
+            remoteQueue?.link.stop()
+        }
+    }
+
+    @ViewBuilder
+    private var connectionBanner: some View {
+        if mode.isRemoteSend, let remoteQueue {
+            RemoteConnectionView(link: remoteQueue.link, role: .sender)
+            Divider()
+        } else if mode.isRemoteReceive, let receiver {
+            RemoteConnectionView(link: receiver.link, role: .receiver)
+            Divider()
+        }
+    }
+
+    /// The transport the Stop/Resume bar drives: the remote mirror in Remote Send,
+    /// otherwise the local engine.
+    private var control: any PlaybackControlling {
+        if mode.isRemoteSend, let remoteQueue { return remoteQueue }
+        return engine
+    }
+
+    /// The queue the bottom list renders: the remote mirror in Remote Send,
+    /// otherwise the local play queue.
+    private var presenter: any QueuePresenting {
+        if mode.isRemoteSend, let remoteQueue {
+            return RemoteQueuePresenter(remote: remoteQueue)
+        }
+        return LocalQueuePresenter(queue: queue, engine: engine, metadata: metadata)
+    }
+
+    private func startRemoteIfNeeded() {
+        guard !startedRemote else { return }
+        startedRemote = true
+        switch mode {
+        case .remoteReceive:
+            let coordinator = RemoteReceiverCoordinator(queue: queue, engine: engine, metadata: metadata,
+                                                        library: library, container: modelContext.container)
+            coordinator.start()
+            receiver = coordinator
+        case .remoteSend:
+            remoteQueue?.link.startBrowsing()
+        default:
+            break
+        }
     }
 }
 
@@ -57,4 +134,3 @@ struct MainScreenView: View {
         .environment(PreListenPlayer(audioSession: session))
         .modelContainer(container)
 }
-

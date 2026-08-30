@@ -8,29 +8,39 @@
 //
 //  The middle control between browser and queue.
 //
-//  DJ mode: Stop (a configurable fade-out) while playing, turning into Resume
-//  while the fade is in progress (Resume cancels the scheduled stop). The row
-//  also carries the EQ button.
+//  DJ mode (and Remote Receive): Stop (a configurable fade-out) while playing,
+//  turning into Resume while the fade is in progress (Resume cancels the
+//  scheduled stop). The row also carries the EQ button.
+//
+//  Remote Send: the same Stop ⇄ Resume control, but bound to the RemoteQueue —
+//  so it drives the receiver's fade and reflects the receiver's broadcast state
+//  (Resume shows while the receiver is fading). No local-queue buttons.
 //
 //  Explore mode: Pause / Play instead — Pause holds the current track and Play
-//  resumes it from where it left off. (To start a different track, or restart
-//  the paused one, tap it in the queue while paused.) The row also carries Clear
-//  and Save for the play queue.
+//  resumes it from where it left off. The row also carries Clear and Save for the
+//  play queue.
+//
+//  The control is abstracted behind PlaybackControlling so the same view drives
+//  either the local PlaybackEngine or a RemoteQueue.
 //
 
 import SwiftUI
 
 struct StopResumeBar: View {
     let mode: AppMode
-    @Environment(PlaybackEngine.self) private var engine
+    let control: any PlaybackControlling
 
     var body: some View {
         HStack(spacing: 8) {
+            // Save/Clear act on the local queue — only in plain Explore (Remote
+            // Send hides its local queue and leaves it untouched).
             if mode == .explore {
                 SavePlaylistButton()
                 ClearQueueButton()
             }
-            if mode == .dj {
+            // EQ lives on the device that actually plays: plain DJ and the
+            // receiver. The sender has no local playback to equalise.
+            if mode.isDJLike {
                 EQButton()
             }
             playbackControl
@@ -45,20 +55,23 @@ struct StopResumeBar: View {
         .padding(.horizontal, 12)
     }
 
+    /// Explore is the only Pause/Play mode; DJ, Remote Receive and Remote Send all
+    /// use the Stop ⇄ Resume fade control (Remote Send drives the receiver).
     @ViewBuilder
     private var playbackControl: some View {
-        switch mode {
-        case .dj:      djControl
-        case .explore: exploreControl
+        if mode == .explore {
+            exploreControl
+        } else {
+            djControl
         }
     }
 
     /// DJ: Stop (fade-out) ⇄ Resume (cancel the in-progress fade).
     @ViewBuilder
     private var djControl: some View {
-        if engine.state.isFadingOut {
+        if control.isFadingOut {
             Button {
-                engine.resumeFromFade()
+                control.resumeFromFade()
             } label: {
                 Label("Resume", systemImage: "play.fill")
                     .frame(maxWidth: .infinity)
@@ -67,22 +80,22 @@ struct StopResumeBar: View {
             .tint(.green)
         } else {
             Button(role: .destructive) {
-                engine.stopWithFade()
+                control.stopWithFade()
             } label: {
                 Label("Stop", systemImage: "stop.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(!engine.state.isPlaying)
+            .disabled(!control.isPlaying)
         }
     }
 
     /// Explore: Pause ⇄ Play (continue from the paused position).
     @ViewBuilder
     private var exploreControl: some View {
-        if engine.state.isPaused {
+        if control.isPaused {
             Button {
-                engine.resume()
+                control.resume()
             } label: {
                 Label("Play", systemImage: "play.fill")
                     .frame(maxWidth: .infinity)
@@ -91,13 +104,13 @@ struct StopResumeBar: View {
             .tint(.green)
         } else {
             Button {
-                engine.pause()
+                control.pause()
             } label: {
                 Label("Pause", systemImage: "pause.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(!engine.state.isPlaying)
+            .disabled(!control.isPlaying)
         }
     }
 }

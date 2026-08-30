@@ -36,5 +36,13 @@ struct TrackDisplay {
         detailLine = nil
     }
 
+    /// Build directly from already-resolved lines — used by the Remote Send
+    /// mirror, where the receiver has pre-formatted title/artist/detail.
+    init(titleLine: String, artistLine: String?, detailLine: String?) {
+        self.titleLine = titleLine
+        self.artistLine = artistLine
+        self.detailLine = detailLine
+    }
+
     var hasSecondRow: Bool { artistLine != nil || detailLine != nil }
 }
