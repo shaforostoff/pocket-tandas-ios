@@ -1,0 +1,268 @@
+name: TestFlight
+
+# Build a signed App Store archive and upload it to TestFlight.
+#
+# This is deliberately separate from release.yml (the AltStore path): different
+# signing, different flags, different trigger. Notably it does NOT pass SIDELOAD,
+# so the features that can't ship through Apple — currently the silent keep-alive
+# audio, App Store guideline 2.5.4 — are compiled out. See StayAwake.swift.
+#
+# Manual only: run it from the Actions tab. Nothing here fires on a push or tag,
+# so a routine AltStore release can never accidentally spend a TestFlight build.
+#
+# ---------------------------------------------------------------------------
+# One-time setup — four repository secrets (Settings → Secrets and variables →
+# Actions). All four come from App Store Connect; none of them is your Apple ID
+# password, and none needs 2FA at build time.
+#
+#   APPLE_TEAM_ID            Your 10-character team ID (Membership details).
+#   ASC_KEY_ID               Users and Access → Integrations → App Store Connect
+#   ASC_ISSUER_ID              API. Create a key with the "App Manager" role;
+#   ASC_KEY_P8_BASE64          the page shows the key ID and issuer ID.
+#
+# The .p8 downloads once and cannot be re-downloaded. Base64 it (so the multi-line
+# PEM survives as a single secret value) with:
+#
+#     base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy
+#
+# Also required before the first run: the bundle ID org.shaforostoff.Pocket-Tandas
+# must be registered, and an app record for it must exist in App Store Connect.
+# Signing itself is handled here — -allowProvisioningUpdates lets Xcode create and
+# download the distribution profile using the API key, so there is no certificate
+# or provisioning profile to paste into secrets.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload to TestFlight (off = archive and validate only)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Two runs at once would race for the same build number.
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+env:
+  # Bumping the runner image is how you get a newer Xcode — the available Xcode
+  # versions are gated on the host macOS.
+  PROJECT: "Pocket Tandas.xcodeproj"
+  SCHEME: "Pocket Tandas"
+  BUNDLE_ID: "org.shaforostoff.Pocket-Tandas"
+  # Leave empty to use the newest Xcode on the runner; set e.g. "Xcode_26.app"
+  # to pin one. The build fails loudly if a pinned version isn't present.
+  XCODE_APP: ""
+  # App Store Connect rejects anything built against an older iOS SDK. Apple
+  # raises this bar roughly yearly — raise it here when they do.
+  MIN_IOS_SDK: "18"
+  # CFBundleVersion is github.run_number + this. Raise the offset if App Store
+  # Connect ever holds a build number at or above the current run number
+  # (it refuses a build number it has already seen).
+  BUILD_NUMBER_OFFSET: "0"
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets are present
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          KEY_P8: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "$TEAM_ID" ]   || missing="$missing APPLE_TEAM_ID"
+          [ -n "$KEY_ID" ]    || missing="$missing ASC_KEY_ID"
+          [ -n "$ISSUER_ID" ] || missing="$missing ASC_ISSUER_ID"
+          [ -n "$KEY_P8" ]    || missing="$missing ASC_KEY_P8_BASE64"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing — see the header of this workflow."
+            exit 1
+          fi
+          echo "All four secrets are set."
+
+      - name: Select Xcode and check the SDK is new enough
+        run: |
+          set -euo pipefail
+          if [ -n "${XCODE_APP:-}" ]; then
+            APP="/Applications/${XCODE_APP}"
+            if [ ! -d "$APP" ]; then
+              echo "::error::${XCODE_APP} is not on this runner. Available:"
+              ls -d /Applications/Xcode*.app
+              exit 1
+            fi
+          else
+            APP=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          fi
+          sudo xcode-select -s "$APP"
+          echo "Using $APP"
+          xcodebuild -version
+
+          SDK=$(xcodebuild -showsdks | sed -n 's/.*-sdk iphoneos\([0-9][0-9.]*\).*/\1/p' | sort -V | tail -1)
+          if [ -z "$SDK" ]; then
+            echo "::error::Could not determine the iOS SDK version from xcodebuild -showsdks."
+            xcodebuild -showsdks
+            exit 1
+          fi
+          echo "iOS SDK: $SDK"
+          if [ "${SDK%%.*}" -lt "$MIN_IOS_SDK" ]; then
+            echo "::error::iOS SDK $SDK is older than the required ${MIN_IOS_SDK}.x — App Store Connect will reject this build during processing. Pin a newer Xcode via XCODE_APP, or raise the runner image."
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+
+      - name: Install the App Store Connect API key
+        env:
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          KEY_P8: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          # ~/.appstoreconnect/private_keys is one of the locations altool
+          # searches by convention; xcodebuild is given the path explicitly.
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          echo "$KEY_P8" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          # A mangled secret shows up here rather than as an opaque signing error.
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_PATH"; then
+            echo "::error::ASC_KEY_P8_BASE64 did not decode to a PEM private key. Re-create it with: base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy"
+            exit 1
+          fi
+          echo "ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Work out the build number
+        run: |
+          set -euo pipefail
+          BUILD=$(( ${{ github.run_number }} + BUILD_NUMBER_OFFSET ))
+          echo "BUILD_NUMBER=$BUILD" >> "$GITHUB_ENV"
+          echo "CFBundleVersion for this run: $BUILD"
+
+      - name: Archive
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          # No SIDELOAD here — this is the App Store variant by construction.
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/PocketTandas.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+
+      - name: Export the IPA
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>destination</key>
+            <string>export</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/PocketTandas.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
+          ls -la "$RUNNER_TEMP/export"
+
+      - name: Report what was built
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/PocketTandas.xcarchive/Products/Applications/Pocket Tandas.app"
+          PLIST="$APP/Info.plist"
+          echo "bundle id:  $(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$PLIST")"
+          echo "version:    $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$PLIST")"
+          echo "build:      $(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$PLIST")"
+          echo "min iOS:    $(/usr/libexec/PlistBuddy -c 'Print MinimumOSVersion' "$PLIST")"
+          echo "built with: $(/usr/libexec/PlistBuddy -c 'Print DTSDKName' "$PLIST")"
+          # The privacy manifest is an upload requirement, and it is easy to lose
+          # by accident (a stray pbxproj edit drops it from the Resources phase).
+          if [ ! -f "$APP/PrivacyInfo.xcprivacy" ]; then
+            echo "::error::PrivacyInfo.xcprivacy is missing from the app bundle — App Store Connect will reject the upload. Check it is still in the Resources build phase."
+            exit 1
+          fi
+          echo "privacy manifest: present"
+
+      - name: Validate with App Store Connect
+        env:
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          # Validation catches most ITMS-* problems with a clearer message than
+          # the upload does, and costs nothing.
+          xcrun altool --validate-app \
+            -f "$RUNNER_TEMP/export/Pocket Tandas.ipa" \
+            -t ios \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
+
+      - name: Upload to TestFlight
+        if: ${{ inputs.upload }}
+        env:
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          xcrun altool --upload-app \
+            -f "$RUNNER_TEMP/export/Pocket Tandas.ipa" \
+            -t ios \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
+          echo "Uploaded build $BUILD_NUMBER. Processing in App Store Connect takes a few minutes."
+
+      - name: Keep the IPA and dSYMs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketTandas-${{ github.run_number }}
+          # The IPA is signed for the App Store, so it won't install directly on a
+          # device — it is here for inspection. The dSYMs are what you need to
+          # symbolicate a crash report by hand.
+          path: |
+            ${{ runner.temp }}/export/*.ipa
+            ${{ runner.temp }}/PocketTandas.xcarchive/dSYMs
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Remove the API key from the runner
+        if: always()
+        run: rm -f ~/.appstoreconnect/private_keys/*.p8
