@@ -66,6 +66,16 @@ final class RemoteAudioControl {
         pending = nil
     }
 
+    /// Forget the receiver's settings when the link drops: the panels go back to
+    /// "waiting", and the buttons stop badging a rig we can no longer reach.
+    func clear() {
+        resetSeq()
+        hasSettings = false
+        isEnabled = true
+        bands = []
+        masterVolume = 1
+    }
+
     private func commit(_ settings: RemoteAudioSettings) {
         isEnabled = settings.eqEnabled
         bands = settings.bands

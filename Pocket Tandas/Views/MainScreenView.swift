@@ -7,7 +7,9 @@
 //  Pocket Tandas
 //
 //  The shared main screen: file browser (top), Stop/Resume control (middle),
-//  play queue (bottom). The AppMode flag selects behaviour:
+//  play queue (bottom). In the remote modes the link's own UI — status,
+//  Disconnect, the peer picker — sits between that control row and the queue,
+//  next to the list it governs. The AppMode flag selects behaviour:
 //   - Explore / DJ: drive the local engine and local PlayQueue.
 //   - Remote Receive (extends DJ): also broadcast queue/playback to a sender and
 //     apply its commands, via a screen-scoped RemoteReceiverCoordinator.
@@ -67,9 +69,6 @@ struct MainScreenView: View {
             // A compact width (iPhone) or portrait stays stacked top-to-bottom.
             let sideBySide = horizontalSizeClass == .regular && proxy.size.width > proxy.size.height
             VStack(spacing: 0) {
-                // Remote banners span the full width above either layout.
-                connectionBanner
-                remoteNotice
                 if sideBySide {
                     sideBySideContent
                 } else {
@@ -104,8 +103,8 @@ struct MainScreenView: View {
         }
     }
 
-    /// Portrait / compact: browser on top, Stop/Resume control, queue below —
-    /// each list taking half the height.
+    /// Portrait / compact: browser on top, Stop/Resume control, the remote banners,
+    /// queue below — each list taking half the height.
     @ViewBuilder
     private var stackedContent: some View {
         topBrowser
@@ -113,12 +112,13 @@ struct MainScreenView: View {
         Divider()
         StopResumeBar(mode: mode, control: control, remoteAudio: remoteQueue?.audio)
         Divider()
-        QueueView(presenter: presenter)
+        remoteBanners
+        queueSection
             .frame(maxHeight: .infinity)
     }
 
     /// Landscape on a regular-width device: browser fills the left half, the
-    /// Stop/Resume control and queue share the right half.
+    /// Stop/Resume control, remote banners and queue share the right half.
     @ViewBuilder
     private var sideBySideContent: some View {
         HStack(spacing: 0) {
@@ -128,22 +128,60 @@ struct MainScreenView: View {
             VStack(spacing: 0) {
                 StopResumeBar(mode: mode, control: control, remoteAudio: remoteQueue?.audio)
                 Divider()
-                QueueView(presenter: presenter)
+                remoteBanners
+                queueSection
                     .frame(maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
+    /// Everything about the link — status, Disconnect, the peer picker, and the
+    /// sender's add-failure notice — sits directly above the queue it governs.
+    /// Each piece carries its own separator, since the connection banner hides
+    /// itself once the link has settled.
     @ViewBuilder
-    private var connectionBanner: some View {
+    private var remoteBanners: some View {
         if mode.isRemoteSend, let remoteQueue {
             RemoteConnectionView(link: remoteQueue.link, role: .sender)
-            Divider()
+            remoteNotice
         } else if mode.isRemoteReceive, let receiver {
             RemoteConnectionView(link: receiver.link, role: .receiver)
-            Divider()
         }
+    }
+
+    /// The bottom list. In Remote Control mode the mirror is hidden whenever the
+    /// link is down — a queue that can't be driven and can't be trusted to still
+    /// match the receiver is worse than none.
+    @ViewBuilder
+    private var queueSection: some View {
+        if mode.isRemoteSend, !isRemoteConnected {
+            disconnectedPlaceholder
+        } else {
+            QueueView(presenter: presenter)
+        }
+    }
+
+    private var disconnectedPlaceholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text("Not connected")
+                .font(.headline)
+            Text("The remote queue appears once a Remote Controllable phone is connected.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var isRemoteConnected: Bool {
+        guard let remoteQueue else { return false }
+        if case .connected = remoteQueue.link.connectionState { return true }
+        return false
     }
 
     /// Top half: the file browser or the Music-library browser, per the source the
@@ -159,7 +197,7 @@ struct MainScreenView: View {
     }
 
     /// Brief banner shown to the sending DJ when the receiver couldn't resolve some
-    /// added tracks (Remote Send only).
+    /// added tracks (Remote Send only). Carries its own separator, as above.
     @ViewBuilder
     private var remoteNotice: some View {
         if mode.isRemoteSend, let notice = remoteQueue?.addFailureNotice {
@@ -170,6 +208,7 @@ struct MainScreenView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Color.red.opacity(0.9))
+            Divider()
         }
     }
 

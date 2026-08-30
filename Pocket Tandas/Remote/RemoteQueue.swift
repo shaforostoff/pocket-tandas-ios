@@ -49,6 +49,19 @@ final class RemoteQueue {
             self.link.send(.requestSnapshot)
             self.link.send(.requestAudioSettings)
         }
+        link.onDisconnected = { [weak self] in self?.clear() }
+    }
+
+    /// Drop the mirror when the link goes down. The UI hides it anyway (see
+    /// MainScreenView), and discarding it means a reconnect can't flash the old
+    /// queue in the instant before the fresh snapshot lands.
+    private func clear() {
+        items = []
+        playback = RemotePlaybackState()
+        progress = RemoteProgress()
+        lastSnapshotSeq = 0
+        lastProgressSeq = 0
+        audio.clear()
     }
 
     // MARK: - Read-throughs for the UI
