@@ -24,6 +24,9 @@ struct QueueRowView: View {
     var metadata: TrackMetadataSnapshot?
     let isCurrent: Bool
     let isFading: Bool
+    /// When true this row is the insert anchor: a marker line is drawn above it
+    /// to show that newly added tracks land here.
+    let isAnchor: Bool
     @Environment(PlaybackEngine.self) private var engine
 
     var body: some View {
@@ -38,27 +41,45 @@ struct QueueRowView: View {
 
     @ViewBuilder
     private func row(remaining: String?, progress: CGFloat?) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary)
-                .frame(width: 24)
-            TrackDisplayRow(display: display, titleAccessory: remaining)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(alignment: .leading) {
-            if let progress {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Color.accentColor.opacity(0.10)              // whole track
-                        Color.accentColor.opacity(0.28)              // played portion
-                            .frame(width: geo.size.width * progress)
+        VStack(alignment: .leading, spacing: 0) {
+            if isAnchor { anchorMarker }
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary)
+                    .frame(width: 24)
+                TrackDisplayRow(display: display, titleAccessory: remaining)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(alignment: .leading) {
+                if let progress {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Color.accentColor.opacity(0.10)              // whole track
+                            Color.accentColor.opacity(0.28)              // played portion
+                                .frame(width: geo.size.width * progress)
+                        }
                     }
                 }
             }
         }
         .contentShape(Rectangle())
+    }
+
+    /// The insert-anchor marker: a labelled accent line above the row, marking
+    /// where newly added tracks will be inserted.
+    private var anchorMarker: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label("Insert here", systemImage: "arrow.down.to.line")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(height: 2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 
     /// Played fraction (0...1) of the current track.

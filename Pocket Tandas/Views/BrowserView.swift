@@ -234,10 +234,10 @@ struct BrowserView: View {
         switch entry.kind {
         case .audio:
             let key = StableTrackID.key(for: entry.url, baseURL: library.baseURL)
-            queue.append(QueueItem(url: entry.url, trackKey: key))
+            queue.enqueue(QueueItem(url: entry.url, trackKey: key))
         case .playlist:
             let urls = PlaylistParser.parse(playlistURL: entry.url)
-            queue.append(contentsOf: urls.map {
+            queue.enqueue(contentsOf: urls.map {
                 QueueItem(url: $0, trackKey: StableTrackID.key(for: $0, baseURL: library.baseURL))
             })
             // Scan the referenced tracks' metadata (doesn't disturb folder scan).
@@ -250,10 +250,9 @@ struct BrowserView: View {
             let urls = DirectoryLister.arrange(audio, filter: "", sort: sort, direction: direction,
                                                metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
                 .map(\.url)
-            for url in urls {
-                let key = StableTrackID.key(for: url, baseURL: library.baseURL)
-                queue.append(QueueItem(url: url, trackKey: key))
-            }
+            queue.enqueue(contentsOf: urls.map {
+                QueueItem(url: $0, trackKey: StableTrackID.key(for: $0, baseURL: library.baseURL))
+            })
             metadata.scan(urls: urls, baseURL: library.baseURL)
         }
     }

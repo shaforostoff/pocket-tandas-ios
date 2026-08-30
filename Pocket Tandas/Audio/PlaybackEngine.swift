@@ -232,6 +232,7 @@ final class PlaybackEngine {
         currentItem = item
         currentDuration = duration(of: item.url)
         setState(.playing(item.id))
+        queue.clearAnchor(ifMatches: item.id)
         preloadNext(after: item.id)
     }
 
@@ -329,6 +330,7 @@ final class PlaybackEngine {
         currentItem = next
         currentDuration = duration(of: next.url)
         setState(.playing(next.id))
+        queue.clearAnchor(ifMatches: next.id)
         preloadNext(after: next.id)
     }
 
