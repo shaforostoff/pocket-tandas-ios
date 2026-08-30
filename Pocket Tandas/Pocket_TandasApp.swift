@@ -28,6 +28,8 @@ struct Pocket_TandasApp: App {
     /// PlayQueue), and playback state is ephemeral.
     private let modelContainer: ModelContainer
 
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
         let container = Self.makeModelContainer()
         let session = AudioSessionController()
@@ -86,6 +88,11 @@ struct Pocket_TandasApp: App {
                 }
                 .onChange(of: library.baseURL) { _, newValue in
                     playQueue.baseURL = newValue
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    // Queue saves are coalesced to the next runloop turn; commit a
+                    // pending one before the app can be terminated in the background.
+                    if phase != .active { playQueue.flushPendingSave() }
                 }
         }
         .modelContainer(modelContainer)

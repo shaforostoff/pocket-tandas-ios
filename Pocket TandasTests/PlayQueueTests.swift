@@ -211,6 +211,7 @@ final class PlayQueueTests: XCTestCase {
         let q1 = PlayQueue(storeURL: store)
         q1.restore(baseURL: baseA)
         q1.enqueue(QueueItem(url: track, trackKey: StableTrackID.key(for: track, baseURL: baseA)))
+        q1.flushPendingSave()   // saves are coalesced to the next runloop turn
         XCTAssertEqual(q1.items.count, 1)
 
         // The base folder now lives at a NEW absolute path (B), as iOS may re-grant.
@@ -242,6 +243,7 @@ final class PlayQueueTests: XCTestCase {
         let q1 = PlayQueue(storeURL: store)
         q1.restore(baseURL: base)
         q1.enqueue(QueueItem(url: track, trackKey: StableTrackID.key(for: track, baseURL: base)))
+        q1.flushPendingSave()   // saves are coalesced to the next runloop turn
 
         try fm.removeItem(at: track)   // the file disappears between launches
 
