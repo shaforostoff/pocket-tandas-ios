@@ -15,10 +15,11 @@ import SwiftUI
 struct SortMenu: View {
     @Binding var sort: SortOption
     @Binding var direction: SortDirection
+    var options: [SortOption]
 
     var body: some View {
         Menu {
-            ForEach(SortOption.allCases) { option in
+            ForEach(options) { option in
                 Button {
                     if sort == option {
                         direction.toggle()

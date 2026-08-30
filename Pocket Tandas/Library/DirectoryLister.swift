@@ -64,7 +64,11 @@ enum DirectoryLister {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
         var files = entries.filter { !$0.isFolder }
-        files.sort { ascendingOrder($0, $1, sort: sort, metadata: metadata) }
+        // `.listed` keeps the entries' given order (e.g. a playlist's own order);
+        // every other option sorts by the chosen key.
+        if sort != .listed {
+            files.sort { ascendingOrder($0, $1, sort: sort, metadata: metadata) }
+        }
         if direction == .descending { files.reverse() }
 
         return folders + files
@@ -76,7 +80,7 @@ enum DirectoryLister {
                                        metadata: (URL) -> TrackMetadataSnapshot?) -> Bool {
         func byName() -> Bool { a.name.localizedStandardCompare(b.name) == .orderedAscending }
         switch sort {
-        case .filename:
+        case .listed, .filename:   // `.listed` is handled before this point
             return byName()
         case .dateYear:
             let ya = metadata(a.url)?.year ?? Int.min

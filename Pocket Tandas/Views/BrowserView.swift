@@ -27,6 +27,8 @@ struct BrowserView: View {
     @State private var sort: SortOption = .filename
     @State private var direction: SortDirection = .ascending
     @State private var showingPicker = false
+    /// On "Back", the child we left — so the parent list can scroll back to it.
+    @State private var scrollTarget: URL?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,23 +46,32 @@ struct BrowserView: View {
             handlePick(result)
         }
         .onAppear {
-            if currentFolder == nil { currentFolder = library.baseURL }
+            if currentFolder == nil { navigate(to: library.baseURL) }
         }
         .onChange(of: library.baseURL) { _, newValue in
-            currentFolder = newValue
+            navigate(to: newValue)
         }
         .task(id: currentFolder) {
             loadFolder()
         }
     }
 
-    /// List the folder from disk once, then kick off a metadata scan of its audio.
+    /// List the current location once, then kick off a metadata scan of its
+    /// audio. A real folder is read from disk; an opened playlist is parsed into
+    /// its tracks — deduped, original order kept — and browsed like a folder.
     private func loadFolder() {
         guard let folder = currentFolder else {
             rawEntries = []
             return
         }
-        rawEntries = library.rawEntries(in: folder)
+        if AudioFileTypes.isPlaylist(folder) {
+            var seen = Set<URL>()
+            rawEntries = PlaylistParser.parse(playlistURL: folder)
+                .filter { seen.insert($0).inserted }
+                .map { LibraryEntry(url: $0, kind: AudioFileTypes.isPlaylist($0) ? .playlist : .audio) }
+        } else {
+            rawEntries = library.rawEntries(in: folder)
+        }
         let audioURLs = rawEntries.filter { $0.kind == .audio }.map(\.url)
         metadata.scanFolder(urls: audioURLs, baseURL: library.baseURL)
     }
@@ -86,7 +97,7 @@ struct BrowserView: View {
                     ProgressView().controlSize(.small)
                 }
 
-                SortMenu(sort: $sort, direction: $direction)
+                SortMenu(sort: $sort, direction: $direction, options: sortOptions)
 
                 if isAtRoot {
                     Button { showingPicker = true } label: {
@@ -104,38 +115,52 @@ struct BrowserView: View {
 
     @ViewBuilder
     private var entryList: some View {
-        // While the folder is still being scanned, metadata-based sorts have no
-        // data yet — list in natural filename order and apply the chosen sort
-        // once every track's metadata is in (a single reorder, not per-track).
-        let deferSort = metadata.isScanningFolder && sort != .filename
+        // Natural order for this place: a playlist keeps its listed order, a
+        // folder falls back to filename. While a scan is in flight, metadata-based
+        // sorts have no data yet, so hold that natural order and apply the chosen
+        // sort once every track's metadata is in (one reorder, not per-track).
+        let naturalSort: SortOption = isViewingPlaylist ? .listed : .filename
+        let deferSort = metadata.isScanningFolder && sort.usesMetadata
         let entries = DirectoryLister.arrange(rawEntries, filter: filterText,
-                                              sort: deferSort ? .filename : sort,
+                                              sort: deferSort ? naturalSort : sort,
                                               direction: deferSort ? .ascending : direction,
                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
-        if entries.isEmpty {
-            ContentUnavailableView(
-                filterText.isEmpty ? "Empty Folder" : "No Matches",
-                systemImage: "tray",
-                description: Text(filterText.isEmpty
-                                  ? "No subfolders, audio, or playlists here."
-                                  : "Nothing matches “\(filterText)”."))
-            .frame(maxHeight: .infinity)
-        } else {
-            List(entries) { entry in
-                BrowserRowView(entry: entry,
-                               metadata: entry.isFolder ? nil : metadata.snapshot(for: entry.url, baseURL: library.baseURL))
-                    .contentShape(Rectangle())
-                    .onTapGesture { open(entry) }
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        if !entry.isFolder {
-                            Button { add(entry) } label: {
-                                Label("Add", systemImage: "text.append")
+        ScrollViewReader { proxy in
+            Group {
+                if entries.isEmpty {
+                    ContentUnavailableView(
+                        filterText.isEmpty ? "Empty Folder" : "No Matches",
+                        systemImage: "tray",
+                        description: Text(filterText.isEmpty
+                                          ? "No subfolders, audio, or playlists here."
+                                          : "Nothing matches “\(filterText)”."))
+                    .frame(maxHeight: .infinity)
+                } else {
+                    List(entries) { entry in
+                        BrowserRowView(entry: entry,
+                                       metadata: entry.isFolder ? nil : metadata.snapshot(for: entry.url, baseURL: library.baseURL))
+                            .contentShape(Rectangle())
+                            .onTapGesture { open(entry) }
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                if !entry.isFolder {
+                                    Button { add(entry) } label: {
+                                        Label("Add", systemImage: "text.append")
+                                    }
+                                    .tint(.green)
+                                }
                             }
-                            .tint(.green)
-                        }
                     }
+                    .listStyle(.plain)
+                }
             }
-            .listStyle(.plain)
+            // After "Back" reloads the parent listing, scroll to the child
+            // (folder or playlist) we came from. Consumed on the first reload.
+            .onChange(of: rawEntries) { _, newRaw in
+                guard let target = scrollTarget else { return }
+                scrollTarget = nil
+                guard newRaw.contains(where: { $0.id == target }) else { return }
+                Task { @MainActor in proxy.scrollTo(target, anchor: .center) }
+            }
         }
     }
 
@@ -167,16 +192,44 @@ struct BrowserView: View {
         return library.isBaseFolder(folder)
     }
 
+    /// True when the current location is a playlist opened as a fake folder.
+    private var isViewingPlaylist: Bool {
+        guard let folder = currentFolder else { return false }
+        return AudioFileTypes.isPlaylist(folder)
+    }
+
+    /// Sort options offered here — "Playlist Order" only inside a playlist.
+    private var sortOptions: [SortOption] {
+        isViewingPlaylist
+            ? [.listed, .filename, .dateYear, .bpm, .artist]
+            : [.filename, .dateYear, .bpm, .artist]
+    }
+
+    /// Change location, clear the filter, and keep the sort valid for the
+    /// destination: a playlist defaults to its listed order; folders never use it.
+    private func navigate(to url: URL?) {
+        currentFolder = url
+        filterText = ""
+        if let url, AudioFileTypes.isPlaylist(url) {
+            sort = .listed
+            direction = .ascending
+        } else if sort == .listed {
+            sort = .filename
+            direction = .ascending
+        }
+    }
+
     private func goUp() {
         guard let folder = currentFolder, !library.isBaseFolder(folder) else { return }
-        currentFolder = folder.deletingLastPathComponent()
-        filterText = ""
+        scrollTarget = folder   // restore the parent list to the item we came from
+        navigate(to: folder.deletingLastPathComponent())
     }
 
     private func open(_ entry: LibraryEntry) {
-        guard entry.isFolder else { return }   // audio/playlist added via swipe-right
-        currentFolder = entry.url
-        filterText = ""
+        // Folders and playlists drill in (a playlist opens as a fake folder of
+        // its tracks); audio is added via swipe-right, not tap.
+        guard entry.isNavigable else { return }
+        navigate(to: entry.url)
     }
 
     private func add(_ entry: LibraryEntry) {

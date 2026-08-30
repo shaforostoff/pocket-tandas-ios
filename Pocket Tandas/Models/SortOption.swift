@@ -10,6 +10,7 @@
 import Foundation
 
 enum SortOption: String, CaseIterable, Identifiable {
+    case listed       // source order — a playlist's own order; not shown for folders
     case filename
     case dateYear
     case bpm
@@ -19,6 +20,7 @@ enum SortOption: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
+        case .listed: return "Playlist Order"
         case .filename: return "Filename"
         case .dateYear: return "Date / Year"
         case .bpm: return "BPM"
@@ -28,10 +30,20 @@ enum SortOption: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .listed: return "list.number"
         case .filename: return "textformat"
         case .dateYear: return "calendar"
         case .bpm: return "metronome"
         case .artist: return "person"
+        }
+    }
+
+    /// Sorts that need scanned metadata. The browser holds these off until a
+    /// folder/playlist scan finishes; filename and playlist order do not.
+    var usesMetadata: Bool {
+        switch self {
+        case .listed, .filename: return false
+        case .dateYear, .bpm, .artist: return true
         }
     }
 }
