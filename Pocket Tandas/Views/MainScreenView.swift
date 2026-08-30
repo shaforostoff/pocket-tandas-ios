@@ -31,6 +31,7 @@ struct MainScreenView: View {
     @Environment(MetadataService.self) private var metadata
     @Environment(LibraryStore.self) private var library
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Where the browser currently is, shared so the control bar's Save action
     /// can offer this folder and its parents. Resets on each presentation.
@@ -52,17 +53,27 @@ struct MainScreenView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            connectionBanner
-            remoteNotice
-            topBrowser
-                .frame(maxHeight: .infinity)
-            Divider()
-            StopResumeBar(mode: mode, control: control)
-            Divider()
-            QueueView(presenter: presenter)
-                .frame(maxHeight: .infinity)
+        GeometryReader { proxy in
+            // On a wide canvas (iPad — or a large iPhone — held landscape) split
+            // left/right: browser on the left, queue + its controls on the right.
+            // A compact width (iPhone) or portrait stays stacked top-to-bottom.
+            let sideBySide = horizontalSizeClass == .regular && proxy.size.width > proxy.size.height
+            VStack(spacing: 0) {
+                // Remote banners span the full width above either layout.
+                connectionBanner
+                remoteNotice
+                if sideBySide {
+                    sideBySideContent
+                } else {
+                    stackedContent
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
+        // Measure the full window, not the keyboard-shrunk area: otherwise the
+        // filter keyboard can shrink the height enough to read as "landscape" and
+        // flip the layout mid-typing (notably large iPads in portrait).
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .environment(browser)
         .onAppear { startRemoteIfNeeded() }
         // Leaving the screen ends prelistening (a foreground audition) and tears
@@ -71,6 +82,37 @@ struct MainScreenView: View {
             preListen.stop()
             receiver?.stop()
             remoteQueue?.link.stop()
+        }
+    }
+
+    /// Portrait / compact: browser on top, Stop/Resume control, queue below —
+    /// each list taking half the height.
+    @ViewBuilder
+    private var stackedContent: some View {
+        topBrowser
+            .frame(maxHeight: .infinity)
+        Divider()
+        StopResumeBar(mode: mode, control: control)
+        Divider()
+        QueueView(presenter: presenter)
+            .frame(maxHeight: .infinity)
+    }
+
+    /// Landscape on a regular-width device: browser fills the left half, the
+    /// Stop/Resume control and queue share the right half.
+    @ViewBuilder
+    private var sideBySideContent: some View {
+        HStack(spacing: 0) {
+            topBrowser
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            VStack(spacing: 0) {
+                StopResumeBar(mode: mode, control: control)
+                Divider()
+                QueueView(presenter: presenter)
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

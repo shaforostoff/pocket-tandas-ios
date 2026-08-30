@@ -31,9 +31,6 @@ struct BrowserView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var rawEntries: [LibraryEntry] = []
-    @State private var filterText = ""
-    @State private var sort: SortOption = .filename
-    @State private var direction: SortDirection = .ascending
     @State private var showingPicker = false
     @State private var musicAccessDenied = false
     /// On "Back", the child we left — so the parent list can scroll back to it.
@@ -102,7 +99,7 @@ struct BrowserView: View {
             .buttonStyle(.borderless)
 
             if browser.currentFolder != nil {
-                TextField("Filter", text: $filterText)
+                TextField("Filter", text: Bindable(browser).fileFilter)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -111,7 +108,7 @@ struct BrowserView: View {
                     ProgressView().controlSize(.small)
                 }
 
-                SortMenu(sort: $sort, direction: $direction, options: sortOptions)
+                SortMenu(sort: Bindable(browser).fileSort, direction: Bindable(browser).fileDirection, options: sortOptions)
 
                 if isAtRoot {
                     browseControl
@@ -144,10 +141,10 @@ struct BrowserView: View {
         // sorts have no data yet, so hold that natural order and apply the chosen
         // sort once every track's metadata is in (one reorder, not per-track).
         let naturalSort: SortOption = isViewingPlaylist ? .listed : .filename
-        let deferSort = metadata.isScanningFolder && sort.usesMetadata
-        let entries = DirectoryLister.arrange(rawEntries, filter: filterText,
-                                              sort: deferSort ? naturalSort : sort,
-                                              direction: deferSort ? .ascending : direction,
+        let deferSort = metadata.isScanningFolder && browser.fileSort.usesMetadata
+        let entries = DirectoryLister.arrange(rawEntries, filter: browser.fileFilter,
+                                              sort: deferSort ? naturalSort : browser.fileSort,
+                                              direction: deferSort ? .ascending : browser.fileDirection,
                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
         // The audio files as shown (display order), tagged with where they live —
         // handed to the prelisten player so a finished track advances within this
@@ -158,11 +155,11 @@ struct BrowserView: View {
             Group {
                 if entries.isEmpty {
                     ContentUnavailableView(
-                        filterText.isEmpty ? "Empty Folder" : "No Matches",
+                        browser.fileFilter.isEmpty ? "Empty Folder" : "No Matches",
                         systemImage: "tray",
-                        description: Text(filterText.isEmpty
+                        description: Text(browser.fileFilter.isEmpty
                                           ? "No subfolders, audio, or playlists here."
-                                          : "Nothing matches “\(filterText)”."))
+                                          : "Nothing matches “\(browser.fileFilter)”."))
                     .frame(maxHeight: .infinity)
                 } else {
                     List(entries) { entry in
@@ -268,13 +265,13 @@ struct BrowserView: View {
     /// destination: a playlist defaults to its listed order; folders never use it.
     private func navigate(to url: URL?) {
         browser.currentFolder = url
-        filterText = ""
+        browser.fileFilter = ""
         if let url, AudioFileTypes.isPlaylist(url) {
-            sort = .listed
-            direction = .ascending
-        } else if sort == .listed {
-            sort = .filename
-            direction = .ascending
+            browser.fileSort = .listed
+            browser.fileDirection = .ascending
+        } else if browser.fileSort == .listed {
+            browser.fileSort = .filename
+            browser.fileDirection = .ascending
         }
     }
 
@@ -336,7 +333,7 @@ struct BrowserView: View {
             // playlists inside are ignored. Ordered by the browser's active sort;
             // metadata sorts fall back to filename for tracks not yet scanned.
             let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
-            let urls = DirectoryLister.arrange(audio, filter: "", sort: sort, direction: direction,
+            let urls = DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
                                                metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
                 .map(\.url)
             queue.enqueue(contentsOf: urls.map {
@@ -359,7 +356,7 @@ struct BrowserView: View {
             remoteQueue.addTracks(urls.map(trackAddRequest(for:)))
         case .folder:
             let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
-            let urls = DirectoryLister.arrange(audio, filter: "", sort: sort, direction: direction,
+            let urls = DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
                                                metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
                 .map(\.url)
             remoteQueue.addTracks(urls.map(trackAddRequest(for:)))

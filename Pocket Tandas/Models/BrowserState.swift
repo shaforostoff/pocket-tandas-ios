@@ -27,4 +27,25 @@ final class BrowserState {
     /// The folder the file browser is showing — or a playlist opened as a fake
     /// folder of its tracks. Nil until a base folder is chosen.
     var currentFolder: URL?
+
+    /// The Music-library browser's navigation stack — its `currentFolder`
+    /// analogue. Held here (not as the view's @State) so the spot the user
+    /// drilled to survives the browser being rebuilt, e.g. on an iPad rotation
+    /// between the stacked and side-by-side layouts. Resets per presentation
+    /// with the rest of this state.
+    let musicModel = MusicBrowseModel()
+
+    // Filter + sort live here rather than as each browser's view @State so they
+    // survive the browser being torn down and rebuilt — e.g. when the iPad
+    // rotates between the stacked and side-by-side main-screen layouts. Files and
+    // Music keep separate sets: their sort defaults and offered options differ
+    // (Music has no Filename sort), so a shared field would land on an invalid
+    // option when switching source. Reset with the rest on each presentation.
+    var fileFilter = ""
+    var fileSort: SortOption = .filename
+    var fileDirection: SortDirection = .ascending
+
+    var musicFilter = ""
+    var musicSort: SortOption = .artist
+    var musicDirection: SortDirection = .ascending
 }

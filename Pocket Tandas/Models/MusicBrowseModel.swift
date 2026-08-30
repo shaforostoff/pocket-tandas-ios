@@ -9,8 +9,9 @@
 //  Navigation state for the Music-library browser: a stack of nodes (the file
 //  browser's `currentFolder` analogue). The Music library is a typed hierarchy —
 //  root categories → containers (an artist/album/genre/playlist) → track lists —
-//  so "back" pops the stack rather than walking a path. Screen-scoped: created
-//  per MusicBrowserView appearance, so it resets when the source is left.
+//  so "back" pops the stack rather than walking a path. Screen-scoped: owned by
+//  BrowserState (one per main-screen presentation), so it survives the browser
+//  view being rebuilt — e.g. on rotation — and resets when the screen is left.
 //
 
 import Foundation
