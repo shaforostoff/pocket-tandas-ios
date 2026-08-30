@@ -1,0 +1,171 @@
+name: Release IPA
+
+# Cut a release by bumping MARKETING_VERSION in the project, then:
+#   git tag v1.1 && git push origin v1.1
+# This builds an unsigned .ipa, attaches it to a GitHub Release, and updates
+# apps.json (the AltStore source) on main with the new version + size + sha256.
+#
+# workflow_dispatch (manual run, no tag) just builds the IPA and uploads it as a
+# CI artifact so you can test the build without publishing.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build unsigned IPA
+        run: bash package.sh
+
+      - name: Verify IPA is valid
+        run: |
+          set -euo pipefail
+          # Glob-match the captured listing; piping into `grep -q` can race with
+          # SIGPIPE under pipefail and fail even when the app is present.
+          case "$(unzip -l "Pocket Tandas.ipa")" in
+            *"Payload/Pocket Tandas.app/"*) : ;;
+            *) echo "::error::IPA is missing Payload/Pocket Tandas.app"; exit 1 ;;
+          esac
+          SIZE=$(stat -f%z "Pocket Tandas.ipa")
+          [ "$SIZE" -gt 1000000 ] \
+            || { echo "::error::IPA suspiciously small ($SIZE bytes) — build likely failed"; exit 1; }
+          echo "IPA OK ($SIZE bytes)"
+
+      - name: Collect release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          PLIST="build/Build/Products/Release-iphoneos/Pocket Tandas.app/Info.plist"
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST")
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v${VERSION}"   # manual run: derive a tag-like name, not published
+          fi
+          VERSION_TAG="${TAG#v}"
+          ASSET="Pocket-Tandas-${VERSION_TAG}.ipa"
+
+          mv "Pocket Tandas.ipa" "$ASSET"
+          SIZE=$(stat -f%z "$ASSET")
+          SHA256=$(shasum -a 256 "$ASSET" | awk '{print $1}')
+          DATE=$(date -u +%Y-%m-%d)
+
+          NOTES=$(git for-each-ref "refs/tags/${TAG}" --format='%(contents)' 2>/dev/null || true)
+          [ -n "$NOTES" ] || NOTES="Bug fixes and improvements."
+
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "build=$BUILD"
+            echo "asset=$ASSET"
+            echo "size=$SIZE"
+            echo "sha256=$SHA256"
+            echo "date=$DATE"
+            echo "url=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
+            # multiline-safe export of NOTES
+            echo "notes<<__EOF__"
+            echo "$NOTES"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      # ---- manual run: just publish the IPA as a CI artifact and stop ----
+      - name: Upload IPA artifact (manual runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.asset }}
+          path: ${{ steps.meta.outputs.asset }}
+
+      # ---- tag push: publish a GitHub Release with the IPA ----
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          ASSET: ${{ steps.meta.outputs.asset }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          NOTES: ${{ steps.meta.outputs.notes }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" "$ASSET" \
+            --title "Pocket Tandas $VERSION" \
+            --notes "$NOTES"
+
+      # ---- tag push: update apps.json on main so AltStore sees the new version ----
+      - name: Update AltStore source (apps.json)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          BUILD: ${{ steps.meta.outputs.build }}
+          DATE: ${{ steps.meta.outputs.date }}
+          NOTES: ${{ steps.meta.outputs.notes }}
+          URL: ${{ steps.meta.outputs.url }}
+          SIZE: ${{ steps.meta.outputs.size }}
+          SHA256: ${{ steps.meta.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git checkout -B main origin/main
+
+          jq \
+            --arg bid     "org.shaforostoff.Pocket-Tandas" \
+            --arg version "$VERSION" \
+            --arg build   "$BUILD" \
+            --arg date    "$DATE" \
+            --arg notes   "$NOTES" \
+            --arg url     "$URL" \
+            --argjson size "$SIZE" \
+            --arg sha     "$SHA256" \
+            --arg minos   "17.0" \
+          '
+            def newver: {
+              version: $version,
+              buildVersion: $build,
+              date: $date,
+              localizedDescription: $notes,
+              downloadURL: $url,
+              size: $size,
+              sha256: $sha,
+              minOSVersion: $minos
+            };
+            .apps |= map(
+              if .bundleIdentifier == $bid then
+                  .versions = ([newver] + ((.versions // [])
+                    | map(select(.version != $version or .buildVersion != $build))))
+                | .version            = $version
+                | .versionDate        = $date
+                | .versionDescription = $notes
+                | .downloadURL        = $url
+                | .size               = $size
+                | .minOSVersion       = $minos
+              else . end
+            )
+          ' apps.json > apps.json.tmp && mv apps.json.tmp apps.json
+
+          if git diff --quiet apps.json; then
+            echo "apps.json already up to date."
+          else
+            git add apps.json
+            git commit -m "apps.json: Pocket Tandas $VERSION [skip ci]"
+            git push origin main
+          fi
