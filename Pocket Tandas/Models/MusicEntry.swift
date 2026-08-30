@@ -9,12 +9,35 @@
 //  One row in the Music-library browser — the `LibraryEntry` analogue. Either a
 //  drillable container (artist/album/genre/playlist) or a track. A track carries a
 //  TrackMetadataSnapshot built straight from its MPMediaItem (no file scan), so it
-//  renders through the same BrowserRowView / TrackDisplay as a file row, and the
-//  MPMediaItem itself for enqueue / prelisten.
+//  renders through the same BrowserRowView / TrackDisplay as a file row, plus a
+//  MusicTrackRef identifying the library track for enqueue / prelisten.
 //
 
 import Foundation
 import MediaPlayer
+
+/// The MPMediaItem fields a browser row needs, copied out once when the listing is
+/// built. Rows hold this rather than the MPMediaItem so browsing a large category
+/// doesn't pin one library object per row — each MPMediaItem caches every property
+/// ever read from it, so a thousand-row list holds a thousand of those caches.
+///
+/// `assetURL` is deliberately NOT among these fields: it is an expensive per-item
+/// lookup, and the listing is rebuilt on every filter keystroke. It is resolved
+/// from `persistentID` (see MusicLibrary.item(forPersistentID:)) only when a track
+/// is actually auditioned or enqueued.
+struct MusicTrackRef: Hashable {
+    let persistentID: UInt64
+    let title: String
+    let album: String?
+    let duration: TimeInterval
+
+    init(_ item: MPMediaItem) {
+        persistentID = item.persistentID
+        title = item.title ?? "Unknown"
+        album = item.albumTitle
+        duration = item.playbackDuration
+    }
+}
 
 struct MusicEntry: Identifiable {
     enum Kind {
@@ -30,10 +53,8 @@ struct MusicEntry: Identifiable {
     let isNavigable: Bool
     /// Display metadata for a track row (nil for containers).
     let snapshot: TrackMetadataSnapshot?
-    /// The library track, for enqueue / prelisten (nil for containers).
-    let mediaItem: MPMediaItem?
-
-    var assetURL: URL? { mediaItem?.assetURL }
+    /// The library track this row stands for (nil for containers).
+    let track: MusicTrackRef?
 }
 
 extension MusicEntry: Hashable {

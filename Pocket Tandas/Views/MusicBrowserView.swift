@@ -146,8 +146,8 @@ struct MusicBrowserView: View {
     }
 
     private func isAuditioning(_ entry: MusicEntry) -> Bool {
-        guard let current = preListen.currentURL, let url = entry.assetURL else { return false }
-        return current == url
+        guard let track = entry.track else { return false }
+        return preListen.current == .media(persistentID: track.persistentID)
     }
 
     /// Sort options: the metadata-capable subset (no filename — there are none).
@@ -184,12 +184,16 @@ struct MusicBrowserView: View {
         applyArrange()
     }
 
+    /// Copy each library item down to the fields the rows need and drop the
+    /// MPMediaItem — a big category would otherwise keep one library object per row
+    /// alive for as long as it is browsed.
     private func makeTrackEntries(_ items: [MPMediaItem]) -> [MusicEntry] {
         items.enumerated().map { offset, item in
-            let snapshot = TrackMetadataSnapshot(mediaItem: item)
-            return MusicEntry(id: "medialib:\(item.persistentID)#\(offset)", kind: .track,
-                              title: item.title ?? "Unknown", systemImage: "music.note",
-                              isNavigable: false, snapshot: snapshot, mediaItem: item)
+            let track = MusicTrackRef(item)
+            return MusicEntry(id: "medialib:\(track.persistentID)#\(offset)", kind: .track,
+                              title: track.title, systemImage: "music.note",
+                              isNavigable: false, snapshot: TrackMetadataSnapshot(mediaItem: item),
+                              track: track)
         }
     }
 
@@ -197,7 +201,7 @@ struct MusicBrowserView: View {
         let ident = container.persistentID.map(String.init) ?? container.filterValue ?? container.title
         return MusicEntry(id: "con:\(container.kind):\(ident)", kind: .container(container),
                           title: container.title, systemImage: container.systemImage,
-                          isNavigable: true, snapshot: nil, mediaItem: nil)
+                          isNavigable: true, snapshot: nil, track: nil)
     }
 
     // MARK: - Filter + sort
@@ -273,9 +277,13 @@ struct MusicBrowserView: View {
 
     // MARK: - Prelisten
 
+    /// Push the shown tracks as persistent ids. Resolving each one's asset URL here
+    /// would mean a library lookup per row on every filter keystroke; the player
+    /// resolves the one track it actually starts instead.
     private func syncPrelistenListing() {
         guard mode.isExploreLike else { return }
-        preListen.updateListing(displayed.compactMap(\.assetURL), folder: browser.musicModel.current.contextURL)
+        let tracks = displayed.compactMap { $0.track.map { PreListenTrack.media(persistentID: $0.persistentID) } }
+        preListen.updateListing(tracks, folder: browser.musicModel.current.contextURL)
     }
 
     /// Center the auditioned track if it's in the shown list — used when the view
@@ -295,7 +303,7 @@ struct MusicBrowserView: View {
         case .container(let container):
             browser.musicModel.push(.container(container))
         case .track:
-            guard mode.isExploreLike, let url = entry.assetURL else { return }
+            guard mode.isExploreLike, let track = entry.track else { return }
             switch engine.state {
             case .playing, .fadingOut:
                 return                       // don't interrupt active queue playback
@@ -304,34 +312,47 @@ struct MusicBrowserView: View {
             case .idle:
                 break
             }
-            preListen.play(url, in: browser.musicModel.current.contextURL)
+            preListen.play(.media(persistentID: track.persistentID),
+                           in: browser.musicModel.current.contextURL)
         }
     }
 
     private func add(_ entry: MusicEntry) {
-        let items: [MPMediaItem]
         switch entry.kind {
         case .container(let container):
-            items = MusicLibrary.tracks(in: .container(container))
+            // A container's tracks are queried fresh, used, and dropped — the
+            // MPMediaItems never outlive the add.
+            let items = MusicLibrary.tracks(in: .container(container))
+            guard !items.isEmpty else { return }
+            if mode.isRemoteSend, let remoteQueue {
+                // Remote Send: the receiver resolves these in its own (synced) library.
+                remoteQueue.addTracks(items.map(Self.mediaAddRequest))
+            } else {
+                enqueue(items)
+            }
         case .track:
-            items = entry.mediaItem.map { [$0] } ?? []
-        }
-        guard !items.isEmpty else { return }
-        if mode.isRemoteSend, let remoteQueue {
-            // Remote Send: the receiver resolves these in its own (synced) library.
-            remoteQueue.addTracks(items.map(Self.mediaAddRequest))
-        } else {
-            enqueue(items)
+            guard let track = entry.track else { return }
+            if mode.isRemoteSend, let remoteQueue {
+                // The row already holds everything the request needs — no lookup.
+                remoteQueue.addTracks([Self.mediaAddRequest(for: track, snapshot: entry.snapshot)])
+            } else if let item = MusicLibrary.item(forPersistentID: track.persistentID) {
+                enqueue([item])
+            }
         }
     }
 
     /// Build a media add request from a library item — metadata only. The receiver
     /// matches it against its own library; the per-device persistentID is not sent.
     private static func mediaAddRequest(for item: MPMediaItem) -> TrackAddRequest {
-        let year = item.releaseDate.map { Calendar.current.component(.year, from: $0) }
-        return TrackAddRequest(source: .mediaLibrary, artist: item.artist, title: item.title,
-                               dateText: year.map(String.init), year: year,
-                               album: item.albumTitle, durationHint: item.playbackDuration)
+        mediaAddRequest(for: MusicTrackRef(item), snapshot: TrackMetadataSnapshot(mediaItem: item))
+    }
+
+    private static func mediaAddRequest(for track: MusicTrackRef,
+                                        snapshot: TrackMetadataSnapshot?) -> TrackAddRequest {
+        TrackAddRequest(source: .mediaLibrary, artist: snapshot?.artist,
+                        title: snapshot?.title ?? track.title,
+                        dateText: snapshot?.dateText, year: snapshot?.year,
+                        album: track.album, durationHint: track.duration)
     }
 
     /// Enqueue library items by reference — no copy. DRM/cloud items (no asset URL)

@@ -40,6 +40,17 @@ enum MusicLibrary {
         }
     }
 
+    /// The library item behind a persistent id. Browser rows carry a
+    /// MusicTrackRef, not the MPMediaItem, so the object (and its `assetURL`) is
+    /// looked up here at the moment a track is auditioned or enqueued — one query
+    /// for one tap, instead of one per row on every re-arrange.
+    static func item(forPersistentID persistentID: UInt64) -> MPMediaItem? {
+        let query = MPMediaQuery.songs()
+        query.addFilterPredicate(MPMediaPropertyPredicate(value: NSNumber(value: persistentID),
+                                                          forProperty: MPMediaItemPropertyPersistentID))
+        return query.items?.first
+    }
+
     // MARK: - Containers
 
     private static func playlistContainers() -> [MusicContainer] {
