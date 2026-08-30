@@ -24,14 +24,14 @@ import Observation
 
 @Observable
 final class MetadataService {
-    /// trackKey -> snapshot. UI reads this; updates are observed.
+    /// trackKey -> snapshot (display fields plus source mod-date/size used for
+    /// staleness). UI reads this; updates are observed.
     private(set) var snapshots: [String: TrackMetadataSnapshot] = [:]
 
     /// True while the most recent folder scan still has tracks outstanding. The
     /// browser reads it to defer metadata-based sorting until every row is known.
     private(set) var isScanningFolder = false
 
-    @ObservationIgnored private var modDates: [String: Date] = [:]
     @ObservationIgnored private let container: ModelContainer
     @ObservationIgnored private var folderScanTask: Task<Void, Never>?
     @ObservationIgnored private var folderScanGeneration = 0
@@ -94,13 +94,16 @@ final class MetadataService {
 
     /// Cache misses / stale entries among `urls`, in input order.
     @MainActor
-    private func pendingItems(urls: [URL], baseURL: URL?) -> [(url: URL, key: String, modDate: Date)] {
-        var pending: [(url: URL, key: String, modDate: Date)] = []
+    private func pendingItems(urls: [URL], baseURL: URL?) -> [(url: URL, key: String, modDate: Date, size: Int)] {
+        var pending: [(url: URL, key: String, modDate: Date, size: Int)] = []
         for url in urls {
             let key = StableTrackID.key(for: url, baseURL: baseURL)
-            let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            if let known = modDates[key], known == modDate { continue }   // cache hit
-            pending.append((url, key, modDate))
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            let modDate = values?.contentModificationDate ?? .distantPast
+            let size = values?.fileSize ?? 0
+            // Cache hit only when both the mod-date and the size still match.
+            if let cached = snapshots[key], cached.sourceModDate == modDate, cached.fileSize == size { continue }
+            pending.append((url, key, modDate, size))
         }
         return pending
     }
@@ -108,36 +111,50 @@ final class MetadataService {
     @MainActor
     private func loadCache() {
         let context = container.mainContext
+
+        // The key scheme changed (path-only for in-base files), so any pre-existing
+        // rows are keyed differently and unreachable. Purge them once — keeping them
+        // would only waste memory and disk — and let the next scans repopulate.
+        let schemaKey = "metadataCacheKeySchema"
+        let schemaVersion = 2
+        if UserDefaults.standard.integer(forKey: schemaKey) < schemaVersion {
+            try? context.delete(model: TrackMetadata.self)
+            try? context.save()
+            UserDefaults.standard.set(schemaVersion, forKey: schemaKey)
+            return
+        }
+
         guard let all = try? context.fetch(FetchDescriptor<TrackMetadata>()) else { return }
         for m in all {
             snapshots[m.trackKey] = TrackMetadataSnapshot(title: m.title, artist: m.artist,
                                                           genre: m.genre, dateText: m.dateText,
                                                           year: m.year, bpm: m.bpm,
-                                                          trackGainDB: m.trackGainDB)
-            modDates[m.trackKey] = m.sourceModDate
+                                                          trackGainDB: m.trackGainDB,
+                                                          sourceModDate: m.sourceModDate,
+                                                          fileSize: m.fileSize ?? 0)
         }
     }
 
     @MainActor
-    private func performScan(_ pending: [(url: URL, key: String, modDate: Date)]) async {
+    private func performScan(_ pending: [(url: URL, key: String, modDate: Date, size: Int)]) async {
         guard !pending.isEmpty else { return }
         let context = container.mainContext
 
         // Extract off-main in a bounded group, collecting every result. We do NOT
         // touch the observed `snapshots` here: publishing one track at a time is
         // exactly the per-row pop-in and mid-scan reordering we want to avoid.
-        var results: [(key: String, modDate: Date, extracted: ExtractedMetadata)] = []
-        await withTaskGroup(of: (String, Date, ExtractedMetadata).self) { group in
+        var results: [(key: String, modDate: Date, size: Int, extracted: ExtractedMetadata)] = []
+        await withTaskGroup(of: (String, Date, Int, ExtractedMetadata).self) { group in
             var iterator = pending.makeIterator()
             func addNext() {
                 guard let next = iterator.next() else { return }
-                group.addTask { (next.key, next.modDate, await MetadataExtractor.extract(url: next.url)) }
+                group.addTask { (next.key, next.modDate, next.size, await MetadataExtractor.extract(url: next.url)) }
             }
             for _ in 0..<maxConcurrent { addNext() }
 
-            for await (key, modDate, extracted) in group {
+            for await (key, modDate, size, extracted) in group {
                 if Task.isCancelled { break }
-                results.append((key: key, modDate: modDate, extracted: extracted))
+                results.append((key: key, modDate: modDate, size: size, extracted: extracted))
                 addNext()
             }
         }
@@ -149,15 +166,14 @@ final class MetadataService {
         // Publish everything in a single synchronous pass so the UI observes one
         // update: rows fill in and (re)sort exactly once, when all metadata is in.
         for r in results {
-            apply(key: r.key, modDate: r.modDate, extracted: r.extracted, context: context)
+            apply(key: r.key, modDate: r.modDate, size: r.size, extracted: r.extracted, context: context)
         }
         try? context.save()
     }
 
     @MainActor
-    private func apply(key: String, modDate: Date, extracted: ExtractedMetadata, context: ModelContext) {
-        snapshots[key] = extracted.snapshot
-        modDates[key] = modDate
+    private func apply(key: String, modDate: Date, size: Int, extracted: ExtractedMetadata, context: ModelContext) {
+        snapshots[key] = extracted.snapshot(sourceModDate: modDate, fileSize: size)
 
         let descriptor = FetchDescriptor<TrackMetadata>(predicate: #Predicate { $0.trackKey == key })
         if let existing = try? context.fetch(descriptor).first {
@@ -169,13 +185,14 @@ final class MetadataService {
             existing.bpm = extracted.bpm
             existing.trackGainDB = extracted.trackGainDB
             existing.sourceModDate = modDate
+            existing.fileSize = size
             existing.lastScanned = .now
         } else {
             context.insert(TrackMetadata(trackKey: key, title: extracted.title, artist: extracted.artist,
                                          genre: extracted.genre, dateText: extracted.dateText,
                                          year: extracted.year, bpm: extracted.bpm,
                                          trackGainDB: extracted.trackGainDB,
-                                         sourceModDate: modDate, lastScanned: .now))
+                                         sourceModDate: modDate, fileSize: size, lastScanned: .now))
         }
     }
 }

@@ -26,6 +26,12 @@ struct TrackMetadataSnapshot: Hashable {
     /// metadata detail line).
     var trackGainDB: Double?
 
+    /// Source-file identity used only for staleness detection (re-scan when either
+    /// changes). Folded in here so one `snapshots` map carries it, rather than a
+    /// parallel mod-date map. Defaulted so display/preview call sites can omit it.
+    var sourceModDate: Date = .distantPast
+    var fileSize: Int = 0
+
     var isEmpty: Bool {
         title == nil && artist == nil && genre == nil && dateText == nil && year == nil && bpm == nil
     }
