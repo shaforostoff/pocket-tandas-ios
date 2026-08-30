@@ -33,6 +33,7 @@
 		9ECA41038612A89D233DC0EE /* FolderBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */; };
 		A35E4B3599531C1208C64670 /* QueueRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550446ACA175ABD3E68124BF /* QueueRowView.swift */; };
 		A43A4F9E8637CAA28AA271C6 /* TrackMetadataSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */; };
+		B3E24B6E8FC29593ED4A411E /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAEC4AA894A066ABE40E5456 /* DebugLog.swift */; };
 		CDDF4F2CAFC871F398C84BBC /* NowPlayingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */; };
 		CE986D192FDDF876003B2F2A /* Pocket_TandasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE986D182FDDF876003B2F2A /* Pocket_TandasApp.swift */; };
 		CE986D1F2FDDF87C003B2F2A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE986D1E2FDDF87C003B2F2A /* Assets.xcassets */; };
@@ -103,6 +104,7 @@
 		AD42454D852234C6AD343708 /* PlayQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayQueueTests.swift; path = PlayQueueTests.swift; sourceTree = "<group>"; };
 		B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutePickerView.swift; path = RoutePickerView.swift; sourceTree = "<group>"; };
 		B4DF4E2A802765BB203C5F04 /* QueueItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueueItem.swift; path = QueueItem.swift; sourceTree = "<group>"; };
+		BAEC4AA894A066ABE40E5456 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugLog.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		C735492AA77C72BFEB8A252D /* SortOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortOption.swift; path = SortOption.swift; sourceTree = "<group>"; };
 		CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataKeys.swift; path = MetadataKeys.swift; sourceTree = "<group>"; };
 		CE986D152FDDF876003B2F2A /* Pocket Tandas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Tandas.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -169,6 +171,7 @@
 			isa = PBXGroup;
 			children = (
 				32FB4789B2B0DA7E8401866A /* StableTrackID.swift */,
+				BAEC4AA894A066ABE40E5456 /* DebugLog.swift */,
 			);
 			name = Support;
 			path = Support;
@@ -418,6 +421,7 @@
 				E2204B2095DE9E32AB0CA737 /* MetadataService.swift in Sources */,
 				60E446C597D26782AB0C5214 /* PlaylistParser.swift in Sources */,
 				CDDF4F2CAFC871F398C84BBC /* NowPlayingController.swift in Sources */,
+				B3E24B6E8FC29593ED4A411E /* DebugLog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -35,4 +35,15 @@ enum PlaybackState: Equatable {
         if case .playing = self { return true }
         return false
     }
+
+    /// Short label for diagnostic logging, e.g. "playing(a1b2)".
+    var debugLabel: String {
+        func short(_ id: UUID) -> String { String(id.uuidString.prefix(4)) }
+        switch self {
+        case .idle: return "idle"
+        case .playing(let id): return "playing(\(short(id)))"
+        case .fadingOut(let id): return "fadingOut(\(short(id)))"
+        case .paused(let id): return "paused(\(short(id)))"
+        }
+    }
 }
