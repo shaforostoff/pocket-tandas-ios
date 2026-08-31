@@ -223,11 +223,19 @@ final class PeerLink: NSObject {
 
     /// After an unexpected drop, resume looking for the peer so the pair
     /// re-establishes on its own. Skipped after an intentional stop().
-    private func restartDiscoveryAfterDrop() {
+    ///
+    /// Reuses a running advertiser/browser rather than replacing it: a fresh one has
+    /// to re-register the Bonjour service, which over peer-to-peer Wi-Fi (no network,
+    /// so no fast infrastructure path) costs seconds every single reconnect. Only a
+    /// suspension justifies throwing the objects away — that leaves them alive but
+    /// deaf, and nothing short of new ones revives them (see restartAfterForeground).
+    private func ensureDiscoveryRunning() {
         guard isActive else { return }
         switch role {
-        case .receiver: startAdvertising()
-        case .sender: startBrowsing()
+        case .receiver:
+            if advertiser == nil { startAdvertising() } else { setState(.advertising) }
+        case .sender:
+            if browser == nil { startBrowsing() } else { setState(.browsing) }
         }
     }
 
@@ -248,7 +256,11 @@ extension PeerLink: MCSessionDelegate {
             guard session === self.session else { return }   // a rebuilt session's predecessor
             switch state {
             case .connected:
-                self.stopDiscovery()            // 1:1 — no need to keep looking
+                // The advertiser/browser deliberately keeps running: it costs little
+                // for a 1:1 link, and a radio that is already up recovers on the next
+                // discovery window instead of from cold (see ensureDiscoveryRunning).
+                // Finds are ignored meanwhile — the picker is hidden while connected,
+                // and auto-invite requires an empty session.
                 self.preferredPeerName = peerID.displayName
                 self.connectionState = .connected(peerID.displayName)
                 self.onConnected?(peerID)
@@ -257,7 +269,7 @@ extension PeerLink: MCSessionDelegate {
             case .notConnected:
                 self.connectionState = .disconnected
                 self.onDisconnected?()
-                self.restartDiscoveryAfterDrop()
+                self.ensureDiscoveryRunning()
             @unknown default:
                 break
             }
@@ -286,10 +298,26 @@ extension PeerLink: MCNearbyServiceAdvertiserDelegate {
                     didReceiveInvitationFromPeer peerID: MCPeerID,
                     withContext context: Data?,
                     invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-        // Accept a single peer; reject further invitations to stay 1:1.
-        let accept = session.connectedPeers.isEmpty
-        invitationHandler(accept, accept ? session : nil)
-        if accept { setState(.connecting(peerID.displayName)) }
+        // Hop to main before reading — and below, replacing — the session. MC is
+        // content for the invitation to be answered asynchronously.
+        DispatchQueue.main.async {
+            // An invitation from the peer we still believe is connected is that same
+            // phone coming back: its stack died in a suspension without telling us,
+            // and MC can take tens of seconds to notice the corpse on its own. A
+            // sender that really is connected never invites, so sitting out that
+            // timeout buys nothing but a string of rejected invitations — the ten
+            // seconds the DJ spends staring at "Connecting…". Drop the ghost and take
+            // the new link instead. (Two phones sharing a device name collide here,
+            // as they already do in the sender's reconnect, which matches on name.)
+            if self.session.connectedPeers.contains(where: { $0.displayName == peerID.displayName }) {
+                ptLog("[PeerLink] \(peerID.displayName) invited us while still 'connected' — dropping the stale session")
+                self.rebuildSession()
+            }
+            // Accept a single peer; reject further invitations to stay 1:1.
+            let accept = self.session.connectedPeers.isEmpty
+            invitationHandler(accept, accept ? self.session : nil)
+            if accept { self.connectionState = .connecting(peerID.displayName) }
+        }
     }
 
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
