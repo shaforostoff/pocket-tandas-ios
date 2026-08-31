@@ -41,6 +41,7 @@ enum RemoteMessage: Codable {
 
     // MARK: Receiver → Sender (state)
     case snapshot(RemoteSnapshot)          // on structural change
+    case delta(RemoteQueueDelta)           // ...or just what changed, when smaller
     case playbackState(RemotePlaybackUpdate)  // on engine state change, queue unchanged
     case progress(RemoteProgress)          // on timer
     case addTrackResult(resolved: Int, failed: Int)

@@ -127,6 +127,72 @@ struct RemoteSnapshot: Codable, Hashable {
     var seq: UInt64
 }
 
+/// What changed since the snapshot the sender is holding, for when saying that is
+/// smaller than restating the queue. With rows already named by a compact handle, a
+/// full snapshot is cheap — but a delta for the common edits (add one track, remove
+/// one, drag one) is a few tens of bytes against a few hundred.
+///
+/// `baseSeq` is the seq the sender must currently hold. Anything else means the two
+/// disagree about what is being edited, and the sender asks for a full snapshot
+/// instead of guessing. `count` is a final check that applying the script produced
+/// the list the receiver meant — cheap insurance on a stateful protocol, where a
+/// silent divergence would otherwise persist until the next reconnect.
+struct RemoteQueueDelta: Codable, Hashable {
+    /// A row taking its place at `at` in the final list. Carries display text only
+    /// when the sender can't already know it (a new row, or one whose metadata scan
+    /// has just replaced a filename with a real title).
+    struct Insertion: Codable, Hashable {
+        var at: Int
+        var item: RemoteQueueItem
+    }
+
+    var baseSeq: UInt64
+    var seq: UInt64
+    var removed: [RowHandle]
+    var inserted: [Insertion]
+    var anchor: RowHandle?
+    var playback: RemotePlaybackState
+    var count: Int
+}
+
+/// Turns "what the sender has" into "what the receiver has" as removals plus
+/// insertions.
+///
+/// A greedy pass keeps the longest run of rows that already line up, in order;
+/// everything else in the new list becomes an insertion at its final index, and
+/// everything from the old list that wasn't kept becomes a removal. A row that
+/// merely moved therefore appears in both — removed from where it was, re-inserted
+/// where it now belongs — which is what makes a drag cost two small numbers.
+///
+/// Applying removals first and then insertions in ascending index order reproduces
+/// the new list exactly: each insertion lands in a list whose earlier positions are
+/// already final.
+///
+/// Rows carrying text are deliberately excluded from the keepable set. Display text
+/// crosses the wire once per row per connection, so a row whose title has just been
+/// filled in has no other way to reach the sender than by being re-inserted.
+enum QueueEditScript {
+    static func make(from old: [RowHandle], to new: [RemoteQueueItem])
+        -> (removed: [RowHandle], inserted: [RemoteQueueDelta.Insertion]) {
+        let surviving = Set(new.map(\.id))
+        let resend = Set(new.lazy.filter(\.hasText).map(\.id))
+        let base = old.filter { surviving.contains($0) && !resend.contains($0) }
+
+        var inserted: [RemoteQueueDelta.Insertion] = []
+        var kept = Set<RowHandle>()
+        var next = 0
+        for (index, item) in new.enumerated() {
+            if next < base.count, base[next] == item.id {
+                kept.insert(item.id)
+                next += 1
+            } else {
+                inserted.append(.init(at: index, item: item))
+            }
+        }
+        return (old.filter { !kept.contains($0) }, inserted)
+    }
+}
+
 /// The receiver's audio-chain settings (EQ + master volume), broadcast to the
 /// sender on connect and on every change so the Remote Control screen's EQ and
 /// Volume panels show what the speakers are actually doing. `seq` shares the

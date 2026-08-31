@@ -131,6 +131,20 @@ final class RemoteQueue {
             items = merged
             pruneIdentities()
             applyPlayback(snapshot.playback, seq: snapshot.seq)
+        case .delta(let delta):
+            guard delta.seq > lastSnapshotSeq else { return }
+            // The base must be exactly what we hold. If it isn't — a snapshot we
+            // never got, a delta that arrived out of order — applying it would leave
+            // a mirror quietly wrong, so ask for the whole queue instead.
+            guard delta.baseSeq == lastSnapshotSeq, let updated = applying(delta) else {
+                ptLog("[RemoteQueue] delta doesn't fit the mirror — requesting full resync")
+                link.send(.requestSnapshot)
+                return
+            }
+            lastSnapshotSeq = delta.seq
+            items = updated
+            pruneIdentities()
+            applyPlayback(delta.playback, seq: delta.seq)
         case .playbackState(let update):
             applyPlayback(update.playback, seq: update.seq)
         case .progress(let progress):
@@ -184,6 +198,39 @@ final class RemoteQueue {
                                     isAnchor: row.id == anchor))
         }
         return merged
+    }
+
+    /// Rebuild the mirror from an edit script: drop the removed rows, then place
+    /// each insertion at its final index in ascending order — by which point every
+    /// earlier position is already settled. Returns nil if the script doesn't fit
+    /// what we hold, and the caller resyncs rather than showing a wrong queue.
+    private func applying(_ delta: RemoteQueueDelta) -> [MirrorRow]? {
+        let known = Dictionary(items.map { ($0.handle, $0) }, uniquingKeysWith: { first, _ in first })
+        let gone = Set(delta.removed)
+        var rows = items.filter { !gone.contains($0.handle) }
+        for insertion in delta.inserted.sorted(by: { $0.at < $1.at }) {
+            let row = insertion.item
+            let text: (title: String?, artist: String?, detail: String?)
+            if row.hasText {
+                text = (row.title, row.artist, row.detail)
+            } else if let cached = known[row.id] {
+                // A row that only moved: we were told its name once already.
+                text = (cached.title, cached.artist, cached.detail)
+            } else {
+                return nil
+            }
+            guard insertion.at <= rows.count else { return nil }
+            rows.insert(MirrorRow(id: localID(for: row.id), handle: row.id,
+                                  title: text.title, artist: text.artist, detail: text.detail,
+                                  isAnchor: false), at: insertion.at)
+        }
+        // The count the receiver expects us to end on — a silent divergence here
+        // would otherwise last until the next reconnect.
+        guard rows.count == delta.count else { return nil }
+        // The anchor arrives absolute, so restamp every row from it.
+        return rows.map { MirrorRow(id: $0.id, handle: $0.handle, title: $0.title,
+                                    artist: $0.artist, detail: $0.detail,
+                                    isAnchor: $0.handle == delta.anchor) }
     }
 
     /// The view-facing identity for a handle, minted on first sight and stable for

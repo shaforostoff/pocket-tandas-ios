@@ -61,6 +61,9 @@ final class RemoteReceiverCoordinator {
     /// `sentText`, and the same state can serialize as full rows once and text-less
     /// rows thereafter.
     @ObservationIgnored private var lastSent: SentState?
+    /// The seq of what the sender is holding, so a delta can name the base it edits.
+    /// Zero means we can't know — send the whole queue.
+    @ObservationIgnored private var lastSentSeq: UInt64 = 0
 
     private struct RowText: Equatable {
         let title: String
@@ -208,10 +211,36 @@ final class RemoteReceiverCoordinator {
         let state = SentState(rows: items.map(\.id), anchor: anchor, playback: playback)
         // Nothing to say: same rows in the same order, no row's text has changed.
         if lastSent == state, !items.contains(where: \.hasText) { return }
+        let seq = nextSeq()
+        let message = framing(items: items, anchor: anchor, playback: playback, seq: seq)
         sentText = text
         lastSent = state
-        link.send(.snapshot(RemoteSnapshot(items: items, anchor: anchor,
-                                           playback: playback, seq: nextSeq())))
+        lastSentSeq = seq
+        link.send(message)
+    }
+
+    /// An edit script when it is genuinely smaller, the whole queue otherwise.
+    ///
+    /// Both are built and encoded so the choice is made on real bytes rather than a
+    /// guess: the greedy script anchors on the first row that lines up, so a queue
+    /// rotated or rebuilt wholesale can produce a "delta" longer than the snapshot
+    /// it would replace. Encoding twice costs a compression pass on a message that
+    /// is only sent when something actually changed.
+    private func framing(items: [RemoteQueueItem], anchor: RowHandle?,
+                         playback: RemotePlaybackState, seq: UInt64) -> RemoteMessage {
+        let snapshot = RemoteMessage.snapshot(RemoteSnapshot(items: items, anchor: anchor,
+                                                             playback: playback, seq: seq))
+        guard let base = lastSent, lastSentSeq != 0 else { return snapshot }
+        let script = QueueEditScript.make(from: base.rows, to: items)
+        let delta = RemoteMessage.delta(RemoteQueueDelta(baseSeq: lastSentSeq, seq: seq,
+                                                         removed: script.removed,
+                                                         inserted: script.inserted,
+                                                         anchor: anchor, playback: playback,
+                                                         count: items.count))
+        guard let deltaSize = delta.encoded()?.count,
+              let snapshotSize = snapshot.encoded()?.count,
+              deltaSize < snapshotSize else { return snapshot }
+        return delta
     }
 
     /// Drop what we believe the sender knows, so the next snapshot re-describes
@@ -219,6 +248,7 @@ final class RemoteReceiverCoordinator {
     private func forgetSentText() {
         sentText = [:]
         lastSent = nil
+        lastSentSeq = 0
     }
 
     private func broadcastAudioSettings() {
@@ -370,7 +400,7 @@ final class RemoteReceiverCoordinator {
             engine.setMasterVolume(level)
         case .requestAudioSettings:
             broadcastAudioSettings()
-        case .snapshot, .playbackState, .progress, .addTrackResult, .audioSettings:
+        case .snapshot, .delta, .playbackState, .progress, .addTrackResult, .audioSettings:
             break   // receiver→sender messages; ignored here
         case .goodbye:
             break   // handled in PeerLink
