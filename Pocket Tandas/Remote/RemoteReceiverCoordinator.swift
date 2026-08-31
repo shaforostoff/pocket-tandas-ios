@@ -160,6 +160,10 @@ final class RemoteReceiverCoordinator {
             self.playbackBroadcastScheduled = false
             self.link.send(.playbackState(RemotePlaybackUpdate(playback: self.makePlayback(),
                                                                seq: self.nextSeq())))
+            // The transition itself carries the final position: a deck that has just
+            // stopped ticking would otherwise freeze the sender's countdown wherever
+            // the last tick left it, up to a second short.
+            self.broadcastProgress(force: true)
         }
     }
 
@@ -270,7 +274,18 @@ final class RemoteReceiverCoordinator {
         }
     }
 
-    private func broadcastProgress() {
+    /// Audio is actually moving. Note that a fade-out still is — the countdown keeps
+    /// running through it — where a pause is not.
+    private var isAdvancing: Bool {
+        engine.state.isPlaying || engine.state.isFadingOut
+    }
+
+    /// Ticks only while the position is changing. A paused deck holds a currentItemID
+    /// for as long as it stays loaded, so the old guard let it retransmit the same
+    /// elapsed once a second for as long as the DJ left it paused. `force` is for the
+    /// transitions themselves, which do need to carry a position.
+    private func broadcastProgress(force: Bool = false) {
+        guard force || isAdvancing else { return }
         guard let currentID = engine.state.currentItemID else { return }
         let progress = RemoteProgress(itemID: currentID,
                                       elapsed: engine.currentElapsed,
