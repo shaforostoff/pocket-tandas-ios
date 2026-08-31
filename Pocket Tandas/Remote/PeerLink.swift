@@ -80,11 +80,20 @@ final class PeerLink: NSObject {
     @ObservationIgnored private var lastAutoInviteAt: Date?
     /// An invitation has its own timeout; don't stack attempts on top of one.
     @ObservationIgnored private static let autoInviteCooldown: TimeInterval = 3
+    /// The invitation in flight and what it has left to spend, so one that lapses is
+    /// retried rather than handed back to the DJ as a dead banner.
+    @ObservationIgnored private var pendingInvite: (peer: MCPeerID, attemptsLeft: Int)?
+    /// Short, and tried three times: a lapsed invitation is usually a path that went
+    /// quiet, and a fresh one gets a fresh discovery window. One long wait just sits
+    /// on the dead path — and shows the DJ nothing moving while it does.
+    @ObservationIgnored private static let inviteTimeout: TimeInterval = 8
+    @ObservationIgnored private static let inviteAttempts = 3
+    @ObservationIgnored private static let peerIDDefaultsKey = "PeerLink.peerID"
     @ObservationIgnored private var lifecycleObservers: [NSObjectProtocol] = []
 
     init(role: Role) {
         self.role = role
-        let peer = MCPeerID(displayName: Self.deviceName())
+        let peer = Self.loadOrCreatePeerID()
         self.myPeerID = peer
         self.session = Self.makeSession(peer: peer)
         super.init()
@@ -96,8 +105,34 @@ final class PeerLink: NSObject {
         lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
+    /// `.optional`, not `.required`: the DTLS handshake is the slowest part of a
+    /// handshake carried over Bluetooth or peer-to-peer Wi-Fi, and what crosses this
+    /// link is a DJ's queue — track titles and transport commands, no credentials —
+    /// between two phones already in the same room. `.optional` is also the most
+    /// interoperable of the three, since it still encrypts when the peer is an older
+    /// build asking for `.required`.
     private static func makeSession(peer: MCPeerID) -> MCSession {
-        MCSession(peer: peer, securityIdentity: nil, encryptionPreference: .required)
+        MCSession(peer: peer, securityIdentity: nil, encryptionPreference: .optional)
+    }
+
+    /// Reuse one MCPeerID for the life of the install rather than minting one per
+    /// launch, as Apple advises: a new identity each time leaves the other phone
+    /// holding an entry that looks findable and is dead, and inviting that costs a
+    /// full timeout. Rebuilt if the device is renamed, since the name is the identity
+    /// the DJ picks from — and what reconnection matches on.
+    private static func loadOrCreatePeerID() -> MCPeerID {
+        let name = deviceName()
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: peerIDDefaultsKey),
+           let saved = try? NSKeyedUnarchiver.unarchivedObject(ofClass: MCPeerID.self, from: data),
+           saved.displayName == name {
+            return saved
+        }
+        let peer = MCPeerID(displayName: name)
+        if let data = try? NSKeyedArchiver.archivedData(withRootObject: peer, requiringSecureCoding: true) {
+            defaults.set(data, forKey: peerIDDefaultsKey)
+        }
+        return peer
     }
 
     private static func deviceName() -> String {
@@ -132,7 +167,12 @@ final class PeerLink: NSObject {
     }
 
     func invite(_ peer: MCPeerID) {
-        browser?.invitePeer(peer, to: session, withContext: nil, timeout: 15)
+        pendingInvite = (peer, Self.inviteAttempts - 1)
+        sendInvitation(to: peer)
+    }
+
+    private func sendInvitation(to peer: MCPeerID) {
+        browser?.invitePeer(peer, to: session, withContext: nil, timeout: Self.inviteTimeout)
         setState(.connecting(peer.displayName))
     }
 
@@ -141,6 +181,7 @@ final class PeerLink: NSObject {
     /// later so that message actually makes it out.
     func disconnect() {
         preferredPeerName = nil
+        pendingInvite = nil
         send(.goodbye)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.session.disconnect()
@@ -150,6 +191,7 @@ final class PeerLink: NSObject {
     func stop() {
         isActive = false
         preferredPeerName = nil
+        pendingInvite = nil
         stopDiscovery()
         session.disconnect()
         setState(.idle)
@@ -205,6 +247,7 @@ final class PeerLink: NSObject {
     /// Replace the MCSession. The old one's delegate is cleared first so its
     /// teardown can't report state for a session we no longer use.
     private func rebuildSession() {
+        pendingInvite = nil          // in flight against a session we are discarding
         let old = session
         old.delegate = nil
         old.disconnect()
@@ -239,6 +282,20 @@ final class PeerLink: NSObject {
         }
     }
 
+    /// A lapsed invitation reaches us as a plain notConnected, indistinguishable
+    /// from a link going down except that we never reached connected — so spend the
+    /// remaining attempts before reporting the drop. Returns whether it re-invited.
+    private func retryPendingInvite(to peerID: MCPeerID) -> Bool {
+        guard let pending = pendingInvite, pending.peer == peerID, pending.attemptsLeft > 0 else {
+            pendingInvite = nil
+            return false
+        }
+        pendingInvite = (pending.peer, pending.attemptsLeft - 1)
+        ptLog("[PeerLink] invitation to \(peerID.displayName) lapsed — retrying, \(pending.attemptsLeft) left")
+        sendInvitation(to: pending.peer)
+        return true
+    }
+
     private func setState(_ newState: ConnectionState) {
         if Thread.isMainThread {
             connectionState = newState
@@ -261,12 +318,14 @@ extension PeerLink: MCSessionDelegate {
                 // discovery window instead of from cold (see ensureDiscoveryRunning).
                 // Finds are ignored meanwhile — the picker is hidden while connected,
                 // and auto-invite requires an empty session.
+                self.pendingInvite = nil
                 self.preferredPeerName = peerID.displayName
                 self.connectionState = .connected(peerID.displayName)
                 self.onConnected?(peerID)
             case .connecting:
                 self.connectionState = .connecting(peerID.displayName)
             case .notConnected:
+                if self.retryPendingInvite(to: peerID) { return }
                 self.connectionState = .disconnected
                 self.onDisconnected?()
                 self.ensureDiscoveryRunning()
