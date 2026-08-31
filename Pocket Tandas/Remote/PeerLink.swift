@@ -201,10 +201,25 @@ final class PeerLink: NSObject {
         let peers = session.connectedPeers
         guard !peers.isEmpty, let data = message.encoded() else { return }
         do {
-            try session.send(data, toPeers: peers, with: .reliable)
+            try session.send(data, toPeers: peers, with: Self.delivery(for: message))
         } catch {
             ptLog("[PeerLink] send failed: \(error)")
         }
+    }
+
+    /// Position updates go unreliably; everything else must arrive, and in order.
+    ///
+    /// A progress tick is superseded by the next one within seconds, so making the
+    /// link retransmit a lost one spends airtime it hasn't got — this path is
+    /// Bluetooth when there is no Wi-Fi — to deliver a number that is already stale
+    /// on arrival. The sender extrapolates across the gap and its seq guard drops
+    /// any that overtake each other, which unreliable delivery now allows.
+    ///
+    /// Everything else is state or a command: a lost snapshot, delta, or command
+    /// has no successor coming to paper over it.
+    private static func delivery(for message: RemoteMessage) -> MCSessionSendDataMode {
+        if case .progress = message { return .unreliable }
+        return .reliable
     }
 
     // MARK: - Suspension recovery
