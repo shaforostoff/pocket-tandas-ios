@@ -46,23 +46,60 @@ struct RemotePlaybackUpdate: Codable, Hashable {
     var seq: UInt64
 }
 
-/// Mirror of PlaybackState for the wire (engine internals omitted).
+/// Mirror of PlaybackState for the wire (engine internals omitted). Carries the
+/// current track's `duration`, which is constant for as long as that track is
+/// current and so has no business riding along on every position update — this
+/// message is already sent whenever the current track can change.
+///
+/// Version-tolerant: every field decodes to its default when the key is absent, so
+/// a peer on an older build (which sent no duration) still decodes.
 struct RemotePlaybackState: Codable, Hashable {
     enum Kind: String, Codable { case idle, playing, fadingOut, paused }
     var kind: Kind = .idle
     var currentItemID: UUID?
+    var duration: TimeInterval = 0
 
     var isPlaying: Bool { kind == .playing }
     var isFadingOut: Bool { kind == .fadingOut }
     var isPaused: Bool { kind == .paused }
+
+    init(kind: Kind = .idle, currentItemID: UUID? = nil, duration: TimeInterval = 0) {
+        self.kind = kind
+        self.currentItemID = currentItemID
+        self.duration = duration
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .idle
+        currentItemID = try c.decodeIfPresent(UUID.self, forKey: .currentItemID)
+        duration = try c.decodeIfPresent(TimeInterval.self, forKey: .duration) ?? 0
+    }
 }
 
-/// Frequent, cheap position update for the current track (sent on a timer).
+/// Position of the current track — the one message a playing link sends over and
+/// over, so it is kept to almost nothing. `itemID` and `duration` used to travel
+/// with it and now live in RemotePlaybackState, which already covers every moment
+/// either could change; what remains is ~44 bytes against the old 133.
+///
+/// It is also sent rarely: the sender runs the countdown from its own clock
+/// between updates (see RemoteQueue.elapsed), so these arrive on a transition and
+/// every ten seconds thereafter to pull drift back — not once a second.
 struct RemoteProgress: Codable, Hashable {
-    var itemID: UUID?
     var elapsed: TimeInterval = 0
-    var duration: TimeInterval = 0
     var seq: UInt64 = 0
+
+    init(elapsed: TimeInterval = 0, seq: UInt64 = 0) {
+        self.elapsed = elapsed
+        self.seq = seq
+    }
+
+    /// Tolerant of the extra keys an older receiver still sends.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        elapsed = try c.decodeIfPresent(TimeInterval.self, forKey: .elapsed) ?? 0
+        seq = try c.decodeIfPresent(UInt64.self, forKey: .seq) ?? 0
+    }
 }
 
 /// Full authoritative state of the receiver's queue + playback, sent on any

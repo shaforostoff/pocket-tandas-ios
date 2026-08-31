@@ -90,8 +90,8 @@ struct RemoteQueuePresenter: QueuePresenting {
     let remote: RemoteQueue
 
     var isRemote: Bool { true }
-    var elapsed: TimeInterval { remote.progress.elapsed }
-    var duration: TimeInterval { remote.progress.duration }
+    var elapsed: TimeInterval { remote.elapsed }
+    var duration: TimeInterval { remote.duration }
 
     var rows: [QueueRowVM] {
         let currentID = remote.playback.currentItemID

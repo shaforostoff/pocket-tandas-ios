@@ -25,7 +25,10 @@ import Observation
 final class RemoteQueue {
     private(set) var items: [RemoteQueueItem] = []
     private(set) var playback = RemotePlaybackState()
-    private(set) var progress = RemoteProgress()
+
+    /// The last position the receiver sent and the instant it landed — the base the
+    /// countdown runs from between updates.
+    @ObservationIgnored private var progressBase: (elapsed: TimeInterval, at: Date)?
 
     /// Brief notice for the Remote Send UI when the receiver couldn't resolve some
     /// added tracks (not in its library / not playable). Auto-clears after a moment.
@@ -65,7 +68,7 @@ final class RemoteQueue {
     private func clear() {
         items = []
         playback = RemotePlaybackState()
-        progress = RemoteProgress()
+        progressBase = nil
         lastSnapshotSeq = 0
         lastPlaybackSeq = 0
         lastProgressSeq = 0
@@ -76,6 +79,18 @@ final class RemoteQueue {
 
     var anchorID: UUID? { items.first(where: { $0.isAnchor })?.id }
     var currentItemID: UUID? { playback.currentItemID }
+
+    /// Position of the current track, advanced from the local clock between the
+    /// receiver's ten-second corrections. The row re-reads this on its own timeline
+    /// tick, so the countdown runs smoothly on a fraction of the old traffic.
+    var elapsed: TimeInterval {
+        guard let base = progressBase else { return 0 }
+        guard playback.isPlaying || playback.isFadingOut else { return base.elapsed }
+        let running = base.elapsed + Date().timeIntervalSince(base.at)
+        return duration > 0 ? min(running, duration) : running
+    }
+
+    var duration: TimeInterval { playback.duration }
 
     // MARK: - Inbound state
 
@@ -99,7 +114,7 @@ final class RemoteQueue {
         case .progress(let progress):
             guard progress.seq > lastProgressSeq else { return }
             lastProgressSeq = progress.seq
-            self.progress = progress
+            progressBase = (progress.elapsed, Date())
         case .addTrackResult(_, let failed):
             noteAddResult(failed: failed)
         case .audioSettings(let settings):
@@ -119,6 +134,11 @@ final class RemoteQueue {
     private func applyPlayback(_ state: RemotePlaybackState, seq: UInt64) {
         guard seq > lastPlaybackSeq else { return }
         lastPlaybackSeq = seq
+        // A different track restarts the countdown. Rebasing at zero rather than
+        // discarding the base matters because a transition's own position update can
+        // be lost — the countdown then starts from the truth for a new track instead
+        // of reading zero until the next correction.
+        if state.currentItemID != playback.currentItemID { progressBase = (0, Date()) }
         playback = state
     }
 

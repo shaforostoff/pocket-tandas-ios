@@ -85,6 +85,7 @@ final class RemoteReceiverCoordinator {
             self?.forgetSentText()
             self?.broadcastSnapshot()
             self?.broadcastAudioSettings()
+            self?.broadcastProgress(force: true)   // don't make a fresh sender wait out the interval
         }
     }
 
@@ -263,13 +264,18 @@ final class RemoteReceiverCoordinator {
         case .fadingOut: kind = .fadingOut
         case .paused: kind = .paused
         }
-        return RemotePlaybackState(kind: kind, currentItemID: engine.state.currentItemID)
+        return RemotePlaybackState(kind: kind, currentItemID: engine.state.currentItemID,
+                                   duration: engine.currentDuration)
     }
 
-    /// One tick a second: the row shows whole seconds, so a faster tick only bought
-    /// wire traffic.
+    /// Once every ten seconds, not once a second: the sender advances the countdown
+    /// on its own clock and only needs the truth often enough to correct drift, which
+    /// between two phones over ten seconds is a few tens of milliseconds. Transitions
+    /// send their own position, so this is purely the correction.
+    @ObservationIgnored private static let progressInterval: TimeInterval = 10
+
     private func startProgressTimer() {
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        progressTimer = Timer.scheduledTimer(withTimeInterval: Self.progressInterval, repeats: true) { [weak self] _ in
             self?.broadcastProgress()
         }
     }
@@ -286,12 +292,11 @@ final class RemoteReceiverCoordinator {
     /// transitions themselves, which do need to carry a position.
     private func broadcastProgress(force: Bool = false) {
         guard force || isAdvancing else { return }
-        guard let currentID = engine.state.currentItemID else { return }
-        let progress = RemoteProgress(itemID: currentID,
-                                      elapsed: engine.currentElapsed,
-                                      duration: engine.currentDuration,
-                                      seq: nextSeq())
-        link.send(.progress(progress))
+        guard engine.state.currentItemID != nil else { return }
+        // Two decimals: past what a per-second countdown can show, and short enough
+        // that the number doesn't cost more than the rest of the message.
+        let elapsed = (engine.currentElapsed * 100).rounded() / 100
+        link.send(.progress(RemoteProgress(elapsed: elapsed, seq: nextSeq())))
     }
 
     private func nextSeq() -> UInt64 {
@@ -322,6 +327,7 @@ final class RemoteReceiverCoordinator {
             // every row in full again.
             forgetSentText()
             broadcastSnapshot()
+            broadcastProgress(force: true)
         case .setEQEnabled(let on):
             equalizer.setEnabled(on)
         case .setEQBand(let id, let gain, let frequency, let bandwidth):
