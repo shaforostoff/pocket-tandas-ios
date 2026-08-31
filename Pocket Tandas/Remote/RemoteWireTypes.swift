@@ -17,8 +17,23 @@
 
 import Foundation
 
-/// One queue entry as seen over the wire. `id` is the receiver's QueueItem.id —
-/// commands address rows by this identity, never by index.
+/// Compact stand-in for a row's identity on the wire.
+///
+/// The receiver's QueueItem.id is a UUID, which JSON writes as 36 characters of
+/// hex — and being random, it is the one thing zlib cannot shrink. In a hundred-row
+/// queue those UUIDs were most of every snapshot and the whole of every command. A
+/// small integer, assigned by the receiver and mapped back the moment a command
+/// arrives, says the same thing in two or three characters: a text-less hundred-row
+/// snapshot goes from 2580 compressed bytes to 376.
+///
+/// Handles are meaningful only to the receiver that issued them. It hands out a
+/// fresh one per queue item and forgets it when the item leaves, so a command
+/// naming a handle it no longer knows is simply ignored — which is what should
+/// happen to a command aimed at a row that has since been removed.
+typealias RowHandle = Int
+
+/// One queue entry as seen over the wire. `id` is the receiver's handle for the row
+/// — commands address rows by this identity, never by index.
 ///
 /// The display text is sent ONCE PER CONNECTION per row: the receiver remembers
 /// what it has told this sender about each id, and thereafter sends the row with
@@ -28,11 +43,10 @@ import Foundation
 /// sender merges nil fields against its own mirror; if it ever meets an id it has
 /// no text for it asks for a full resync rather than showing a blank row.
 struct RemoteQueueItem: Codable, Identifiable, Hashable {
-    let id: UUID
+    let id: RowHandle
     let title: String?
     let artist: String?
     let detail: String?      // right-aligned line: BPM · Genre · Date
-    let isAnchor: Bool
 
     /// True when this row carries its display text (a new or changed row).
     var hasText: Bool { title != nil }
@@ -56,14 +70,14 @@ struct RemotePlaybackUpdate: Codable, Hashable {
 struct RemotePlaybackState: Codable, Hashable {
     enum Kind: String, Codable { case idle, playing, fadingOut, paused }
     var kind: Kind = .idle
-    var currentItemID: UUID?
+    var currentItemID: RowHandle?
     var duration: TimeInterval = 0
 
     var isPlaying: Bool { kind == .playing }
     var isFadingOut: Bool { kind == .fadingOut }
     var isPaused: Bool { kind == .paused }
 
-    init(kind: Kind = .idle, currentItemID: UUID? = nil, duration: TimeInterval = 0) {
+    init(kind: Kind = .idle, currentItemID: RowHandle? = nil, duration: TimeInterval = 0) {
         self.kind = kind
         self.currentItemID = currentItemID
         self.duration = duration
@@ -72,7 +86,7 @@ struct RemotePlaybackState: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .idle
-        currentItemID = try c.decodeIfPresent(UUID.self, forKey: .currentItemID)
+        currentItemID = try c.decodeIfPresent(RowHandle.self, forKey: .currentItemID)
         duration = try c.decodeIfPresent(TimeInterval.self, forKey: .duration) ?? 0
     }
 }
@@ -103,9 +117,12 @@ struct RemoteProgress: Codable, Hashable {
 }
 
 /// Full authoritative state of the receiver's queue + playback, sent on any
-/// structural change.
+/// structural change. There is only ever one anchor, so it rides in the header
+/// rather than as a flag on every row — which also means moving it changes one
+/// small field instead of rewriting the whole list.
 struct RemoteSnapshot: Codable, Hashable {
     var items: [RemoteQueueItem]
+    var anchor: RowHandle?
     var playback: RemotePlaybackState
     var seq: UInt64
 }

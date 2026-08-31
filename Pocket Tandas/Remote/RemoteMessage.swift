@@ -22,12 +22,12 @@ import Foundation
 
 enum RemoteMessage: Codable {
     // MARK: Sender → Receiver (commands)
-    case requestPlay(itemID: UUID)
+    case requestPlay(itemID: RowHandle)
     case stopWithFade
     case resumeFromFade
-    case setAnchor(itemID: UUID?)          // nil clears the anchor
-    case move(itemIDs: [UUID], toOffset: Int)
-    case removeItems(itemIDs: [UUID])
+    case setAnchor(itemID: RowHandle?)     // nil clears the anchor
+    case move(itemIDs: [RowHandle], toOffset: Int)
+    case removeItems(itemIDs: [RowHandle])
     case addTracks([TrackAddRequest])
     case requestSnapshot                   // resync on (re)connect
     // Audio chain: the sender edits the receiver's EQ / master volume. Band edits

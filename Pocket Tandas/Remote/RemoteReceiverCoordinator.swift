@@ -48,6 +48,13 @@ final class RemoteReceiverCoordinator {
     /// asks for a full resync, so it can never claim the peer knows something it
     /// doesn't, and pruned to the live queue so it can't grow unbounded.
     @ObservationIgnored private var sentText: [UUID: RowText] = [:]
+    /// The compact identity handed to the sender for each queue item, and the way
+    /// back. Both are rebuilt from the live queue on every snapshot, so a handle
+    /// outlives its row only for as long as a command already in flight might name
+    /// it — and one that names a row we no longer have is meant to be ignored.
+    @ObservationIgnored private var handleByItem: [UUID: RowHandle] = [:]
+    @ObservationIgnored private var itemByHandle: [RowHandle: UUID] = [:]
+    @ObservationIgnored private var nextHandle: RowHandle = 1
     /// What the sender already has, so an unchanged rebuild (queue untouched, e.g.
     /// metadata churn from browsing on this device) isn't resent. Only the row
     /// identities/anchors and playback are compared — the text is covered by
@@ -62,11 +69,8 @@ final class RemoteReceiverCoordinator {
     }
 
     private struct SentState: Equatable {
-        struct Row: Equatable {
-            let id: UUID
-            let isAnchor: Bool
-        }
-        let rows: [Row]
+        let rows: [RowHandle]
+        let anchor: RowHandle?
         let playback: RemotePlaybackState
     }
 
@@ -200,13 +204,14 @@ final class RemoteReceiverCoordinator {
     private func broadcastSnapshot() {
         let (items, text) = makeItems()
         let playback = makePlayback()
-        let state = SentState(rows: items.map { .init(id: $0.id, isAnchor: $0.isAnchor) },
-                              playback: playback)
+        let anchor = queue.anchorID.flatMap { handleByItem[$0] }
+        let state = SentState(rows: items.map(\.id), anchor: anchor, playback: playback)
         // Nothing to say: same rows in the same order, no row's text has changed.
         if lastSent == state, !items.contains(where: \.hasText) { return }
         sentText = text
         lastSent = state
-        link.send(.snapshot(RemoteSnapshot(items: items, playback: playback, seq: nextSeq())))
+        link.send(.snapshot(RemoteSnapshot(items: items, anchor: anchor,
+                                           playback: playback, seq: nextSeq())))
     }
 
     /// Drop what we believe the sender knows, so the next snapshot re-describes
@@ -228,7 +233,6 @@ final class RemoteReceiverCoordinator {
     /// changed since — a newly queued track, or one whose metadata scan has just
     /// replaced a filename with a real title.
     private func makeItems() -> (items: [RemoteQueueItem], text: [UUID: RowText]) {
-        let anchorID = queue.anchorID
         var text: [UUID: RowText] = [:]
         text.reserveCapacity(queue.items.count)
         let items = queue.items.map { item -> RemoteQueueItem in
@@ -245,15 +249,34 @@ final class RemoteReceiverCoordinator {
                               detail: display.detailLine)
             // Pruning falls out of rebuilding the map from the live queue.
             text[item.id] = row
-            let isAnchor = item.id == anchorID
+            let handle = wireHandle(for: item.id)
             guard sentText[item.id] != row else {
-                return RemoteQueueItem(id: item.id, title: nil, artist: nil, detail: nil,
-                                       isAnchor: isAnchor)
+                return RemoteQueueItem(id: handle, title: nil, artist: nil, detail: nil)
             }
-            return RemoteQueueItem(id: item.id, title: row.title, artist: row.artist,
-                                   detail: row.detail, isAnchor: isAnchor)
+            return RemoteQueueItem(id: handle, title: row.title, artist: row.artist,
+                                   detail: row.detail)
         }
+        pruneHandles()
         return (items, text)
+    }
+
+    /// The sender-facing identity of a queue item, minted on first sight.
+    private func wireHandle(for id: UUID) -> RowHandle {
+        if let existing = handleByItem[id] { return existing }
+        let handle = nextHandle
+        nextHandle += 1
+        handleByItem[id] = handle
+        itemByHandle[handle] = id
+        return handle
+    }
+
+    /// Keep the tables to the live queue so a long set can't grow them without
+    /// bound. Handles are never reused, so a dropped one can only ever be a command
+    /// aimed at a row that has already gone.
+    private func pruneHandles() {
+        let live = Set(queue.items.map(\.id))
+        handleByItem = handleByItem.filter { live.contains($0.key) }
+        itemByHandle = itemByHandle.filter { live.contains($0.value) }
     }
 
     private func makePlayback() -> RemotePlaybackState {
@@ -264,7 +287,8 @@ final class RemoteReceiverCoordinator {
         case .fadingOut: kind = .fadingOut
         case .paused: kind = .paused
         }
-        return RemotePlaybackState(kind: kind, currentItemID: engine.state.currentItemID,
+        return RemotePlaybackState(kind: kind,
+                                   currentItemID: engine.state.currentItemID.map { wireHandle(for: $0) },
                                    duration: engine.currentDuration)
     }
 
@@ -308,18 +332,24 @@ final class RemoteReceiverCoordinator {
 
     private func handle(_ message: RemoteMessage) {
         switch message {
-        case .requestPlay(let id):
-            if let item = queue.item(withID: id) { engine.requestPlay(item) }
+        case .requestPlay(let handle):
+            if let id = itemByHandle[handle], let item = queue.item(withID: id) { engine.requestPlay(item) }
         case .stopWithFade:
             engine.stopWithFade()
         case .resumeFromFade:
             engine.resumeFromFade()
-        case .setAnchor(let id):
-            queue.setAnchor(id)
-        case .move(let ids, let toOffset):
-            applyMove(ids: ids, toOffset: toOffset)
-        case .removeItems(let ids):
-            applyRemove(ids: ids)
+        case .setAnchor(let handle):
+            // An unknown handle is a stale row, not a request to clear the anchor —
+            // only an explicit nil clears it.
+            if let handle {
+                if let id = itemByHandle[handle] { queue.setAnchor(id) }
+            } else {
+                queue.setAnchor(nil)
+            }
+        case .move(let handles, let toOffset):
+            applyMove(ids: handles.compactMap { itemByHandle[$0] }, toOffset: toOffset)
+        case .removeItems(let handles):
+            applyRemove(ids: handles.compactMap { itemByHandle[$0] })
         case .addTracks(let requests):
             Task { @MainActor in self.applyAddTracks(requests) }
         case .requestSnapshot:

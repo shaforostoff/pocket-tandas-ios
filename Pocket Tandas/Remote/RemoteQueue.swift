@@ -21,9 +21,24 @@
 import Foundation
 import Observation
 
+/// One row of the mirror as the UI sees it.
+///
+/// The wire names rows by a compact RowHandle; the queue UI is the very same view
+/// that renders the local queue and names rows by UUID. A locally-minted UUID per
+/// handle, kept for as long as the row is known, bridges the two so neither side
+/// has to learn about the other's scheme.
+struct MirrorRow: Identifiable, Hashable {
+    let id: UUID
+    let handle: RowHandle
+    let title: String?
+    let artist: String?
+    let detail: String?
+    let isAnchor: Bool
+}
+
 @Observable
 final class RemoteQueue {
-    private(set) var items: [RemoteQueueItem] = []
+    private(set) var items: [MirrorRow] = []
     private(set) var playback = RemotePlaybackState()
 
     /// The last position the receiver sent and the instant it landed — the base the
@@ -39,6 +54,10 @@ final class RemoteQueue {
     /// The receiver's audio chain (EQ + master volume), driven by the EQ and Volume
     /// buttons on the Remote Control screen. Shares this link.
     @ObservationIgnored let audio: RemoteAudioControl
+
+    /// Handle ↔ local UUID, pruned to the live rows on each snapshot.
+    @ObservationIgnored private var localIDs: [RowHandle: UUID] = [:]
+    @ObservationIgnored private var handles: [UUID: RowHandle] = [:]
 
     @ObservationIgnored private var lastSnapshotSeq: UInt64 = 0
     @ObservationIgnored private var lastPlaybackSeq: UInt64 = 0
@@ -67,6 +86,8 @@ final class RemoteQueue {
     /// queue in the instant before the fresh snapshot lands.
     private func clear() {
         items = []
+        localIDs = [:]
+        handles = [:]
         playback = RemotePlaybackState()
         progressBase = nil
         lastSnapshotSeq = 0
@@ -78,7 +99,7 @@ final class RemoteQueue {
     // MARK: - Read-throughs for the UI
 
     var anchorID: UUID? { items.first(where: { $0.isAnchor })?.id }
-    var currentItemID: UUID? { playback.currentItemID }
+    var currentItemID: UUID? { playback.currentItemID.flatMap { localIDs[$0] } }
 
     /// Position of the current track, advanced from the local clock between the
     /// receiver's ten-second corrections. The row re-reads this on its own timeline
@@ -98,7 +119,7 @@ final class RemoteQueue {
         switch message {
         case .snapshot(let snapshot):
             guard snapshot.seq > lastSnapshotSeq else { return }
-            guard let merged = merge(snapshot.items) else {
+            guard let merged = merge(snapshot.items, anchor: snapshot.anchor) else {
                 // A row arrived without text that we have no text for — our mirror and
                 // the receiver's idea of it have diverged. Ask for the full picture
                 // rather than rendering blank rows.
@@ -108,6 +129,7 @@ final class RemoteQueue {
             }
             lastSnapshotSeq = snapshot.seq
             items = merged
+            pruneIdentities()
             applyPlayback(snapshot.playback, seq: snapshot.seq)
         case .playbackState(let update):
             applyPlayback(update.playback, seq: update.seq)
@@ -144,23 +166,41 @@ final class RemoteQueue {
 
     /// Fill in the rows the receiver sent without text, from the mirror we already
     /// hold. Returns nil if any such row is unknown to us — the caller resyncs.
-    private func merge(_ incoming: [RemoteQueueItem]) -> [RemoteQueueItem]? {
-        guard incoming.contains(where: { !$0.hasText }) else { return incoming }
-        let known = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var merged: [RemoteQueueItem] = []
+    private func merge(_ incoming: [RemoteQueueItem], anchor: RowHandle?) -> [MirrorRow]? {
+        let known = Dictionary(items.map { ($0.handle, $0) }, uniquingKeysWith: { first, _ in first })
+        var merged: [MirrorRow] = []
         merged.reserveCapacity(incoming.count)
         for row in incoming {
+            let text: (title: String?, artist: String?, detail: String?)
             if row.hasText {
-                merged.append(row)
+                text = (row.title, row.artist, row.detail)
             } else if let cached = known[row.id] {
-                // Only the anchor flag travels with a text-less row.
-                merged.append(RemoteQueueItem(id: row.id, title: cached.title, artist: cached.artist,
-                                              detail: cached.detail, isAnchor: row.isAnchor))
+                text = (cached.title, cached.artist, cached.detail)
             } else {
                 return nil
             }
+            merged.append(MirrorRow(id: localID(for: row.id), handle: row.id,
+                                    title: text.title, artist: text.artist, detail: text.detail,
+                                    isAnchor: row.id == anchor))
         }
         return merged
+    }
+
+    /// The view-facing identity for a handle, minted on first sight and stable for
+    /// as long as the row stays in the queue — so SwiftUI keeps row state across
+    /// snapshots rather than treating every update as a new list.
+    private func localID(for handle: RowHandle) -> UUID {
+        if let existing = localIDs[handle] { return existing }
+        let id = UUID()
+        localIDs[handle] = id
+        handles[id] = handle
+        return id
+    }
+
+    private func pruneIdentities() {
+        let live = Set(items.map(\.handle))
+        localIDs = localIDs.filter { live.contains($0.key) }
+        handles = handles.filter { live.contains($0.value) }
     }
 
     /// Surface a brief notice when the receiver couldn't resolve some adds. Runs on
@@ -178,10 +218,30 @@ final class RemoteQueue {
 
     // MARK: - Outbound intents (commands)
 
-    func requestPlay(id: UUID) { link.send(.requestPlay(itemID: id)) }
-    func setAnchor(id: UUID?) { link.send(.setAnchor(itemID: id)) }
-    func move(ids: [UUID], toOffset: Int) { link.send(.move(itemIDs: ids, toOffset: toOffset)) }
-    func removeItems(ids: [UUID]) { link.send(.removeItems(itemIDs: ids)) }
+    func requestPlay(id: UUID) {
+        guard let handle = handles[id] else { return }
+        link.send(.requestPlay(itemID: handle))
+    }
+
+    /// A nil id clears the anchor; a row we have no handle for is a row that has
+    /// already gone, so the command is dropped rather than sent as a clear.
+    func setAnchor(id: UUID?) {
+        guard let id else { return link.send(.setAnchor(itemID: nil)) }
+        guard let handle = handles[id] else { return }
+        link.send(.setAnchor(itemID: handle))
+    }
+
+    func move(ids: [UUID], toOffset: Int) {
+        let moved = ids.compactMap { handles[$0] }
+        guard moved.count == ids.count else { return }
+        link.send(.move(itemIDs: moved, toOffset: toOffset))
+    }
+
+    func removeItems(ids: [UUID]) {
+        let removed = ids.compactMap { handles[$0] }
+        guard !removed.isEmpty else { return }
+        link.send(.removeItems(itemIDs: removed))
+    }
     func addTracks(_ requests: [TrackAddRequest]) {
         guard !requests.isEmpty else { return }
         link.send(.addTracks(requests))

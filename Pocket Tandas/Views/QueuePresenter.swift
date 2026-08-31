@@ -94,7 +94,7 @@ struct RemoteQueuePresenter: QueuePresenting {
     var duration: TimeInterval { remote.duration }
 
     var rows: [QueueRowVM] {
-        let currentID = remote.playback.currentItemID
+        let currentID = remote.currentItemID
         let fading = remote.playback.isFadingOut
         return remote.items.map { item in
             let isCurrent = item.id == currentID
