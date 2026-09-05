@@ -34,6 +34,7 @@ struct StopResumeBar: View {
     var remoteAudio: RemoteAudioControl? = nil
 
     @Environment(Equalizer.self) private var equalizer
+    @Environment(RestorationFilters.self) private var restoration
 
     var body: some View {
         HStack(spacing: 8) {
@@ -51,7 +52,7 @@ struct StopResumeBar: View {
                 VolumeButton(control: remoteAudio, isReady: remoteAudio.hasSettings)
                 EQButton(control: remoteAudio, isReady: remoteAudio.hasSettings)
             } else if mode.isDJLike {
-                EQButton(control: equalizer)
+                EQButton(control: equalizer, restoration: restoration)
             }
             playbackControl
         }

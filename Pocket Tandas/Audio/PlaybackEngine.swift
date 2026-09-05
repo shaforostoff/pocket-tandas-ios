@@ -115,6 +115,7 @@ final class PlaybackEngine {
     @ObservationIgnored private let queue: PlayQueue
     @ObservationIgnored private let metadata: MetadataService
     @ObservationIgnored private let equalizer: Equalizer
+    @ObservationIgnored private let restoration: RestorationFilters
 
     /// Elapsed playback time of the active track (best effort, for Now Playing).
     var currentElapsed: TimeInterval {
@@ -124,11 +125,13 @@ final class PlaybackEngine {
         return Double(playerTime.sampleTime) / playerTime.sampleRate
     }
 
-    init(audioSession: AudioSessionController, queue: PlayQueue, metadata: MetadataService, equalizer: Equalizer) {
+    init(audioSession: AudioSessionController, queue: PlayQueue, metadata: MetadataService,
+         equalizer: Equalizer, restoration: RestorationFilters) {
         self.audioSession = audioSession
         self.queue = queue
         self.metadata = metadata
         self.equalizer = equalizer
+        self.restoration = restoration
         self.activePlayer = playerA
         self.standbyPlayer = playerB
         self.masterVolume = Self.persistedMasterVolume()
@@ -143,14 +146,28 @@ final class PlaybackEngine {
         engine.attach(playerA)
         engine.attach(playerB)
         engine.attach(equalizer.node)
-        // Insert the master EQ between the mixer (our fade lever) and the output:
-        //   players → mainMixerNode → eq → outputNode
-        // Both players already sum at the mixer, so a single EQ on the mixer's
-        // output colours everything. Connecting the mixer's output here replaces
-        // the implicit mainMixerNode → outputNode connection.
+        // Insert the master chain between the mixer (our fade lever) and the
+        // output:
+        //   players → mainMixerNode → restoration → eq → outputNode
+        // Both players already sum at the mixer, so a single insert on the
+        // mixer's output treats everything. Connecting the mixer's output here
+        // replaces the implicit mainMixerNode → outputNode connection.
+        //
+        // Restoration comes BEFORE the EQ: it is repairing what the disc did to
+        // the recording, and it should see the transfer as it was, not after the
+        // DJ has tilted the tone of the room. Its declicker holds a fixed delay
+        // whether it is engaged or not, so the node can stay in the graph and the
+        // filters be switched on and off without moving the audio.
         let mixer = engine.mainMixerNode
         let format = mixer.outputFormat(forBus: 0)
-        engine.connect(mixer, to: equalizer.node, format: format)
+        restoration.noteOutputSampleRate(format.sampleRate)
+        if let restorationNode = restoration.node {
+            engine.attach(restorationNode)
+            engine.connect(mixer, to: restorationNode, format: format)
+            engine.connect(restorationNode, to: equalizer.node, format: format)
+        } else {
+            engine.connect(mixer, to: equalizer.node, format: format)
+        }
         engine.connect(equalizer.node, to: engine.outputNode, format: format)
         mixer.outputVolume = normalVolume
         engine.prepare()
@@ -308,6 +325,10 @@ final class PlaybackEngine {
         currentDuration = duration(of: item)
         setState(.playing(item.id))
         queue.clearAnchor(ifMatches: item.id)
+        // Each record carries its own hum, and the whole of this one is readable
+        // — so the opening of it is analysed in the background while the first
+        // bars play. See DehumTrackScout.
+        restoration.trackChanged(to: item.url)
     }
 
     /// Schedules a FILE item on `player`. Returns the unique schedule token, or nil
@@ -558,6 +579,7 @@ final class PlaybackEngine {
     /// holding the system's Now Playing slot; `ensureEngineRunning()` starts the
     /// graph again on the next play (node connections survive a stop).
     private func goIdle() {
+        restoration.playbackStopped()
         activePlayer.stop()
         standbyPlayer.stop()
         clearSchedules()

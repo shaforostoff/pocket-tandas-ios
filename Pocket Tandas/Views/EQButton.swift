@@ -21,8 +21,15 @@ struct EQButton: View {
     let control: any EqualizerControlling
     /// Shown in the panel and disables it while a remote EQ hasn't reported yet.
     var isReady: Bool = true
+    /// The local disc-restoration filters, when the panel drives the local chain.
+    /// Nil in Remote Control mode, where the panel carries only the EQ.
+    var restoration: RestorationFilters? = nil
 
     @State private var showingPanel = false
+
+    /// Tinted while anything on the master bus is doing something audible — an EQ
+    /// band away from flat, or a restoration filter switched on.
+    private var isColouring: Bool { control.isActive || restoration?.isActive == true }
 
     var body: some View {
         Button {
@@ -31,9 +38,9 @@ struct EQButton: View {
             Label("EQ", systemImage: "slider.vertical.3")
         }
         .buttonStyle(.bordered)
-        .tint(control.isActive ? Color.accentColor : nil)
+        .tint(isColouring ? Color.accentColor : nil)
         .sheet(isPresented: $showingPanel) {
-            EqualizerView(control: control, isReady: isReady)
+            EqualizerView(control: control, isReady: isReady, restoration: restoration)
         }
     }
 }

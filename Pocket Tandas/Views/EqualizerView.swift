@@ -16,14 +16,23 @@
 //  reported its state yet (`isReady == false`) the controls stay disabled so no
 //  edit is sent against invented values.
 //
+//  It also carries the two disc-restoration filters, when it was handed a local
+//  RestorationFilters: a checkbox each to switch them on, and a "…" button each
+//  onto the parameters overlay (RestorationSettingsView). They are absent in
+//  Remote Control mode — restoration runs on the device holding the audio and is
+//  not part of what the peer link carries.
+//
 
 import SwiftUI
 
 struct EqualizerView: View {
     let control: any EqualizerControlling
     var isReady: Bool = true
+    /// The local restoration filters, when this panel is driving the local chain.
+    var restoration: RestorationFilters? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @State private var editing: RestorationFilter?
 
     var body: some View {
         NavigationStack {
@@ -49,6 +58,12 @@ struct EqualizerView: View {
                     Button("Reset to Flat", role: .destructive) { control.reset() }
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
+
+                // Last, and after Reset to Flat, which resets the bands above it
+                // and nothing here.
+                if let restoration {
+                    restorationSection(restoration)
+                }
             }
             .disabled(!isReady)
             .navigationTitle("Equalizer")
@@ -58,8 +73,53 @@ struct EqualizerView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(item: $editing) { filter in
+                if let restoration {
+                    RestorationSettingsView(filter: filter, restoration: restoration)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    /// Declick and Dehum: a switch each, and a "…" onto the parameters overlay.
+    /// The EQ above shapes the sound; these two repair what the disc did to the
+    /// recording, which is why they sit in their own section rather than among
+    /// the bands.
+    @ViewBuilder
+    private func restorationSection(_ restoration: RestorationFilters) -> some View {
+        Section("Restoration") {
+            filterRow(.declick,
+                      isOn: Binding(get: { restoration.declickEnabled },
+                                    set: { restoration.setDeclickEnabled($0) }),
+                      detail: "Clicks and crackle")
+            filterRow(.dehum,
+                      isOn: Binding(get: { restoration.dehumEnabled },
+                                    set: { restoration.setDehumEnabled($0) }),
+                      detail: "Hum, drone and rumble")
+        }
+    }
+
+    @ViewBuilder
+    private func filterRow(_ filter: RestorationFilter, isOn: Binding<Bool>,
+                           detail: String) -> some View {
+        HStack(spacing: 12) {
+            Toggle(isOn: isOn) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(filter.title)
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Button {
+                editing = filter
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .imageScale(.large)
+            }
+            // Borderless, or the row's tap area swallows the button in a Form.
+            .buttonStyle(.borderless)
+            .accessibilityLabel("\(filter.title) parameters")
+        }
     }
 
     @ViewBuilder

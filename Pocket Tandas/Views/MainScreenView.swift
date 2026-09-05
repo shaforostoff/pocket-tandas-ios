@@ -306,13 +306,16 @@ struct MainScreenView: View {
                                         configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     let metadata = MetadataService(container: container)
     let equalizer = Equalizer()
+    let restoration = RestorationFilters()
     return MainScreenView(mode: .dj)
         .environment(session)
-        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata, equalizer: equalizer))
+        .environment(PlaybackEngine(audioSession: session, queue: queue, metadata: metadata,
+                                    equalizer: equalizer, restoration: restoration))
         .environment(queue)
         .environment(LibraryStore())
         .environment(metadata)
         .environment(equalizer)
+        .environment(restoration)
         .environment(PreListenPlayer(audioSession: session))
         .modelContainer(container)
 }
