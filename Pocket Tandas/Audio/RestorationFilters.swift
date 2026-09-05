@@ -28,7 +28,7 @@ import AVFoundation
 import Observation
 
 @Observable
-final class RestorationFilters {
+final class RestorationFilters: RestorationControlling {
 
     // MARK: - State
 
@@ -43,10 +43,26 @@ final class RestorationFilters {
     /// Where the per-track analysis has got to, mirrored from the scout so the
     /// parameters overlay can show it.
     private(set) var scoutState: DehumTrackScout.State = .idle
+    var scoutPhase: RestorationScoutPhase { scoutState.phase }
+
+    /// The lines the live detector is cancelling, polled off the audio unit while
+    /// Dehum is engaged and something is playing.
+    ///
+    /// Published rather than read on demand because in Remote Receive mode this is
+    /// what the sender's panel shows, and it has to reach it through the ordinary
+    /// audio-settings broadcast. Polling is cheap; the broadcast is not, on a
+    /// Bluetooth-only link — so a poll that finds the tracker where it left it
+    /// assigns nothing, and once a line has settled the traffic stops.
+    private(set) var detectedLines: [DehumLine] = []
+
+    /// How often the detector is read. The tracker converges in a second or two
+    /// and then sits still to a fiftieth of a hertz, so this is about how fast a
+    /// line appears in the list, not about following it.
+    @ObservationIgnored private static let linePollInterval: TimeInterval = 2
 
     /// True when either filter is actually in circuit — badges the EQ button and
     /// the row in the EQ panel.
-    var isActive: Bool { declickEnabled || dehumEnabled }
+    var isRestorationActive: Bool { declickEnabled || dehumEnabled }
 
     /// The delay the declicker imposes, in seconds. It is the same whether the
     /// filter is engaged or not (the unit keeps the delay when bypassed, so
@@ -71,6 +87,7 @@ final class RestorationFilters {
     @ObservationIgnored private var currentTrack: URL?
 
     @ObservationIgnored private var outputSampleRate: Double = 44_100
+    @ObservationIgnored private var lineTimer: Timer?
 
     init() {
         loadPersisted()
@@ -88,6 +105,8 @@ final class RestorationFilters {
         applyAll()
     }
 
+    deinit { lineTimer?.invalidate() }
+
     // MARK: - Editing (from the UI)
 
     func setDeclickEnabled(_ on: Bool) {
@@ -102,11 +121,20 @@ final class RestorationFilters {
         persist()
         // Switched on part-way through a record: the live detector would need
         // the better part of a minute to find what the scan can hand over now.
-        if on { startScoutIfWorthwhile() } else { scout.cancel() }
+        if on {
+            startScoutIfWorthwhile()
+        } else {
+            scout.cancel()
+            // The detector is no longer being fed, so what it last held is not
+            // what is happening any more — the panel should say so.
+            detectedLines = []
+        }
+        updateLinePolling()
     }
 
     func updateDeclick(_ change: (inout DeclickSettings) -> Void) {
         change(&declick)
+        declick = declick.sanitized()
         unit?.declick.setParams(declick.coreParams)
         persist()
     }
@@ -114,6 +142,7 @@ final class RestorationFilters {
     func updateDehum(_ change: (inout DehumSettings) -> Void) {
         let wasAutomatic = dehum.isAutomatic
         change(&dehum)
+        dehum = dehum.sanitized()
         unit?.dehum.setParams(dehum.coreParams)
         persist()
         // Pinning a frequency turns the search off, so a scan in flight has
@@ -136,10 +165,8 @@ final class RestorationFilters {
         startScoutIfWorthwhile()
     }
 
-    /// Lines the live detector currently holds, for the parameters overlay. Read
-    /// from the audio unit each time it is asked for rather than published, so
-    /// the overlay sees the tracker move.
-    func liveLines() -> [DehumLine] {
+    /// Lines the live detector currently holds, straight off the audio unit.
+    private func liveLines() -> [DehumLine] {
         guard let unit else { return [] }
         var wire = [PTDehumLine](repeating: PTDehumLine(), count: Int(PTDehumMaxLines))
         let count = wire.withUnsafeMutableBufferPointer { buffer -> Int in
@@ -160,13 +187,17 @@ final class RestorationFilters {
     func trackChanged(to url: URL?) {
         currentTrack = url
         unit?.dehum.resetLines()
+        detectedLines = []
         startScoutIfWorthwhile()
+        updateLinePolling()
     }
 
     /// Playback stopped: nothing to scout for.
     func playbackStopped() {
         currentTrack = nil
         scout.cancel()
+        detectedLines = []
+        updateLinePolling()
     }
 
     /// Called by the engine once the graph is running, so `declickLatency` is
@@ -181,6 +212,43 @@ final class RestorationFilters {
             return
         }
         scout.scan(url: url, params: dehum.coreParams)
+    }
+
+    /// Read the detector only while it is running: Dehum engaged, and a record on.
+    private func updateLinePolling() {
+        let wanted = dehumEnabled && unit != nil && currentTrack != nil
+        guard wanted != (lineTimer != nil) else { return }
+        guard wanted else {
+            lineTimer?.invalidate()
+            lineTimer = nil
+            return
+        }
+        // .common, so a list being scrolled on this device does not stop the
+        // receiver telling a sender what its detector has found.
+        let timer = Timer(timeInterval: Self.linePollInterval, repeats: true) { [weak self] _ in
+            self?.pollLines()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        lineTimer = timer
+    }
+
+    private func pollLines() {
+        let lines = liveLines()
+        guard Self.materiallyDiffers(lines, detectedLines) else { return }
+        detectedLines = lines
+    }
+
+    /// Whether a poll is worth publishing. The tracker keeps moving in the last
+    /// digits for as long as it runs, so an exact comparison would make every poll
+    /// a broadcast; these tolerances are finer than the panel prints.
+    private static func materiallyDiffers(_ a: [DehumLine], _ b: [DehumLine]) -> Bool {
+        guard a.count == b.count else { return true }
+        for (one, other) in zip(a, b) {
+            if abs(one.frequency - other.frequency) > 0.05 { return true }
+            if abs(one.prominence - other.prominence) > 0.5 { return true }
+            if one.viaCoherence != other.viaCoherence || one.harmonics != other.harmonics { return true }
+        }
+        return false
     }
 
     private func adopt(_ lines: [DehumLine]) {
@@ -225,7 +293,7 @@ final class RestorationFilters {
               let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         declickEnabled = snapshot.declickEnabled
         dehumEnabled = snapshot.dehumEnabled
-        declick = snapshot.declick
-        dehum = snapshot.dehum
+        declick = snapshot.declick.sanitized()
+        dehum = snapshot.dehum.sanitized()
     }
 }

@@ -193,23 +193,55 @@ enum QueueEditScript {
     }
 }
 
-/// The receiver's audio-chain settings (EQ + master volume), broadcast to the
-/// sender on connect and on every change so the Remote Control screen's EQ and
-/// Volume panels show what the speakers are actually doing. `seq` shares the
-/// coordinator's counter, so stale updates can be dropped.
+/// The receiver's audio-chain settings — EQ, master volume, and the two disc
+/// restoration filters — broadcast to the sender on connect and on every change,
+/// so the Remote Control screen's EQ, Volume and Restoration panels show what the
+/// speakers are actually doing. `seq` shares the coordinator's counter, so stale
+/// updates can be dropped.
+///
+/// The restoration half also carries what the receiver's hum detector has found
+/// (`dehumLines`) and how far its per-track background analysis has got
+/// (`scoutPhase`), because those are read-only diagnostics with nowhere else to
+/// travel. Neither is chatty: the receiver only republishes a line once it has
+/// moved further than the panel prints, so a settled record broadcasts nothing.
 ///
 /// Version-tolerant like TrackAddRequest: every field has a default and decoding
-/// tolerates a missing key, so a peer running an older/newer build still decodes.
+/// tolerates a missing key, so a peer running an older/newer build still decodes —
+/// which is what lets a sender on this build talk to a receiver that has never
+/// heard of restoration, and simply show the filters switched off.
 struct RemoteAudioSettings: Codable, Hashable {
     var eqEnabled: Bool = true
     var bands: [EQBand] = []
     var volume: Float = 1.0
+
+    var declickEnabled: Bool = false
+    var dehumEnabled: Bool = false
+    var declick = DeclickSettings()
+    var dehum = DehumSettings()
+    var dehumLines: [DehumLine] = []
+    var scoutPhase: RestorationScoutPhase = .idle
+    /// Seconds of delay the receiver's declicker imposes at its current settings —
+    /// derived from the receiver's own output sample rate, so it cannot be worked
+    /// out from `declick` alone.
+    var declickLatency: TimeInterval = 0
+
     var seq: UInt64 = 0
 
-    init(eqEnabled: Bool = true, bands: [EQBand] = [], volume: Float = 1.0, seq: UInt64 = 0) {
+    init(eqEnabled: Bool = true, bands: [EQBand] = [], volume: Float = 1.0,
+         declickEnabled: Bool = false, dehumEnabled: Bool = false,
+         declick: DeclickSettings = DeclickSettings(), dehum: DehumSettings = DehumSettings(),
+         dehumLines: [DehumLine] = [], scoutPhase: RestorationScoutPhase = .idle,
+         declickLatency: TimeInterval = 0, seq: UInt64 = 0) {
         self.eqEnabled = eqEnabled
         self.bands = bands
         self.volume = volume
+        self.declickEnabled = declickEnabled
+        self.dehumEnabled = dehumEnabled
+        self.declick = declick
+        self.dehum = dehum
+        self.dehumLines = dehumLines
+        self.scoutPhase = scoutPhase
+        self.declickLatency = declickLatency
         self.seq = seq
     }
 
@@ -218,6 +250,13 @@ struct RemoteAudioSettings: Codable, Hashable {
         eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? true
         bands = try c.decodeIfPresent([EQBand].self, forKey: .bands) ?? []
         volume = try c.decodeIfPresent(Float.self, forKey: .volume) ?? 1.0
+        declickEnabled = try c.decodeIfPresent(Bool.self, forKey: .declickEnabled) ?? false
+        dehumEnabled = try c.decodeIfPresent(Bool.self, forKey: .dehumEnabled) ?? false
+        declick = try c.decodeIfPresent(DeclickSettings.self, forKey: .declick) ?? DeclickSettings()
+        dehum = try c.decodeIfPresent(DehumSettings.self, forKey: .dehum) ?? DehumSettings()
+        dehumLines = try c.decodeIfPresent([DehumLine].self, forKey: .dehumLines) ?? []
+        scoutPhase = try c.decodeIfPresent(RestorationScoutPhase.self, forKey: .scoutPhase) ?? .idle
+        declickLatency = try c.decodeIfPresent(TimeInterval.self, forKey: .declickLatency) ?? 0
         seq = try c.decodeIfPresent(UInt64.self, forKey: .seq) ?? 0
     }
 }

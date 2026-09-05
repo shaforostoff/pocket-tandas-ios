@@ -16,6 +16,12 @@
 //  measurements in those headers describe this port too, so change a default
 //  only with a measurement to back it.
 //
+//  These are also wire types: in Remote Control mode the sender edits the
+//  RECEIVER's filters, and a whole settings struct crosses the link per edit —
+//  so, like TrackAddRequest, every one of them decodes a missing key to its
+//  default rather than failing, and a peer on an older build still understands
+//  the message.
+//
 
 import Foundation
 
@@ -40,6 +46,19 @@ struct DeclickSettings: Codable, Hashable {
     var order: Int = 64
     var dryWet: Float = 1.0
 
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sensitivity = try c.decodeIfPresent(Float.self, forKey: .sensitivity) ?? 0.6
+        extent = try c.decodeIfPresent(Float.self, forKey: .extent) ?? 0.5
+        maxLengthMs = try c.decodeIfPresent(Float.self, forKey: .maxLengthMs) ?? 4.0
+        depth = try c.decodeIfPresent(Float.self, forKey: .depth) ?? 0
+        passes = try c.decodeIfPresent(Int.self, forKey: .passes) ?? 2
+        order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 64
+        dryWet = try c.decodeIfPresent(Float.self, forKey: .dryWet) ?? 1
+    }
+
     static let sensitivityRange: ClosedRange<Float> = 0...1
     static let extentRange: ClosedRange<Float> = 0...1
     static let maxLengthRange: ClosedRange<Float> = 0.2...20
@@ -50,15 +69,34 @@ struct DeclickSettings: Codable, Hashable {
     static let orderStep = 8
     static let dryWetRange: ClosedRange<Float> = 0...1
 
+    /// Every field inside its range. Applied to each edit — which matters most for
+    /// one that arrived over the peer link, where the values were composed by
+    /// another device and there is no slider to have bounded them.
+    func sanitized() -> DeclickSettings {
+        var s = self
+        s.sensitivity = sensitivity.clamped(to: Self.sensitivityRange)
+        s.extent = extent.clamped(to: Self.extentRange)
+        s.maxLengthMs = maxLengthMs.clamped(to: Self.maxLengthRange)
+        s.depth = depth.clamped(to: Self.depthRange)
+        s.passes = passes.clamped(to: Self.passesRange)
+        // The core keeps the order even and in eights; so does the stepper, and so
+        // must anything that arrives already made up.
+        s.order = (order.clamped(to: Self.orderRange) / Self.orderStep) * Self.orderStep
+        if s.order < Self.orderRange.lowerBound { s.order = Self.orderRange.lowerBound }
+        s.dryWet = dryWet.clamped(to: Self.dryWetRange)
+        return s
+    }
+
     var coreParams: PTDeclickParams {
+        let s = sanitized()
         var p = PTDeclickParamsDefault()
-        p.sensitivity = sensitivity.clamped(to: Self.sensitivityRange)
-        p.extent = extent.clamped(to: Self.extentRange)
-        p.maxLengthMs = maxLengthMs.clamped(to: Self.maxLengthRange)
-        p.depth = depth.clamped(to: Self.depthRange)
-        p.passes = Int32(passes.clamped(to: Self.passesRange))
-        p.order = Int32(order.clamped(to: Self.orderRange))
-        p.dryWet = dryWet.clamped(to: Self.dryWetRange)
+        p.sensitivity = s.sensitivity
+        p.extent = s.extent
+        p.maxLengthMs = s.maxLengthMs
+        p.depth = s.depth
+        p.passes = Int32(s.passes)
+        p.order = Int32(s.order)
+        p.dryWet = s.dryWet
         return p
     }
 }
@@ -90,6 +128,19 @@ struct DehumSettings: Codable, Hashable {
     var rumbleHz: Float = 67
     var dryWet: Float = 1.0
 
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sensitivity = try c.decodeIfPresent(Float.self, forKey: .sensitivity) ?? 0.5
+        bandwidth = try c.decodeIfPresent(Float.self, forKey: .bandwidth) ?? 1
+        searchTo = try c.decodeIfPresent(Float.self, forKey: .searchTo) ?? 100
+        harmonics = try c.decodeIfPresent(Int.self, forKey: .harmonics) ?? 1
+        frequency = try c.decodeIfPresent(Float.self, forKey: .frequency) ?? 0
+        rumbleHz = try c.decodeIfPresent(Float.self, forKey: .rumbleHz) ?? 67
+        dryWet = try c.decodeIfPresent(Float.self, forKey: .dryWet) ?? 1
+    }
+
     static let sensitivityRange: ClosedRange<Float> = 0...1
     static let bandwidthRange: ClosedRange<Float> = 0.1...5
     static let searchToRange: ClosedRange<Float> = 40...500
@@ -102,15 +153,31 @@ struct DehumSettings: Codable, Hashable {
     /// the only case the track scout has anything to contribute to.
     var isAutomatic: Bool { frequency <= 0 }
 
+    /// Every field inside its range — see DeclickSettings.sanitized(). The two
+    /// controls with an "off" position keep it: zero passes through rather than
+    /// being clamped up to the bottom of the range.
+    func sanitized() -> DehumSettings {
+        var s = self
+        s.sensitivity = sensitivity.clamped(to: Self.sensitivityRange)
+        s.bandwidth = bandwidth.clamped(to: Self.bandwidthRange)
+        s.searchTo = searchTo.clamped(to: Self.searchToRange)
+        s.harmonics = harmonics.clamped(to: Self.harmonicsRange)
+        s.frequency = frequency > 0 ? frequency.clamped(to: Self.frequencyRange) : 0
+        s.rumbleHz = rumbleHz > 0 ? rumbleHz.clamped(to: Self.rumbleRange) : 0
+        s.dryWet = dryWet.clamped(to: Self.dryWetRange)
+        return s
+    }
+
     var coreParams: PTDehumParams {
+        let s = sanitized()
         var p = PTDehumParamsDefault()
-        p.sensitivity = sensitivity.clamped(to: Self.sensitivityRange)
-        p.bandwidth = bandwidth.clamped(to: Self.bandwidthRange)
-        p.searchTo = searchTo.clamped(to: Self.searchToRange)
-        p.harmonics = Int32(harmonics.clamped(to: Self.harmonicsRange))
-        p.frequency = frequency > 0 ? frequency.clamped(to: Self.frequencyRange) : 0
-        p.rumbleHz = rumbleHz > 0 ? rumbleHz.clamped(to: Self.rumbleRange) : 0
-        p.dryWet = dryWet.clamped(to: Self.dryWetRange)
+        p.sensitivity = s.sensitivity
+        p.bandwidth = s.bandwidth
+        p.searchTo = s.searchTo
+        p.harmonics = Int32(s.harmonics)
+        p.frequency = s.frequency
+        p.rumbleHz = s.rumbleHz
+        p.dryWet = s.dryWet
         return p
     }
 }
@@ -119,7 +186,7 @@ struct DehumSettings: Codable, Hashable {
 
 /// One narrowband line, as the detector or the scout reports it. The Swift face
 /// of `PTDehumLine`, so the views never handle a C struct.
-struct DehumLine: Identifiable, Hashable {
+struct DehumLine: Identifiable, Hashable, Codable {
     let id: Int
     let frequency: Double
     let detected: Double
@@ -128,6 +195,18 @@ struct DehumLine: Identifiable, Hashable {
     let coherence: Double
     let viaCoherence: Bool
     let harmonics: Int
+
+    init(id: Int, frequency: Double, detected: Double, prominence: Double,
+         amplitude: Double, coherence: Double, viaCoherence: Bool, harmonics: Int) {
+        self.id = id
+        self.frequency = frequency
+        self.detected = detected
+        self.prominence = prominence
+        self.amplitude = amplitude
+        self.coherence = coherence
+        self.viaCoherence = viaCoherence
+        self.harmonics = harmonics
+    }
 
     init(id: Int, wire: PTDehumLine) {
         self.id = id
@@ -150,4 +229,24 @@ struct DehumLine: Identifiable, Hashable {
     /// the phase-based route for lines that sit down in the rumble where a
     /// magnitude spectrum cannot separate them from it.
     var routeLabel: String { viaCoherence ? "coherence" : "prominence" }
+}
+
+// MARK: - Background analysis
+
+/// How far the per-track background analysis has got. The phase alone, with no
+/// payload, because the lines it found reach the panel through
+/// `RestorationControlling.detectedLines` — which is where the live detector's
+/// lines come from too, so the panel shows the same thing whether it is driving
+/// this device or a receiver across the room.
+enum RestorationScoutPhase: String, Codable {
+    /// Nothing playing.
+    case idle
+    /// Reading the opening of the track.
+    case scanning
+    /// Read it, and there was nothing steady enough to remove.
+    case foundNothing
+    /// Read it and found something.
+    case found
+    /// Not attempted: no readable asset, or the frequency is pinned by hand.
+    case skipped
 }

@@ -37,6 +37,16 @@ enum RemoteMessage: Codable {
     case setEQBand(id: Int, gain: Float, frequency: Float, bandwidth: Float)
     case resetEQ
     case setVolume(Float)
+    // Disc restoration: the switches, and each filter's parameters as one whole
+    // settings value — for the same reason a band edit carries all three of its
+    // parameters, and because a slider drag would otherwise put seven separate
+    // fields in flight at once.
+    case setDeclickEnabled(Bool)
+    case setDehumEnabled(Bool)
+    case setDeclick(DeclickSettings)
+    case setDehum(DehumSettings)
+    case resetDeclick
+    case resetDehum
     case requestAudioSettings              // resync on (re)connect
 
     // MARK: Receiver → Sender (state)
@@ -45,7 +55,7 @@ enum RemoteMessage: Codable {
     case playbackState(RemotePlaybackUpdate)  // on engine state change, queue unchanged
     case progress(RemoteProgress)          // on timer
     case addTrackResult(resolved: Int, failed: Int)
-    case audioSettings(RemoteAudioSettings)   // EQ + volume, on change
+    case audioSettings(RemoteAudioSettings)   // EQ + volume + restoration, on change
 
     // MARK: Either direction
     /// "I am disconnecting on purpose" — stops the sender's auto-reconnect from

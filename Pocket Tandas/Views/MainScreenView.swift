@@ -33,6 +33,7 @@ struct MainScreenView: View {
     @Environment(MetadataService.self) private var metadata
     @Environment(LibraryStore.self) private var library
     @Environment(Equalizer.self) private var equalizer
+    @Environment(RestorationFilters.self) private var restoration
     @Environment(AudioSessionController.self) private var audioSession
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -288,6 +289,7 @@ struct MainScreenView: View {
         case .remoteReceive:
             let coordinator = RemoteReceiverCoordinator(queue: queue, engine: engine, metadata: metadata,
                                                         library: library, equalizer: equalizer,
+                                                        restoration: restoration,
                                                         container: modelContext.container)
             coordinator.start()
             receiver = coordinator

@@ -16,11 +16,10 @@
 //  reported its state yet (`isReady == false`) the controls stay disabled so no
 //  edit is sent against invented values.
 //
-//  It also carries the two disc-restoration filters, when it was handed a local
-//  RestorationFilters: a checkbox each to switch them on, and a "…" button each
-//  onto the parameters overlay (RestorationSettingsView). They are absent in
-//  Remote Control mode — restoration runs on the device holding the audio and is
-//  not part of what the peer link carries.
+//  It also carries the two disc-restoration filters: a checkbox each to switch
+//  them on, and a "…" button each onto the parameters overlay
+//  (RestorationSettingsView). Like the bands, they drive either the local chain or
+//  the receiver's, through whichever RestorationControlling it was handed.
 //
 
 import SwiftUI
@@ -28,8 +27,9 @@ import SwiftUI
 struct EqualizerView: View {
     let control: any EqualizerControlling
     var isReady: Bool = true
-    /// The local restoration filters, when this panel is driving the local chain.
-    var restoration: RestorationFilters? = nil
+    /// The restoration filters of the chain this panel is driving — the local
+    /// ones, or the receiver's.
+    var restoration: (any RestorationControlling)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var editing: RestorationFilter?
@@ -87,7 +87,7 @@ struct EqualizerView: View {
     /// recording, which is why they sit in their own section rather than among
     /// the bands.
     @ViewBuilder
-    private func restorationSection(_ restoration: RestorationFilters) -> some View {
+    private func restorationSection(_ restoration: any RestorationControlling) -> some View {
         Section("Restoration") {
             filterRow(.declick,
                       isOn: Binding(get: { restoration.declickEnabled },

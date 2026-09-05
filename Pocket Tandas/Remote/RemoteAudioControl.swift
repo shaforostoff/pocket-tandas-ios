@@ -6,10 +6,11 @@
 //  RemoteAudioControl.swift
 //  Pocket Tandas
 //
-//  Sender-side handle on the receiver's audio chain (EQ + master volume), used by
-//  the EQ and Volume buttons in Remote Control mode. It mirrors what the receiver
-//  broadcasts and sends each edit as a command; the receiver applies it to the
-//  same Equalizer / PlaybackEngine its own UI drives and echoes the new state.
+//  Sender-side handle on the receiver's audio chain — EQ, master volume, and the
+//  two disc restoration filters — used by the EQ and Volume buttons in Remote
+//  Control mode. It mirrors what the receiver broadcasts and sends each edit as a
+//  command; the receiver applies it to the same Equalizer / PlaybackEngine /
+//  RestorationFilters its own UI drives and echoes the new state.
 //
 //  Unlike RemoteQueue (authoritative-read-only), edits here are applied
 //  OPTIMISTICALLY: a slider must follow the finger, and a 40 ms round trip would
@@ -26,6 +27,17 @@ final class RemoteAudioControl {
     private(set) var isEnabled = true
     private(set) var bands: [EQBand] = []
     private(set) var masterVolume: Float = 1.0
+
+    private(set) var declickEnabled = false
+    private(set) var dehumEnabled = false
+    private(set) var declick = DeclickSettings()
+    private(set) var dehum = DehumSettings()
+    /// Read-only: what the receiver's detector holds, and how far its background
+    /// analysis of the current track has got. Never edited here, so no optimistic
+    /// path and no quiet window — they simply follow the broadcasts.
+    private(set) var detectedLines: [DehumLine] = []
+    private(set) var scoutPhase: RestorationScoutPhase = .idle
+    private(set) var declickLatency: TimeInterval = 0
 
     /// False until the receiver has told us its settings — the panels stay disabled
     /// until then, so an edit can't be sent against values we invented.
@@ -74,12 +86,26 @@ final class RemoteAudioControl {
         isEnabled = true
         bands = []
         masterVolume = 1
+        declickEnabled = false
+        dehumEnabled = false
+        declick = DeclickSettings()
+        dehum = DehumSettings()
+        detectedLines = []
+        scoutPhase = .idle
+        declickLatency = 0
     }
 
     private func commit(_ settings: RemoteAudioSettings) {
         isEnabled = settings.eqEnabled
         bands = settings.bands
         masterVolume = settings.volume.clamped(to: 0...1)
+        declickEnabled = settings.declickEnabled
+        dehumEnabled = settings.dehumEnabled
+        declick = settings.declick.sanitized()
+        dehum = settings.dehum.sanitized()
+        detectedLines = settings.dehumLines
+        scoutPhase = settings.scoutPhase
+        declickLatency = settings.declickLatency
     }
 
     private var isEditing: Bool {
@@ -158,5 +184,52 @@ extension RemoteAudioControl: VolumeControlling {
         masterVolume = level
         noteEdit()
         link.send(.setVolume(level))
+    }
+}
+
+// MARK: - RestorationControlling (drives the Restoration rows in Remote Control mode)
+
+extension RemoteAudioControl: RestorationControlling {
+    var isRestorationActive: Bool { declickEnabled || dehumEnabled }
+
+    func setDeclickEnabled(_ on: Bool) {
+        declickEnabled = on
+        noteEdit()
+        link.send(.setDeclickEnabled(on))
+    }
+
+    func setDehumEnabled(_ on: Bool) {
+        dehumEnabled = on
+        noteEdit()
+        link.send(.setDehumEnabled(on))
+    }
+
+    func updateDeclick(_ change: (inout DeclickSettings) -> Void) {
+        change(&declick)
+        declick = declick.sanitized()
+        noteEdit()
+        link.send(.setDeclick(declick))
+    }
+
+    func updateDehum(_ change: (inout DehumSettings) -> Void) {
+        change(&dehum)
+        dehum = dehum.sanitized()
+        noteEdit()
+        link.send(.setDehum(dehum))
+    }
+
+    /// Optimistically to the shared factory settings; the receiver's own defaults
+    /// arrive in the echo and win if they ever differ — the same bargain reset()
+    /// makes for the EQ.
+    func resetDeclick() {
+        declick = DeclickSettings()
+        noteEdit()
+        link.send(.resetDeclick)
+    }
+
+    func resetDehum() {
+        dehum = DehumSettings()
+        noteEdit()
+        link.send(.resetDehum)
     }
 }

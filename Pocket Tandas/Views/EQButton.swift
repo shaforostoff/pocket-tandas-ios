@@ -12,7 +12,8 @@
 //
 //  The control it drives is either the local Equalizer (DJ / Remote Controllable)
 //  or the receiver's EQ over the peer link (Remote Control) — see
-//  EqualizerControlling.
+//  EqualizerControlling. The restoration filters ride along the same way, through
+//  RestorationControlling.
 //
 
 import SwiftUI
@@ -21,15 +22,15 @@ struct EQButton: View {
     let control: any EqualizerControlling
     /// Shown in the panel and disables it while a remote EQ hasn't reported yet.
     var isReady: Bool = true
-    /// The local disc-restoration filters, when the panel drives the local chain.
-    /// Nil in Remote Control mode, where the panel carries only the EQ.
-    var restoration: RestorationFilters? = nil
+    /// The disc-restoration filters of whichever chain this button drives — the
+    /// local ones, or the receiver's over the peer link.
+    var restoration: (any RestorationControlling)? = nil
 
     @State private var showingPanel = false
 
     /// Tinted while anything on the master bus is doing something audible — an EQ
     /// band away from flat, or a restoration filter switched on.
-    private var isColouring: Bool { control.isActive || restoration?.isActive == true }
+    private var isColouring: Bool { control.isActive || restoration?.isRestorationActive == true }
 
     var body: some View {
         Button {

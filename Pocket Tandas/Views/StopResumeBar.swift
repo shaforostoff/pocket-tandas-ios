@@ -15,7 +15,8 @@
 //  Remote Send: the same Stop ⇄ Resume control, but bound to the RemoteQueue —
 //  so it drives the receiver's fade and reflects the receiver's broadcast state
 //  (Resume shows while the receiver is fading). No local-queue buttons; instead the
-//  row carries Volume and EQ, both wired to the RECEIVER's audio chain.
+//  row carries Volume and EQ, both wired to the RECEIVER's audio chain — EQ bands
+//  and the two restoration filters alike.
 //
 //  Explore mode: Pause / Play instead — Pause holds the current track and Play
 //  resumes it from where it left off. The row also carries Clear and Save for the
@@ -50,7 +51,8 @@ struct StopResumeBar: View {
             // they can't reach the phone wired to the speakers.
             if let remoteAudio, mode.isRemoteSend {
                 VolumeButton(control: remoteAudio, isReady: remoteAudio.hasSettings)
-                EQButton(control: remoteAudio, isReady: remoteAudio.hasSettings)
+                EQButton(control: remoteAudio, isReady: remoteAudio.hasSettings,
+                         restoration: remoteAudio)
             } else if mode.isDJLike {
                 EQButton(control: equalizer, restoration: restoration)
             }

@@ -13,11 +13,12 @@
 //
 //  It watches queue.items / queue.anchorID / engine.state / metadata.snapshots
 //  via observation tracking and broadcasts a coalesced snapshot on any change,
-//  plus a lightweight progress tick on a timer. The audio chain (EQ bands +
-//  master volume) is tracked and broadcast separately, and the sender's EQ /
-//  volume commands are applied to the same Equalizer / PlaybackEngine the local
-//  EQ panel drives — so both ends stay in step. Plain @Observable (used as @State
-//  in MainScreenView), not @MainActor — see observable-not-mainactor.
+//  plus a lightweight progress tick on a timer. The audio chain (EQ bands, master
+//  volume, and the two disc restoration filters) is tracked and broadcast
+//  separately, and the sender's EQ / volume / restoration commands are applied to
+//  the same Equalizer / PlaybackEngine / RestorationFilters the local panels
+//  drive — so both ends stay in step. Plain @Observable (used as @State in
+//  MainScreenView), not @MainActor — see observable-not-mainactor.
 //
 
 import Foundation
@@ -34,6 +35,7 @@ final class RemoteReceiverCoordinator {
     @ObservationIgnored private let metadata: MetadataService
     @ObservationIgnored private let library: LibraryStore
     @ObservationIgnored private let equalizer: Equalizer
+    @ObservationIgnored private let restoration: RestorationFilters
     @ObservationIgnored private let container: ModelContainer
 
     @ObservationIgnored private var seq: UInt64 = 0
@@ -78,12 +80,14 @@ final class RemoteReceiverCoordinator {
     }
 
     init(queue: PlayQueue, engine: PlaybackEngine, metadata: MetadataService,
-         library: LibraryStore, equalizer: Equalizer, container: ModelContainer) {
+         library: LibraryStore, equalizer: Equalizer, restoration: RestorationFilters,
+         container: ModelContainer) {
         self.queue = queue
         self.engine = engine
         self.metadata = metadata
         self.library = library
         self.equalizer = equalizer
+        self.restoration = restoration
         self.container = container
         self.link = PeerLink(role: .receiver)
         link.onReceive = { [weak self] message in self?.handle(message) }
@@ -182,6 +186,16 @@ final class RemoteReceiverCoordinator {
             _ = equalizer.isEnabled
             _ = equalizer.bands
             _ = engine.masterVolume
+            _ = restoration.declickEnabled
+            _ = restoration.dehumEnabled
+            _ = restoration.declick
+            _ = restoration.dehum
+            // Read-only, but they are what the sender's Detected list shows, and
+            // this is the only message they can travel in. Neither churns: the
+            // detector is polled slowly and republishes only when a line has
+            // actually moved. See RestorationFilters.detectedLines.
+            _ = restoration.detectedLines
+            _ = restoration.scoutState
         } onChange: { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.running else { return }
@@ -255,6 +269,13 @@ final class RemoteReceiverCoordinator {
         link.send(.audioSettings(RemoteAudioSettings(eqEnabled: equalizer.isEnabled,
                                                      bands: equalizer.bands,
                                                      volume: engine.masterVolume,
+                                                     declickEnabled: restoration.declickEnabled,
+                                                     dehumEnabled: restoration.dehumEnabled,
+                                                     declick: restoration.declick,
+                                                     dehum: restoration.dehum,
+                                                     dehumLines: restoration.detectedLines,
+                                                     scoutPhase: restoration.scoutPhase,
+                                                     declickLatency: restoration.declickLatency,
                                                      seq: nextSeq())))
     }
 
@@ -398,6 +419,18 @@ final class RemoteReceiverCoordinator {
             equalizer.reset()
         case .setVolume(let level):
             engine.setMasterVolume(level)
+        case .setDeclickEnabled(let on):
+            restoration.setDeclickEnabled(on)
+        case .setDehumEnabled(let on):
+            restoration.setDehumEnabled(on)
+        case .setDeclick(let settings):
+            restoration.updateDeclick { $0 = settings }
+        case .setDehum(let settings):
+            restoration.updateDehum { $0 = settings }
+        case .resetDeclick:
+            restoration.resetDeclick()
+        case .resetDehum:
+            restoration.resetDehum()
         case .requestAudioSettings:
             broadcastAudioSettings()
         case .snapshot, .delta, .playbackState, .progress, .addTrackResult, .audioSettings:

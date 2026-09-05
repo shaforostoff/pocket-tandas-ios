@@ -62,6 +62,18 @@ final class DehumTrackScout {
         case finished([DehumLine])
         /// Not attempted — no readable asset, or the frequency is pinned by hand.
         case skipped
+
+        /// The payload-free form the restoration panel reads — and the only form
+        /// that crosses the peer link, since the lines themselves reach the panel
+        /// through `RestorationControlling.detectedLines`.
+        var phase: RestorationScoutPhase {
+            switch self {
+            case .idle: return .idle
+            case .scanning: return .scanning
+            case .finished(let lines): return lines.isEmpty ? .foundNothing : .found
+            case .skipped: return .skipped
+            }
+        }
     }
 
     /// Latest state, on the main thread.

@@ -15,6 +15,10 @@
 //  live: both cores retune under a running stream without breaking the audio,
 //  except Declick's Max repair and Model order, which resize its pipeline.
 //
+//  Like the EQ panel it came from, the same two forms edit either the local
+//  filters or — in Remote Control mode — the receiver's, through whichever
+//  RestorationControlling they were handed. Nothing here knows which.
+//
 //  The captions are `String` constants rather than literals in the body: a
 //  ViewBuilder full of concatenated literals is expensive for the type checker,
 //  and these are long.
@@ -38,7 +42,7 @@ enum RestorationFilter: String, Identifiable {
 
 struct RestorationSettingsView: View {
     let filter: RestorationFilter
-    let restoration: RestorationFilters
+    let restoration: any RestorationControlling
 
     @Environment(\.dismiss) private var dismiss
 
@@ -119,7 +123,7 @@ private enum Caption {
 // MARK: - Declick
 
 private struct DeclickSettingsForm: View {
-    let restoration: RestorationFilters
+    let restoration: any RestorationControlling
 
     private var settings: DeclickSettings { restoration.declick }
 
@@ -216,14 +220,10 @@ private struct DeclickSettingsForm: View {
 // MARK: - Dehum
 
 private struct DehumSettingsForm: View {
-    let restoration: RestorationFilters
-
-    /// The live detector's lines, polled rather than published: the frequency
-    /// tracker keeps moving, and watching it settle is half of what this is for.
-    @State private var lines: [DehumLine] = []
-    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    let restoration: any RestorationControlling
 
     private var settings: DehumSettings { restoration.dehum }
+    private var lines: [DehumLine] { restoration.detectedLines }
 
     var body: some View {
         Form {
@@ -309,12 +309,11 @@ private struct DehumSettingsForm: View {
                     .frame(maxWidth: .infinity, alignment: .center)
             }
         }
-        .onReceive(tick) { _ in lines = restoration.liveLines() }
-        .onAppear { lines = restoration.liveLines() }
     }
 
-    /// What the detector is cancelling now. Usually what the background scan of
-    /// this track handed it, since that is where it got them from.
+    /// What the detector is cancelling now — the receiver's detector, in Remote
+    /// Control mode. Usually what the background scan of this track handed it,
+    /// since that is where it got them from.
     @ViewBuilder
     private var detectedSection: some View {
         Section("Detected") {
@@ -350,9 +349,10 @@ private struct DehumSettingsForm: View {
 
     private var scoutSummary: String {
         guard restoration.dehumEnabled else { return "Switched off." }
-        switch restoration.scoutState {
+        switch restoration.scoutPhase {
         case .scanning: return "Analysing this track…"
-        case .finished(let found): return found.isEmpty ? "Nothing steady enough to remove." : "Engaging…"
+        case .foundNothing: return "Nothing steady enough to remove."
+        case .found: return "Engaging…"
         case .skipped: return "No background analysis for this track."
         case .idle: return "Nothing playing."
         }

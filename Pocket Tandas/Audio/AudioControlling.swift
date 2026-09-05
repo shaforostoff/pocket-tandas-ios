@@ -15,6 +15,10 @@
 //  Equalizer's stored state, the sliders' bounds, and the wire payload the
 //  receiver broadcasts to the sender.
 //
+//  `RestorationControlling` is the third of the same shape, for the two disc
+//  restoration filters — implemented by `RestorationFilters` (local) and by
+//  `RemoteAudioControl` (forwards each edit to the receiver).
+//
 
 import Foundation
 
@@ -58,6 +62,40 @@ protocol EqualizerControlling {
     func setFrequency(_ value: Float, bandID: Int)
     func setBandwidth(_ value: Float, bandID: Int)
     func reset()
+}
+
+/// Everything the restoration panel needs: the two filters' switches, their
+/// parameters, and what the hum detector currently holds.
+///
+/// A parameter edit is expressed as a mutation of the whole settings struct
+/// rather than as one setter per control. Locally that is just convenience; over
+/// the link it is what keeps the two ends in step, for the same reason an EQ band
+/// edit carries all three of its parameters — a dropped intermediate value cannot
+/// leave the sender and the receiver disagreeing about the filter.
+protocol RestorationControlling: AnyObject {
+    var declickEnabled: Bool { get }
+    var dehumEnabled: Bool { get }
+    var declick: DeclickSettings { get }
+    var dehum: DehumSettings { get }
+
+    /// The narrowband lines being cancelled right now, for the Detected list.
+    var detectedLines: [DehumLine] { get }
+    /// How far the per-track background analysis has got.
+    var scoutPhase: RestorationScoutPhase { get }
+
+    /// True when either filter is in circuit — badges the EQ button. Named apart
+    /// from `EqualizerControlling.isActive` because RemoteAudioControl is both,
+    /// and the button wants to know which of the two is doing something.
+    var isRestorationActive: Bool { get }
+    /// The delay the declicker imposes, in seconds, at the current settings.
+    var declickLatency: TimeInterval { get }
+
+    func setDeclickEnabled(_ on: Bool)
+    func setDehumEnabled(_ on: Bool)
+    func updateDeclick(_ change: (inout DeclickSettings) -> Void)
+    func updateDehum(_ change: (inout DehumSettings) -> Void)
+    func resetDeclick()
+    func resetDehum()
 }
 
 /// Master output level, 0…1. Implemented by `PlaybackEngine` (local) and by
