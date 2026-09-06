@@ -138,6 +138,12 @@ struct Pocket_TandasApp: App {
                     if phase != .active { playQueue.flushPendingSave() }
                 }
         }
+        // A Mac window opens at whatever size SwiftUI guesses; the launcher wants
+        // enough room for its GroupBoxes without scrolling, and the mode screens
+        // (presented over it) size themselves.
+        #if os(macOS)
+        .defaultSize(width: 560, height: 760)
+        #endif
         .modelContainer(modelContainer)
     }
 }

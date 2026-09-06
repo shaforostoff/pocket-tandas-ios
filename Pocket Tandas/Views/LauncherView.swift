@@ -51,7 +51,9 @@ struct LauncherView: View {
 
                         fadeSection
 
+                        #if os(iOS)
                         stayAwakeSection
+                        #endif
 
                         Spacer(minLength: 0)
                     }
@@ -59,11 +61,22 @@ struct LauncherView: View {
                     .frame(minHeight: proxy.size.height)
                 }
             }
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
         }
+        #if os(iOS)
         .fullScreenCover(item: $activeMode) { mode in
             MainScreenView(mode: mode)
         }
+        #else
+        // A Mac has no full-screen presentation: the mode takes over the window,
+        // which is already the size the browser and queue want.
+        .sheet(item: $activeMode) { mode in
+            MainScreenView(mode: mode)
+                .frame(minWidth: 900, minHeight: 600)
+        }
+        #endif
     }
 
     private var outputSection: some View {
@@ -73,8 +86,12 @@ struct LauncherView: View {
                     Label("Output", systemImage: "hifispeaker")
                         .font(.headline)
                     Spacer()
+                    #if os(iOS)
                     RoutePickerView()
                         .frame(width: 40, height: 40)
+                    #else
+                    SoundSettingsButton()
+                    #endif
                 }
                 CurrentRouteView(description: audioSession.currentRouteDescription)
             }
@@ -112,6 +129,7 @@ struct LauncherView: View {
     ///
     /// The silent keep-alive only exists in sideloaded builds — see StayAwake.swift
     /// — so the App Store build shows the screen switch alone.
+    #if os(iOS)
     private var stayAwakeSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
@@ -143,6 +161,7 @@ struct LauncherView: View {
     }
 
     private var minutes: Int { Int(StayAwakeSettings.window / 60) }
+    #endif
 
     private var modeButtons: some View {
         VStack(spacing: 14) {

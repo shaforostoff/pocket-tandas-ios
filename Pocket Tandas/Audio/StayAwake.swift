@@ -142,20 +142,23 @@ final class SilentKeepAlive {
     /// the app doesn't quietly become suspendable again.
     private func observeAudioEvents() {
         let center = NotificationCenter.default
-        observers = [
-            center.addObserver(forName: AVAudioSession.interruptionNotification,
-                               object: AVAudioSession.sharedInstance(), queue: .main) { [weak self] note in
-                guard let self, self.isRunning,
-                      let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                      AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
-                self.restart()
-            },
-            center.addObserver(forName: .AVAudioEngineConfigurationChange,
-                               object: engine, queue: .main) { [weak self] _ in
-                guard let self, self.isRunning else { return }
-                self.restart()
-            },
-        ]
+        observers = []
+        // Interruptions are an audio-session concept, so iOS only. A Mac has no
+        // equivalent event — nothing takes the output away mid-render.
+        #if os(iOS)
+        observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification,
+                                            object: AVAudioSession.sharedInstance(), queue: .main) { [weak self] note in
+            guard let self, self.isRunning,
+                  let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
+            self.restart()
+        })
+        #endif
+        observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange,
+                                            object: engine, queue: .main) { [weak self] _ in
+            guard let self, self.isRunning else { return }
+            self.restart()
+        })
     }
 
     private func restart() {

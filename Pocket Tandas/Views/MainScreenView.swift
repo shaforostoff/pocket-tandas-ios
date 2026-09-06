@@ -68,7 +68,14 @@ struct MainScreenView: View {
             // On a wide canvas (iPad — or a large iPhone — held landscape) split
             // left/right: browser on the left, queue + its controls on the right.
             // A compact width (iPhone) or portrait stays stacked top-to-bottom.
+            // `horizontalSizeClass` exists on macOS but is always `.regular`, which
+            // would force the split layout into even a narrow window — so the Mac
+            // decides on width alone.
+            #if os(iOS)
             let sideBySide = horizontalSizeClass == .regular && proxy.size.width > proxy.size.height
+            #else
+            let sideBySide = proxy.size.width >= 820 && proxy.size.width > proxy.size.height
+            #endif
             VStack(spacing: 0) {
                 if sideBySide {
                     sideBySideContent
@@ -193,7 +200,12 @@ struct MainScreenView: View {
         case .files:
             BrowserView(mode: mode, remoteQueue: remoteQueue)
         case .music:
+            #if os(iOS)
             MusicBrowserView(mode: mode, remoteQueue: remoteQueue)
+            #else
+            // `.music` is unreachable on macOS — the Browse menu never offers it.
+            EmptyView()
+            #endif
         }
     }
 

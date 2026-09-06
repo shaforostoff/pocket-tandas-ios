@@ -151,6 +151,7 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     private func startMedia(persistentID: UInt64) -> Bool {
+        #if os(iOS)
         guard let libraryItem = MusicLibrary.item(forPersistentID: persistentID),
               let url = libraryItem.assetURL else {
             ptLog("prelisten FAILED to resolve medialib:\(persistentID)")
@@ -167,6 +168,10 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
         newPlayer.play()
         mediaPlayer = newPlayer
         return true
+        #else
+        // No Music library on macOS, so a queue can hold no media items to audition.
+        return false
+        #endif
     }
 
     /// Stop auditioning (user Stop, finished with nowhere to advance, queue

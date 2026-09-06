@@ -136,7 +136,9 @@ struct BrowserView: View {
                 TextField("Filter", text: Bindable(browser).fileFilter)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
+                    #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    #endif
 
                 if metadata.isScanningFolder {
                     ProgressView().controlSize(.small)
@@ -431,13 +433,16 @@ struct BrowserView: View {
         Button { showingPicker = true } label: {
             Label("Files", systemImage: "folder")
         }
+        #if os(iOS)
         Button { chooseMusic() } label: {
             Label("Music", systemImage: "music.note")
         }
+        #endif
     }
 
     /// Request Music-library access, then switch the top half to the in-app Music
     /// browser. A denial (or restriction) surfaces the access alert instead.
+    #if os(iOS)
     private func chooseMusic() {
         Task { @MainActor in
             if await MediaLibraryImporter.requestAuthorization() == .authorized {
@@ -447,6 +452,7 @@ struct BrowserView: View {
             }
         }
     }
+    #endif
 
     private func handlePick(_ result: Result<[URL], Error>) {
         switch result {

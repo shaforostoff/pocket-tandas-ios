@@ -55,7 +55,9 @@ struct RestorationSettingsView: View {
                 }
             }
             .navigationTitle(filter.title)
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

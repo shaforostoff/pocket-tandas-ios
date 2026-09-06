@@ -105,7 +105,9 @@ final class RemoteReceiverCoordinator {
         running = true
         // Request Music access once so a sender's media tracks can resolve against
         // this receiver's (synced) library. No-op if already authorized/denied.
+        #if os(iOS)
         Task { _ = await MediaLibraryImporter.requestAuthorization() }
+        #endif
         link.startAdvertising()
         observe()
         observePlayback()
@@ -467,6 +469,7 @@ final class RemoteReceiverCoordinator {
             case .file(let url):
                 items.append(QueueItem(url: url, trackKey: StableTrackID.key(for: url, baseURL: library.baseURL)))
                 fileURLs.append(url)
+            #if os(iOS)
             case .media(let mediaItem):
                 guard let assetURL = mediaItem.assetURL else { continue }
                 let ref = MediaRef(persistentID: mediaItem.persistentID, assetURL: assetURL,
@@ -475,6 +478,7 @@ final class RemoteReceiverCoordinator {
                 let queueItem = QueueItem(media: ref, snapshot: snapshot)
                 metadata.inject(snapshot, forKey: queueItem.trackKey)
                 items.append(queueItem)
+            #endif
             case nil:
                 continue
             }

@@ -222,6 +222,7 @@ final class PlayQueue {
     /// wanted ids are copied out (as values, so no MPMediaItem is retained).
     /// Returns nil when there is nothing to look up or access hasn't been granted.
     private static func mediaIndex(for stored: [StoredItem]) -> [UInt64: LibraryMatch]? {
+        #if os(iOS)
         let wanted = Set(stored.compactMap(\.mediaPersistentID))
         guard !wanted.isEmpty, MPMediaLibrary.authorizationStatus() == .authorized else { return nil }
         var index: [UInt64: LibraryMatch] = [:]
@@ -231,6 +232,11 @@ final class PlayQueue {
                                                     duration: item.playbackDuration)
         }
         return index
+        #else
+        // macOS has no MPMediaQuery; a queue restored from an iOS device's media
+        // items simply drops those rows (their files were never ours to resolve).
+        return nil
+        #endif
     }
 
     /// Rebuild a media item from its stored persistent id, against the one-pass

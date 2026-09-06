@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Partial Info.plist for the macOS target, merged under the keys Xcode generates
+  (GENERATE_INFOPLIST_FILE stays YES) — the same arrangement the iOS target uses.
+
+  Only the keys macOS actually needs: the remote link's Bonjour service and the
+  local-network prompt that goes with it. Deliberately absent are the iOS target's
+  UIBackgroundModes (no app suspension to fight here), UIFileSharingEnabled /
+  LSSupportsOpeningDocumentsInPlace (no Files app), and NSAppleMusicUsageDescription
+  (no MPMediaQuery on macOS — see Platform/iOS/MusicLibrary.swift).
+-->
+<plist version="1.0">
+<dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Pocket Tandas uses Bluetooth to connect to a nearby phone for remote DJ control.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pt-djremote._tcp</string>
+		<string>_pt-djremote._udp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Pocket Tandas uses the local network to control playback between this Mac and a phone running the app.</string>
+</dict>
+</plist>

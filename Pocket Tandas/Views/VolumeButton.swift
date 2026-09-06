@@ -106,7 +106,9 @@ struct VolumeView: View {
             }
             .disabled(!isReady)
             .navigationTitle("Volume")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

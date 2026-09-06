@@ -30,7 +30,9 @@ import MediaPlayer
 /// the receiver's own Music library (played by reference, like a local media add).
 enum ResolvedTrack {
     case file(URL)
+    #if os(iOS)
     case media(MPMediaItem)
+    #endif
 }
 
 struct RemoteTrackResolver {
@@ -62,7 +64,12 @@ struct RemoteTrackResolver {
             guard let baseURL else { return nil }
             return resolveFile(request, baseURL: baseURL).map(ResolvedTrack.file)
         case .mediaLibrary:
+            #if os(iOS)
             return resolveMedia(request).map(ResolvedTrack.media)
+            #else
+            // No Music library to fall back on: the file steps are all macOS has.
+            return nil
+            #endif
         }
     }
 
@@ -143,6 +150,7 @@ struct RemoteTrackResolver {
     /// the rest. A second hard predicate would have to be encoding-matched too (see
     /// `titleMatches`), and narrowing here is what the "never zeroes a good match"
     /// rule above says should happen to it anyway.
+    #if os(iOS)
     private func resolveMedia(_ request: TrackAddRequest) -> MPMediaItem? {
         guard MPMediaLibrary.authorizationStatus() == .authorized,
               let title = request.title, !title.isEmpty else { return nil }
@@ -209,6 +217,7 @@ struct RemoteTrackResolver {
     private func releaseYear(of item: MPMediaItem) -> Int? {
         item.releaseDate.map { Calendar.current.component(.year, from: $0) }
     }
+    #endif
 
     // MARK: - Helpers
 
