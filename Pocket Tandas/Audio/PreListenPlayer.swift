@@ -145,6 +145,13 @@ final class PreListenPlayer: NSObject, AVAudioPlayerDelegate {
             return false
         }
         newPlayer.delegate = self
+        #if os(macOS)
+        // The cue's whole purpose on a Mac: send it somewhere other than the room.
+        // `currentDevice` takes a device UID (macOS 10.13+, no iOS counterpart) and
+        // is set per player, so a change to the choice lands on the next audition
+        // with no engine to rebuild. Nil means the system default.
+        newPlayer.currentDevice = audioSession.cueDeviceUIDIfAttached
+        #endif
         newPlayer.play()
         filePlayer = newPlayer
         return true

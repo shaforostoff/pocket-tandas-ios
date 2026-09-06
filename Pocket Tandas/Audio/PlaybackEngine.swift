@@ -77,6 +77,12 @@ final class PlaybackEngine {
     @ObservationIgnored private var standbyPlayer: AVAudioPlayerNode
     @ObservationIgnored private var preloadedItemID: UUID?
 
+    #if os(macOS)
+    /// Set when the output device was changed while the deck was busy; applied on
+    /// the next return to idle. See `applyOutputDeviceChange`.
+    @ObservationIgnored private var pendingOutputDeviceChange = false
+    #endif
+
     /// Monotonic schedule tokens. `activeScheduleID` is the token of the audible
     /// schedule; only its completion may advance. `preloadedScheduleID` is the
     /// token of the standby's preloaded schedule (becomes active on swap).
@@ -135,6 +141,11 @@ final class PlaybackEngine {
         self.activePlayer = playerA
         self.standbyPlayer = playerB
         self.masterVolume = Self.persistedMasterVolume()
+        #if os(macOS)
+        // Before configureGraph: the chain is built at the output device's format,
+        // so the device has to be chosen first.
+        bindOutputDevice()
+        #endif
         configureGraph()
         observeConfigurationChange()
         wireSessionEvents()
@@ -158,6 +169,16 @@ final class PlaybackEngine {
         // DJ has tilted the tone of the room. Its declicker holds a fixed delay
         // whether it is engaged or not, so the node can stay in the graph and the
         // filters be switched on and off without moving the audio.
+        connectMasterChain()
+        engine.mainMixerNode.outputVolume = normalVolume
+        engine.prepare()
+    }
+
+    /// The mixer→(restoration)→eq→output half of the graph, at whatever format the
+    /// current output device wants. Split out of `configureGraph` because binding
+    /// the engine to a different device (macOS) changes that format and the chain
+    /// has to be remade at the new one.
+    private func connectMasterChain() {
         let mixer = engine.mainMixerNode
         let format = mixer.outputFormat(forBus: 0)
         restoration.noteOutputSampleRate(format.sampleRate)
@@ -169,8 +190,6 @@ final class PlaybackEngine {
             engine.connect(mixer, to: equalizer.node, format: format)
         }
         engine.connect(equalizer.node, to: engine.outputNode, format: format)
-        mixer.outputVolume = normalVolume
-        engine.prepare()
     }
 
     /// Stored master volume, or unity when nothing was ever set (`double(forKey:)`
@@ -195,7 +214,45 @@ final class PlaybackEngine {
     private func wireSessionEvents() {
         audioSession.onInterruptionBegan = { [weak self] in self?.handleInterruptionBegan() }
         audioSession.onInterruptionEnded = { [weak self] resume in self?.handleInterruptionEnded(shouldResume: resume) }
+        #if os(macOS)
+        audioSession.onMainDeviceChanged = { [weak self] in self?.applyOutputDeviceChange() }
+        #endif
     }
+
+    #if os(macOS)
+    /// Point the engine's output at the chosen device — the macOS-only capability
+    /// this whole split rests on (`setDeviceID` is `#if !TARGET_OS_IPHONE` in
+    /// AUAudioUnit.h). A nil selection, or one whose device has been unplugged,
+    /// leaves the engine on the system default.
+    ///
+    /// Only valid with the engine stopped: the output unit cannot be re-pointed
+    /// while it is rendering.
+    private func bindOutputDevice() {
+        guard let deviceID = audioSession.mainDeviceID else { return }
+        // Guarded, not a plain setDeviceID: a stale virtual driver never answers
+        // and would hang the app at launch. See AudioOutputDevices.bind.
+        AudioOutputDevices.bind(deviceID, to: engine.outputNode.auAudioUnit)
+    }
+
+    /// Re-point a graph that already exists. Rebinding stops the engine, which
+    /// drops every scheduled buffer, so a change made mid-track is HELD until the
+    /// deck goes idle rather than cutting the room off. `goIdle` flushes it.
+    private func applyOutputDeviceChange() {
+        guard case .idle = state else {
+            pendingOutputDeviceChange = true
+            ptLog("[Engine] output device change held until idle")
+            return
+        }
+        pendingOutputDeviceChange = false
+        engine.stop()
+        bindOutputDevice()
+        // The new device may run at another sample rate, so every connection —
+        // the master chain and each player's — has to be remade at its format.
+        formats.removeAll()
+        connectMasterChain()
+        engine.prepare()
+    }
+    #endif
 
     // MARK: - Public control
 
@@ -589,6 +646,9 @@ final class PlaybackEngine {
         engine.stop()
         audioSession.release(.queue)
         setState(.idle)
+        #if os(macOS)
+        if pendingOutputDeviceChange { applyOutputDeviceChange() }
+        #endif
     }
 
     private func clearSchedules() {

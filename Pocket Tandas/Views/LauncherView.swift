@@ -94,6 +94,13 @@ struct LauncherView: View {
                     #endif
                 }
                 CurrentRouteView(description: audioSession.currentRouteDescription)
+                #if os(macOS)
+                // A Mac can point the queue and the cue at different hardware,
+                // which is the one thing iOS cannot do — so it gets real pickers
+                // rather than only the system route.
+                Divider()
+                OutputDevicePickers()
+                #endif
             }
         }
     }

@@ -72,6 +72,7 @@
 		69F84E3E88A3785FF6C833EF /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F74FFEA141432E11F27838 /* BrowserView.swift */; };
 		6AFA57E67887807AD3D865B2 /* PeerLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D45CBB99FB2EF3837BF45 /* PeerLink.swift */; };
 		6CCD47CDB413801C85567EF7 /* PTRestorationDSP.mm in Sources */ = {isa = PBXBuildFile; fileRef = B40B48CC8B52D5FD6C32184E /* PTRestorationDSP.mm */; };
+		6E090B721FB28D6B95FEA354 /* OutputDevicePickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1646A25D1C9E837E5AD1B1BF /* OutputDevicePickers.swift */; };
 		6ECCD249DB5AD20FB86C9DFB /* PlaylistWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326E43918354BD12D57FCB96 /* PlaylistWriter.swift */; };
 		6F3A4711ACE788EE98F297C9 /* RoutePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */; };
 		70FC3F34FBCF34216E5A1A67 /* TrackDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF04EC9A9D61989661BCF0E /* TrackDisplay.swift */; };
@@ -143,6 +144,7 @@
 		DE8F4332A9265EF9457F9E2E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
 		DF1D75B8339041C491210920 /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E194492A760141C1C5FCFE7 /* PlaybackEngine.swift */; };
 		DF6BA41891DE83852066D446 /* dehum_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 41F74DE9B24A28C18A99BD1E /* dehum_core.cpp */; };
+		E217BBE5D4B7446821A4998C /* AudioOutputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDB09D588E0C993BC5FF929 /* AudioOutputDevice.swift */; };
 		E2204B2095DE9E32AB0CA737 /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */; };
 		E4BA44DD985DA497D324F855 /* StableTrackID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FB4789B2B0DA7E8401866A /* StableTrackID.swift */; };
 		E69A428FB0573BAA1AB4CD00 /* MusicEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD4F8DA7CC1F94DE0139D1 /* MusicEntry.swift */; };
@@ -185,6 +187,7 @@
 		05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayQueue.swift; path = PlayQueue.swift; sourceTree = "<group>"; };
 		094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = "Pocket Tandas/PrivacyInfo.xcprivacy"; sourceTree = SOURCE_ROOT; };
 		117D4F0B8209DA7F1CDC67F6 /* SavePlaylistButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SavePlaylistButton.swift; path = SavePlaylistButton.swift; sourceTree = "<group>"; };
+		1646A25D1C9E837E5AD1B1BF /* OutputDevicePickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDevicePickers.swift; sourceTree = "<group>"; };
 		167B48A78E746629E499E6D3 /* RemoteWireTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteWireTypes.swift; path = RemoteWireTypes.swift; sourceTree = "<group>"; };
 		16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserRowView.swift; path = BrowserRowView.swift; sourceTree = "<group>"; };
 		18EFC49D0C03DA41F0AA7166 /* Pocket Tandas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Tandas.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -274,6 +277,7 @@
 		F85146FC93DB6E8EAC261BA8 /* ClearQueueButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ClearQueueButton.swift; path = ClearQueueButton.swift; sourceTree = "<group>"; };
 		F9CA4380AB56B57660B01D65 /* RemoteQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteQueue.swift; path = RemoteQueue.swift; sourceTree = "<group>"; };
 		FC484D589ED786605E1B7B1F /* RestorationFilters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RestorationFilters.swift; path = "Pocket Tandas/Audio/RestorationFilters.swift"; sourceTree = SOURCE_ROOT; };
+		FEDB09D588E0C993BC5FF929 /* AudioOutputDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputDevice.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -335,6 +339,8 @@
 			children = (
 				6654A17EF3825FB1EF5D9B5F /* AudioSessionController.swift */,
 				B722E4A01AA0100449B80D4F /* SoundSettingsButton.swift */,
+				FEDB09D588E0C993BC5FF929 /* AudioOutputDevice.swift */,
+				1646A25D1C9E837E5AD1B1BF /* OutputDevicePickers.swift */,
 			);
 			name = macOS;
 			path = macOS;
@@ -724,6 +730,8 @@
 				EDD0706A4478BDB1F5373185 /* RestorationSettingsView.swift in Sources */,
 				5A3960520B6EB3060B844A32 /* AudioSessionController.swift in Sources */,
 				39E58D592B3014D991627167 /* SoundSettingsButton.swift in Sources */,
+				E217BBE5D4B7446821A4998C /* AudioOutputDevice.swift in Sources */,
+				6E090B721FB28D6B95FEA354 /* OutputDevicePickers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
