@@ -6,33 +6,42 @@
 //  MusicPlaylistSaver.swift
 //  Pocket Tandas
 //
-//  Saves the play queue as a playlist in the device Music library — the MusicKit
+//  Saves the play queue as a playlist in the device Music library — the library
 //  counterpart of PlaylistWriter, and its exact mirror image. An .m3u8 can only
 //  hold FILE tracks (PlaylistWriter skips media items); a library playlist can
 //  only hold LIBRARY tracks (this skips file items). A queue mixing both
 //  round-trips through neither, so each save reports what it left behind.
 //
-//  Why MusicKit rather than MediaPlayer's MPMediaPlaylist: MPMediaPlaylist is
-//  append-only — no remove, no reorder, no replace — so re-saving an edited queue
-//  under the same name could only pile more tracks onto the old playlist.
-//  MusicKit.MusicLibrary.edit(_:items:) REPLACES the entries, which is what "save
-//  this queue" means. The catch is that edit() only works on playlists this app
-//  created, which is why PlaylistRegistry remembers the ones we made (see there).
+//  TWO frameworks, split by what each one can actually do:
 //
-//  Note the module-qualified MusicKit.MusicLibrary throughout: this project has
-//  its own `enum MusicLibrary` (the MPMediaQuery wrapper next door), and inside
-//  the module the bare name resolves to that one.
+//   - CREATING a playlist goes through MediaPlayer. MPMediaPlaylist.add(_:)
+//     takes MPMediaItem objects directly, and the queue already holds the
+//     MPMediaItem.persistentIDs the Music browser put there, so the tracks that
+//     land in the playlist are exactly the ones the DJ queued. No matching, no
+//     heuristics, nothing that can quietly substitute a different recording.
+//   - REPLACING one's contents goes through MusicKit. MPMediaPlaylist is
+//     append-only — no remove, no reorder, no replace — and neither framework has
+//     a delete, so MusicKit.MusicLibrary.edit(_:items:) is the only way in either
+//     of them to make an existing playlist hold the current queue.
 //
-//  The bridge between the two frameworks is the awkward part. The queue holds
-//  MPMediaItem.persistentIDs, because the Music browser is MPMediaQuery-based
-//  (see MusicLibrary.swift), while createPlaylist wants MusicKit Songs — and
-//  Apple documents no mapping between MPMediaItem.persistentID and MusicItemID.
-//  In practice a local library song's MusicItemID is its persistentID in decimal,
-//  so that is tried first as one bulk request; whatever it misses falls back to a
-//  per-track title query scored on artist and duration. See resolve(_:).
+//  edit() wants MusicKit Songs, and Apple documents no mapping between
+//  MPMediaItem.persistentID and MusicItemID. In practice a local library song's
+//  MusicItemID is its persistentID in decimal, so that is tried first as one bulk
+//  request; whatever it misses falls back to a per-track title query scored on
+//  artist and duration (see resolve(_:)). That guesswork is now confined to the
+//  replace path — a first save never depends on it.
+//
+//  Because MediaPlayer creates the playlist, a later replace has to be able to
+//  find it again as a MusicKit Playlist; linkForLaterReplace(_:named:) does that
+//  once, at creation, and refuses to store a link it cannot prove is ours.
+//
+//  Note the module-qualified MusicKit.MusicLibrary below: this project has its own
+//  `enum MusicLibrary` (the MPMediaQuery wrapper next door), and inside the module
+//  the bare name resolves to that one.
 //
 
 import Foundation
+import MediaPlayer
 import MusicKit
 
 /// What a save actually did — every count here is something we know for a fact,
@@ -42,19 +51,21 @@ struct MusicPlaylistSaveResult {
     /// True when an existing app-created playlist had its contents replaced
     /// rather than a new playlist being created.
     let replacedExisting: Bool
-    /// Library tracks handed to MusicKit, in queue order (duplicates included).
+    /// Library tracks written to the playlist, in queue order (duplicates kept).
     let submitted: Int
     /// Queue entries that were folder files — a library playlist can't hold them.
     let filesSkipped: Int
-    /// Distinct titles of library tracks neither resolution pass could match back
-    /// to a MusicKit Song.
+    /// Distinct titles of library tracks that couldn't be written: gone from the
+    /// library, or (replacing only) not matchable back to a MusicKit Song.
     let unmatched: [String]
 }
 
 enum MusicPlaylistSaveError: LocalizedError {
-    case notAuthorized(MusicAuthorization.Status)
+    case notAuthorized(MPMediaLibraryAuthorizationStatus)
     case noLibraryTracks
     case nothingResolved
+    case replaceUnavailable(String)
+    case playlistNotCreated
 
     var errorDescription: String? {
         switch self {
@@ -67,8 +78,13 @@ enum MusicPlaylistSaveError: LocalizedError {
             return "The queue has no Music-library tracks. Only tracks added from "
                  + "Music can go in a Music playlist — save the rest as an .m3u8."
         case .nothingResolved:
-            return "None of the queue's Music tracks could be matched in your "
-                 + "library. They may have been removed since they were added."
+            return "None of the queue's Music tracks are still in your library. "
+                 + "They may have been removed since they were added."
+        case .replaceUnavailable(let name):
+            return "“\(name)” couldn't be updated. Save the queue as a new "
+                 + "playlist instead."
+        case .playlistNotCreated:
+            return "Your Music library didn't create the playlist. Try again."
         }
     }
 }
@@ -82,44 +98,37 @@ enum MusicPlaylistSaver {
     /// in and what didn't; throws only when nothing could be saved at all.
     static func save(items: [QueueItem], name: String,
                      replacingExisting: Bool = true) async throws -> MusicPlaylistSaveResult {
-        let status = await MusicAuthorization.request()
+        // MediaPlayer gates both paths: the create path writes through it, and the
+        // replace path still reads the queue's tracks out of MPMediaQuery first.
+        // It is also the grant the app already asked for before the Music browser
+        // listed anything, so this normally returns without prompting.
+        let status = await MediaLibraryImporter.requestAuthorization()
         guard status == .authorized else { throw MusicPlaylistSaveError.notAuthorized(status) }
 
-        let wanted = items.compactMap(Wanted.init(queueItem:))
-        guard !wanted.isEmpty else { throw MusicPlaylistSaveError.noLibraryTracks }
-        let filesSkipped = items.count - wanted.count
+        let queued = items.compactMap(QueuedTrack.init(queueItem:))
+        guard !queued.isEmpty else { throw MusicPlaylistSaveError.noLibraryTracks }
+        let filesSkipped = items.count - queued.count
 
-        let resolved = await resolve(wanted)
-        // Map the ORDERED queue back through the lookup: order is the whole point
-        // of a DJ set, and a repeat (the same cortina between every tanda) has to
-        // come out as a repeat rather than being collapsed into one entry.
-        let songs = wanted.compactMap { resolved[$0.persistentID] }
-        guard !songs.isEmpty else { throw MusicPlaylistSaveError.nothingResolved }
+        // Map the ORDERED queue through the lookup: order is the whole point of a
+        // DJ set, and a repeat (the same cortina between every tanda) has to come
+        // out as a repeat rather than being collapsed into one entry.
+        let index = libraryIndex(for: Set(queued.map(\.persistentID)))
+        let mediaItems = queued.compactMap { index[$0.persistentID] }
+        guard !mediaItems.isEmpty else { throw MusicPlaylistSaveError.nothingResolved }
 
         var unmatched: [String] = []
         var seen: Set<UInt64> = []
-        for entry in wanted where resolved[entry.persistentID] == nil {
-            if seen.insert(entry.persistentID).inserted { unmatched.append(entry.title) }
+        for track in queued where index[track.persistentID] == nil {
+            if seen.insert(track.persistentID).inserted { unmatched.append(track.title) }
         }
 
         let title = displayName(from: name)
         if replacingExisting, let existing = await ownedPlaylist(named: title) {
-            let updated = try await MusicKit.MusicLibrary.shared.edit(existing, items: songs)
-            PlaylistRegistry.remember(updated.id, as: title)
-            return MusicPlaylistSaveResult(name: title, replacedExisting: true,
-                                           submitted: songs.count, filesSkipped: filesSkipped,
-                                           unmatched: unmatched)
+            return try await replace(existing, named: title, with: mediaItems,
+                                     filesSkipped: filesSkipped, unmatched: unmatched)
         }
-
-        let created = try await MusicKit.MusicLibrary.shared.createPlaylist(
-            name: title, authorDisplayName: "Pocket Tandas", items: songs)
-        // "Save as a New Playlist" under a name we already own hands the name to
-        // the new playlist: Music allows duplicate names, and the one the user
-        // just made is the one they will mean next time.
-        PlaylistRegistry.remember(created.id, as: title)
-        return MusicPlaylistSaveResult(name: title, replacedExisting: false,
-                                       submitted: songs.count, filesSkipped: filesSkipped,
-                                       unmatched: unmatched)
+        return try await create(named: title, with: mediaItems,
+                                filesSkipped: filesSkipped, unmatched: unmatched)
     }
 
     /// Whether saving under `name` would replace a playlist this app made — the
@@ -136,31 +145,113 @@ enum MusicPlaylistSaver {
         return trimmed.isEmpty ? "Playlist" : trimmed
     }
 
-    // MARK: - Resolution
+    // MARK: - Creating (MediaPlayer)
 
-    /// One queue media entry reduced to what matching needs. Title and artist come
-    /// from the snapshot captured at enqueue (MediaRef itself carries only a
-    /// display title), falling back to the ref when there is no snapshot.
-    private struct Wanted {
+    /// A new playlist holding exactly `mediaItems`, in order.
+    private static func create(named title: String, with mediaItems: [MPMediaItem],
+                               filesSkipped: Int,
+                               unmatched: [String]) async throws -> MusicPlaylistSaveResult {
+        let metadata = MPMediaPlaylistCreationMetadata(name: title)
+        metadata.authorDisplayName = "Pocket Tandas"
+        // A FRESH uuid every time. getPlaylist(with:) is keyed by the uuid and
+        // ignores the creation metadata when one already exists, so reusing a uuid
+        // would hand back the old playlist and APPEND to it — and "Save as a New
+        // Playlist" has to mean a new playlist.
+        let playlist = try await makePlaylist(uuid: UUID(), metadata: metadata)
+        try await append(mediaItems, to: playlist)
+        await linkForLaterReplace(playlist, named: title)
+        return MusicPlaylistSaveResult(name: title, replacedExisting: false,
+                                       submitted: mediaItems.count,
+                                       filesSkipped: filesSkipped, unmatched: unmatched)
+    }
+
+    private static func makePlaylist(uuid: UUID,
+                                     metadata: MPMediaPlaylistCreationMetadata) async throws -> MPMediaPlaylist {
+        try await withCheckedThrowingContinuation { cont in
+            MPMediaLibrary.default().getPlaylist(with: uuid, creationMetadata: metadata) { playlist, error in
+                if let playlist {
+                    cont.resume(returning: playlist)
+                } else {
+                    cont.resume(throwing: error ?? MusicPlaylistSaveError.playlistNotCreated)
+                }
+            }
+        }
+    }
+
+    private static func append(_ items: [MPMediaItem], to playlist: MPMediaPlaylist) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            playlist.add(items) { error in
+                if let error { cont.resume(throwing: error) } else { cont.resume() }
+            }
+        }
+    }
+
+    // MARK: - Replacing (MusicKit)
+
+    /// Point an existing playlist of ours at the current queue. MusicKit is the
+    /// only framework that can do this, so this is where the persistentID bridge
+    /// is unavoidable — and where it can fail without a wrong track being written,
+    /// because an unresolved entry is dropped rather than approximated.
+    private static func replace(_ playlist: Playlist, named title: String,
+                                with mediaItems: [MPMediaItem], filesSkipped: Int,
+                                unmatched: [String]) async throws -> MusicPlaylistSaveResult {
+        let resolved = await resolve(mediaItems)
+        let songs = mediaItems.compactMap { resolved[$0.persistentID] }
+        guard !songs.isEmpty else { throw MusicPlaylistSaveError.replaceUnavailable(title) }
+
+        let updated = try await MusicKit.MusicLibrary.shared.edit(playlist, items: songs)
+        PlaylistRegistry.remember(updated.id, as: title)
+
+        var missed = unmatched
+        var seen: Set<UInt64> = []
+        for item in mediaItems where resolved[item.persistentID] == nil {
+            if seen.insert(item.persistentID).inserted { missed.append(item.title ?? "Unknown") }
+        }
+        return MusicPlaylistSaveResult(name: title, replacedExisting: true,
+                                       submitted: songs.count,
+                                       filesSkipped: filesSkipped, unmatched: missed)
+    }
+
+    // MARK: - Library lookup
+
+    /// One queue media entry reduced to what a save needs: the id to look up, and
+    /// the title captured at enqueue — used only to name a track that has since
+    /// left the library, where there is no MPMediaItem left to ask.
+    private struct QueuedTrack {
         let persistentID: UInt64
         let title: String
-        let artist: String?
-        let duration: TimeInterval
 
         init?(queueItem item: QueueItem) {
             guard let ref = item.mediaRef else { return nil }
             persistentID = ref.persistentID
             title = item.mediaSnapshot?.title ?? ref.displayTitle
-            artist = item.mediaSnapshot?.artist
-            duration = ref.duration
         }
     }
 
+    /// Every wanted id resolved in ONE library sweep rather than a filtered query
+    /// each — see PlayQueue.mediaIndex(for:), which had to learn the same lesson
+    /// (a thousand-track queue was a thousand MPMediaQuery round-trips). The
+    /// MPMediaItems themselves are kept here, since add(_:) takes the
+    /// objects, but only persistentID is read off them so their property caches
+    /// stay small and they are released when the save returns.
+    private static func libraryIndex(for wanted: Set<UInt64>) -> [UInt64: MPMediaItem] {
+        var index: [UInt64: MPMediaItem] = [:]
+        index.reserveCapacity(wanted.count)
+        for item in MPMediaQuery.songs().items ?? [] where wanted.contains(item.persistentID) {
+            index[item.persistentID] = item
+        }
+        return index
+    }
+
+    // MARK: - The persistentID bridge (replace only)
+
     /// persistentID → Song for everything that could be matched. Misses are not an
-    /// error: the ID assumption below is undocumented, and a track can also have
-    /// been removed from the library since it was queued.
-    private static func resolve(_ wanted: [Wanted]) async -> [UInt64: Song] {
-        let byID = Dictionary(grouping: wanted, by: \.persistentID)
+    /// error: the ID assumption below is undocumented, and matching is only ever
+    /// best-effort.
+    private static func resolve(_ items: [MPMediaItem]) async -> [UInt64: Song] {
+        var byID: [UInt64: MPMediaItem] = [:]
+        for item in items where byID[item.persistentID] == nil { byID[item.persistentID] = item }
+
         var found: [UInt64: Song] = [:]
         found.reserveCapacity(byID.count)
 
@@ -173,14 +264,14 @@ enum MusicPlaylistSaver {
             request.filter(matching: \.id, memberOf: chunk.map { MusicItemID(String($0)) })
             guard let songs = try? await request.response().items else { continue }
             for song in songs {
-                guard let pid = UInt64(song.id.rawValue),
-                      let expected = byID[pid]?.first else { continue }
+                guard let pid = UInt64(song.id.rawValue), let expected = byID[pid] else { continue }
                 // The ID equivalence is an undocumented observation, so confirm
-                // each hit against the title we queued. If the two frameworks ever
-                // turn out to use separate ID spaces, a numeric collision would
-                // otherwise drop a SILENTLY WRONG track into the set; this turns
-                // that into a pass-2 lookup, and at worst an honest "not found".
-                guard fold(song.title) == fold(expected.title) else { continue }
+                // each hit against the library item it claims to be. If the two
+                // frameworks ever turn out to use separate ID spaces, a numeric
+                // collision would otherwise drop a SILENTLY WRONG track into the
+                // set; this turns that into a pass-2 lookup, and at worst an
+                // honest "not found".
+                guard fold(song.title) == fold(expected.title ?? "") else { continue }
                 found[pid] = song
             }
         }
@@ -188,30 +279,31 @@ enum MusicPlaylistSaver {
         // Pass 2 — one title query per still-missing track. Sequential and slow
         // (a whole milonga's worth of requests if pass 1 matched nothing at all),
         // but this only runs behind an explicit Save that shows a progress state.
-        for (pid, group) in byID where found[pid] == nil {
-            guard let probe = group.first else { continue }
-            if let song = await songMatching(probe) { found[pid] = song }
+        for (pid, item) in byID where found[pid] == nil {
+            if let song = await songMatching(item) { found[pid] = song }
         }
         return found
     }
 
-    /// The library song that best matches one queue entry by title, disambiguated
+    /// The library song that best matches one library item by title, disambiguated
     /// on artist then duration. Tango libraries are full of the same title recorded
     /// by different orquestas — and by the same orquesta in different years — so
     /// artist is the stronger signal and duration breaks the remaining ties.
-    private static func songMatching(_ wanted: Wanted) async -> Song? {
+    private static func songMatching(_ item: MPMediaItem) async -> Song? {
+        guard let title = item.title else { return nil }
         var request = MusicLibraryRequest<Song>()
-        request.filter(matching: \.title, equalTo: wanted.title)
+        request.filter(matching: \.title, equalTo: title)
         guard let candidates = try? await request.response().items, !candidates.isEmpty else {
             return nil
         }
         if candidates.count == 1 { return candidates.first }
 
-        let artist = wanted.artist.map(fold)
+        let artist = item.artist.map(fold)
         let sameArtist = candidates.filter { artist == nil || fold($0.artistName) == artist }
         let pool = sameArtist.isEmpty ? Array(candidates) : sameArtist
+        let duration = item.playbackDuration
         return pool.min {
-            abs(($0.duration ?? 0) - wanted.duration) < abs(($1.duration ?? 0) - wanted.duration)
+            abs(($0.duration ?? 0) - duration) < abs(($1.duration ?? 0) - duration)
         }
     }
 
@@ -223,11 +315,56 @@ enum MusicPlaylistSaver {
 
     // MARK: - Playlists we own
 
-    /// MusicLibrary.edit(_:items:) only works on playlists created by this app, so
-    /// re-saving a set under the same name has to find OUR playlist rather than
-    /// any playlist with that name — replacing a playlist the user built by hand
-    /// in Music would be unforgivable. Names are the user-facing handle, ids are
-    /// what MusicKit needs, so the map is kept here across launches.
+    /// MediaPlayer makes the playlist but only MusicKit can later replace its
+    /// contents, so the MusicKit id of a playlist we just created is recorded here
+    /// against its name. Both attempts have to PROVE the playlist is ours before
+    /// anything is stored — replacing a playlist the user built by hand in Music
+    /// would be unforgivable:
+    ///
+    ///  1. The persistentID bridge, confirmed against the name.
+    ///  2. Failing that, a name query, trusted only when it returns exactly ONE
+    ///     playlist. We created this one a moment ago, so it is in the library; a
+    ///     playlist the user already had under the same name would make the count
+    ///     two and nothing is stored rather than guessing which is ours.
+    ///
+    /// Storing nothing is a safe outcome, not a failure: the next save under this
+    /// name just creates another playlist instead of offering to replace.
+    private static func linkForLaterReplace(_ created: MPMediaPlaylist, named title: String) async {
+        // Whatever this establishes REPLACES any earlier link for the name: after
+        // a create, the registry names the playlist the user just made, or — when
+        // neither attempt can prove ownership — nothing at all. Leaving the old
+        // link in place would aim the next Replace at the previous playlist.
+        PlaylistRegistry.forget(title)
+        guard await authorizeMusicKit() else { return }
+
+        if let bridged = await libraryPlaylist(id: MusicItemID(String(created.persistentID))),
+           fold(bridged.name) == fold(title) {
+            PlaylistRegistry.remember(bridged.id, as: title)
+            return
+        }
+        var request = MusicLibraryRequest<Playlist>()
+        request.filter(matching: \.name, equalTo: title)
+        guard let response = try? await request.response(),
+              response.items.count == 1, let only = response.items.first else { return }
+        PlaylistRegistry.remember(only.id, as: title)
+    }
+
+    /// MusicKit keeps its own authorization even though it rides the same Media &
+    /// Apple Music grant MediaLibraryImporter has already asked for, and every
+    /// MusicLibraryRequest here fails closed without it — which would quietly
+    /// disable replacing rather than report anything. Free once the grant exists.
+    private static func authorizeMusicKit() async -> Bool {
+        await MusicAuthorization.request() == .authorized
+    }
+
+    private static func libraryPlaylist(id: MusicItemID) async -> Playlist? {
+        var request = MusicLibraryRequest<Playlist>()
+        request.filter(matching: \.id, equalTo: id)
+        return try? await request.response().items.first
+    }
+
+    /// Names are the user-facing handle, MusicItemIDs are what edit() needs, so the
+    /// map is kept across launches.
     private enum PlaylistRegistry {
         private static let key = "musicLibraryPlaylistIDsByName"
 
@@ -251,10 +388,12 @@ enum MusicPlaylistSaver {
     }
 
     /// The live playlist we previously created under `name`, or nil if we never
-    /// made one or the user has since deleted it (in which case the stale entry is
-    /// dropped, so the next save creates cleanly instead of retrying a dead id).
+    /// made one, never managed to link one, or the user has since deleted it (in
+    /// which case the stale entry is dropped, so the next save creates cleanly
+    /// instead of retrying a dead id).
     private static func ownedPlaylist(named name: String) async -> Playlist? {
         guard let id = PlaylistRegistry.id(for: name) else { return nil }
+        guard await authorizeMusicKit() else { return nil }
         var request = MusicLibraryRequest<Playlist>()
         request.filter(matching: \.id, equalTo: id)
         // A thrown request is a transient failure — keep the link and let the save
