@@ -111,6 +111,7 @@
 		AB6E41BFA064CEC4758958D9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */; };
 		AF8EF521E184786F66F03958 /* QueueItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DF4E2A802765BB203C5F04 /* QueueItem.swift */; };
 		B3E24B6E8FC29593ED4A411E /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAEC4AA894A066ABE40E5456 /* DebugLog.swift */; };
+		B42E409ABC6000F5FC79096E /* MusicPlaylistSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74E42B6989AB663D07FC83A /* MusicPlaylistSaver.swift */; };
 		B65167D14365F2263FCF8EEF /* EQButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23540369F03A26D4315C3F2 /* EQButton.swift */; };
 		B6C2AFE429D0B94DC20D0F35 /* VolumeButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7648CFBB140C25F62D7B4A /* VolumeButton.swift */; };
 		B8794538BBB6C30C230772F7 /* StayAwake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B194BB3837007A3B31A6A1B /* StayAwake.swift */; };
@@ -247,6 +248,7 @@
 		BC4E416886B461A5F0353C2D /* AudioControlling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioControlling.swift; path = AudioControlling.swift; sourceTree = "<group>"; };
 		C6AE4828B8B3A1A70ED5839E /* MediaLibraryImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaLibraryImporter.swift; path = MediaLibraryImporter.swift; sourceTree = "<group>"; };
 		C735492AA77C72BFEB8A252D /* SortOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortOption.swift; path = SortOption.swift; sourceTree = "<group>"; };
+		C74E42B6989AB663D07FC83A /* MusicPlaylistSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MusicPlaylistSaver.swift; path = MusicPlaylistSaver.swift; sourceTree = "<group>"; };
 		C7FF4BE899923A67B5F8B846 /* Pocket Tandas-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Pocket Tandas-Bridging-Header.h"; path = "Pocket Tandas/Pocket Tandas-Bridging-Header.h"; sourceTree = SOURCE_ROOT; };
 		CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataKeys.swift; path = MetadataKeys.swift; sourceTree = "<group>"; };
 		CD484C8AB0ADF994D715D737 /* MusicBrowseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MusicBrowseModel.swift; path = MusicBrowseModel.swift; sourceTree = "<group>"; };
@@ -356,6 +358,7 @@
 				4DDB4C1584276C049521CECA /* MusicBrowserView.swift */,
 				B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */,
 				51ED43F1BF0AD0EADA70EF50 /* AudioSessionController.swift */,
+				C74E42B6989AB663D07FC83A /* MusicPlaylistSaver.swift */,
 			);
 			name = iOS;
 			path = iOS;
@@ -812,6 +815,7 @@
 				379847ECB6653940589C447B /* RestorationFilters.swift in Sources */,
 				84EB4108B14C833D4243AD53 /* DehumTrackScout.swift in Sources */,
 				30F145C8A3CF0B689946F520 /* RestorationSettingsView.swift in Sources */,
+				B42E409ABC6000F5FC79096E /* MusicPlaylistSaver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
