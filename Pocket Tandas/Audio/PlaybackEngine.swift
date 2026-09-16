@@ -66,6 +66,19 @@ final class PlaybackEngine {
         return Self.fadeOutDurationRange.contains(stored) ? stored : Self.defaultFadeOutDuration
     }
 
+    /// How long a paused deck holds on to the audio hardware before letting go.
+    ///
+    /// Pausing deliberately keeps everything standing — the engine running, the
+    /// schedule loaded, the session active — so Resume carries on from the exact
+    /// sample and the lock-screen transport stays put. That is also what stops iOS
+    /// suspending us, so a pause nobody comes back to would keep the process and
+    /// the output device alive until the battery ran out. After this long, it
+    /// stops itself. Same window, for the same reason, as the stay-awake toggles
+    /// (StayAwakeSettings.window).
+    static let pausedReleaseWindow: TimeInterval = 30 * 60
+
+    @ObservationIgnored private var pausedReleaseTimer: Timer?
+
     /// The item currently loaded, plus its duration — for Now Playing info.
     @ObservationIgnored private(set) var currentItem: QueueItem?
     @ObservationIgnored private(set) var currentDuration: TimeInterval = 0
@@ -150,6 +163,8 @@ final class PlaybackEngine {
         observeConfigurationChange()
         wireSessionEvents()
     }
+
+    deinit { pausedReleaseTimer?.invalidate() }
 
     // MARK: - Setup
 
@@ -326,7 +341,10 @@ final class PlaybackEngine {
         goIdle()
     }
 
-    /// Pause/resume (remote commands + interruptions). Not a primary UI feature.
+    /// Pause/resume: Explore mode's main transport, plus the lock screen, the
+    /// remote sender and phone-call interruptions. The deck keeps its place and the
+    /// hardware stays warm, so Resume is instant — but only for
+    /// `pausedReleaseWindow`; see `schedulePausedRelease`.
     func pause() {
         guard case .playing(let id) = state else { return }
         activePlayer.pause()
@@ -352,7 +370,33 @@ final class PlaybackEngine {
 
     private func setState(_ newState: PlaybackState) {
         state = newState
+        // A pause leaves the graph standing but nothing moving: the hum detector
+        // has nothing to report until audio flows again, and the clock that
+        // releases a forgotten pause starts here.
+        restoration.setPaused(newState.isPaused)
+        schedulePausedRelease(newState.isPaused)
         onStateChange?()
+    }
+
+    /// Arm — or, on any other state, cancel — the deadline that turns a forgotten
+    /// pause into an ordinary stop: engine stopped, audio session released, Now
+    /// Playing cleared, and the app suspendable again. See `pausedReleaseWindow`.
+    ///
+    /// Nothing is lost that a single tap doesn't restore: tapping a queue row while
+    /// paused already restarts that track from the top (see `requestPlay`), which
+    /// is exactly what a tap after the release does.
+    private func schedulePausedRelease(_ paused: Bool) {
+        pausedReleaseTimer?.invalidate()
+        pausedReleaseTimer = nil
+        guard paused else { return }
+        // .common, so a list being scrolled can't defer the deadline.
+        let timer = Timer(timeInterval: Self.pausedReleaseWindow, repeats: false) { [weak self] _ in
+            guard let self, self.state.isPaused else { return }
+            ptLog("paused for \(Int(Self.pausedReleaseWindow / 60))m — releasing audio resources")
+            self.stop()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pausedReleaseTimer = timer
     }
 
     private func startPlaying(_ item: QueueItem) {

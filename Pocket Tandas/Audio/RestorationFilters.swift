@@ -86,6 +86,10 @@ final class RestorationFilters: RestorationControlling {
     /// a record can start one for the record that is actually playing.
     @ObservationIgnored private var currentTrack: URL?
 
+    /// Whether the deck is paused. The detector only moves while audio is flowing,
+    /// so a paused deck is polled for nothing.
+    @ObservationIgnored private var isPaused = false
+
     @ObservationIgnored private var outputSampleRate: Double = 44_100
     @ObservationIgnored private var lineTimer: Timer?
 
@@ -192,6 +196,16 @@ final class RestorationFilters: RestorationControlling {
         updateLinePolling()
     }
 
+    /// Paused or resumed. Unlike `playbackStopped` this keeps the record's identity
+    /// and the lines already found — they are still what the panel should show, and
+    /// what resuming carries on with. It only stops reading a detector that has
+    /// stopped moving.
+    func setPaused(_ paused: Bool) {
+        guard paused != isPaused else { return }
+        isPaused = paused
+        updateLinePolling()
+    }
+
     /// Playback stopped: nothing to scout for.
     func playbackStopped() {
         currentTrack = nil
@@ -214,9 +228,10 @@ final class RestorationFilters: RestorationControlling {
         scout.scan(url: url, params: dehum.coreParams)
     }
 
-    /// Read the detector only while it is running: Dehum engaged, and a record on.
+    /// Read the detector only while it is moving: Dehum engaged, a record on, and
+    /// that record actually playing.
     private func updateLinePolling() {
-        let wanted = dehumEnabled && unit != nil && currentTrack != nil
+        let wanted = dehumEnabled && unit != nil && currentTrack != nil && !isPaused
         guard wanted != (lineTimer != nil) else { return }
         guard wanted else {
             lineTimer?.invalidate()
