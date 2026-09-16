@@ -247,9 +247,12 @@ final class PlayQueue {
     /// on first play / once granted.
     private static func restoreMediaItem(_ entry: StoredItem, persistentID pid: UInt64,
                                          index: [UInt64: LibraryMatch]?) -> QueueItem? {
-        let cached = TrackMetadataSnapshot(title: entry.title, artist: entry.artist, genre: entry.genre,
-                                           dateText: entry.dateText, year: entry.year, bpm: entry.bpm,
-                                           trackGainDB: nil)
+        // What was stored is whatever the row displayed when the queue was saved —
+        // a tag, or a measurement standing in for one. There is no file to re-read
+        // and nothing to re-measure it against, so it comes back as the tag side.
+        let cached = TrackMetadataSnapshot(title: entry.title, artist: entry.artist,
+                                           taggedGenre: entry.genre, dateText: entry.dateText,
+                                           year: entry.year, taggedBPM: entry.bpm, trackGainDB: nil)
         let title = entry.title ?? "Unknown"
         guard let index else {
             let ref = MediaRef(persistentID: pid, assetURL: nil, displayTitle: title,

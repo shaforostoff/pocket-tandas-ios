@@ -12,3 +12,4 @@
 //
 
 #import "DSP/PTRestorationDSP.h"
+#import "Analysis/PTBPMAnalyzer.h"

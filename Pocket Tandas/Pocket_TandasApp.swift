@@ -77,7 +77,7 @@ struct Pocket_TandasApp: App {
     /// deleting it. Order: open it; if that fails, delete it and open a fresh one;
     /// if that fails too, run the cache in memory for this session.
     private static func makeModelContainer() -> ModelContainer {
-        let schema = Schema([TrackMetadata.self])
+        let schema = Schema([TrackMetadata.self, TrackAnalysis.self])
         let onDisk = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         if let container = try? ModelContainer(for: schema, configurations: [onDisk]) {

@@ -401,11 +401,15 @@ struct MusicBrowserView: View {
             let ref = MediaRef(persistentID: item.persistentID, assetURL: assetURL,
                                displayTitle: item.title ?? "Unknown", duration: item.playbackDuration)
             let snapshot = TrackMetadataSnapshot(mediaItem: item)
-            let queueItem = QueueItem(media: ref, snapshot: snapshot)
-            metadata.inject(snapshot, forKey: queueItem.trackKey)
-            queued.append(queueItem)
+            queued.append(QueueItem(media: ref, snapshot: snapshot))
         }
-        if !queued.isEmpty { queue.enqueue(contentsOf: queued) }
+        if !queued.isEmpty {
+            // One seed for the batch, not one per track: it publishes the carried
+            // metadata and puts anything the library left untagged in line to be
+            // measured.
+            metadata.seedMedia(queued)
+            queue.enqueue(contentsOf: queued)
+        }
         if !skipped.isEmpty { skipReport = skipped }
     }
 }

@@ -26,8 +26,8 @@ struct ExtractedMetadata: Sendable {
     /// Map the extracted tags into a UI snapshot, stamping the source-file
     /// identity (mod-date + size) used later for staleness checks.
     func snapshot(sourceModDate: Date, fileSize: Int) -> TrackMetadataSnapshot {
-        TrackMetadataSnapshot(title: title, artist: artist, genre: genre,
-                              dateText: dateText, year: year, bpm: bpm,
+        TrackMetadataSnapshot(title: title, artist: artist, taggedGenre: genre,
+                              dateText: dateText, year: year, taggedBPM: bpm,
                               trackGainDB: trackGainDB,
                               sourceModDate: sourceModDate, fileSize: fileSize)
     }

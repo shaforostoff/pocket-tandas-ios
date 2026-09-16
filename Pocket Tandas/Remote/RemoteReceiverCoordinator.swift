@@ -475,9 +475,7 @@ final class RemoteReceiverCoordinator {
                 let ref = MediaRef(persistentID: mediaItem.persistentID, assetURL: assetURL,
                                    displayTitle: mediaItem.title ?? "Unknown", duration: mediaItem.playbackDuration)
                 let snapshot = TrackMetadataSnapshot(mediaItem: mediaItem)
-                let queueItem = QueueItem(media: ref, snapshot: snapshot)
-                metadata.inject(snapshot, forKey: queueItem.trackKey)
-                items.append(queueItem)
+                items.append(QueueItem(media: ref, snapshot: snapshot))
             #endif
             case nil:
                 continue
@@ -486,6 +484,7 @@ final class RemoteReceiverCoordinator {
         if !items.isEmpty {
             queue.enqueue(contentsOf: items)
             if !fileURLs.isEmpty { metadata.scan(urls: fileURLs, baseURL: library.baseURL) }   // files only
+            metadata.seedMedia(items)                                                          // media only
         }
         link.send(.addTrackResult(resolved: items.count, failed: requests.count - items.count))
     }

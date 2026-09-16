@@ -55,7 +55,8 @@ struct TrackDisplayRow: View {
     List {
         TrackDisplayRow(display: TrackDisplay(
             metadata: TrackMetadataSnapshot(title: "Poema", artist: "Francisco Canaro",
-                                            genre: "Vals", dateText: "1935-05-14", year: 1935, bpm: 120),
+                                            taggedGenre: "Vals", dateText: "1935-05-14", year: 1935,
+                                            taggedBPM: 120),
             fallback: "poema.mp3"))
         TrackDisplayRow(display: TrackDisplay(filename: "unknown-track.mp3"))
     }

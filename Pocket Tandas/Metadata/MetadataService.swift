@@ -14,6 +14,10 @@
 //   - SwiftData (TrackMetadata) is the durable store: hydrated into memory lazily
 //     per folder (not all at launch), written as scans complete, keyed by
 //     StableTrackID.
+//   - Where the tags leave a gap — no BPM, or no genre — the track is handed to
+//     TrackAnalysisQueue to be measured. That is a second, much slower pass over
+//     the same tracks, cached in its own table (TrackAnalysis) and merged into the
+//     same snapshots. Tags always win: see TrackMetadataSnapshot.
 //
 //  Plain @Observable (see observable-not-mainactor). All cache mutation happens
 //  on the main actor; extraction runs concurrently off-main in a bounded group.
@@ -44,6 +48,21 @@ final class MetadataService {
     @ObservationIgnored private var folderScanGeneration = 0
     @ObservationIgnored private let maxConcurrent = 4
 
+    /// Measures the tracks whose tags left a gap. Created lazily so the callback
+    /// can close over a fully initialised `self`; only ever touched on the main
+    /// actor, which is where every submission is made.
+    @ObservationIgnored private lazy var analysis = TrackAnalysisQueue { [weak self] key, result in
+        self?.recordAnalysis(key: key, result: result)
+    }
+
+    /// Measurements waiting to be published, and whether a hop is already booked to
+    /// do it. One track lands every few seconds for as long as a folder takes, and
+    /// every publish re-sorts the browser — so a run of them is collapsed into one
+    /// batch and one SwiftData save, the same as a folder scan publishes once.
+    @ObservationIgnored private var pendingAnalysis: [String: TrackAnalysisResult] = [:]
+    @ObservationIgnored private var analysisFlushScheduled = false
+    @ObservationIgnored private let analysisFlushDelay: Duration = .milliseconds(1500)
+
     init(container: ModelContainer) {
         self.container = container
     }
@@ -60,28 +79,46 @@ final class MetadataService {
 
     // MARK: - Seeding (no file to scan)
 
-    /// Publish a snapshot directly, bypassing the file scan — for Music-library
-    /// items, whose metadata comes from the MPMediaItem, not a file's tags. Kept
-    /// in memory only: these `medialib:` keys are intentionally NOT written to the
-    /// durable TrackMetadata store (which is file-oriented and feeds the remote
-    /// resolver's metadata match).
-    @MainActor
-    func inject(_ snapshot: TrackMetadataSnapshot, forKey key: String) {
-        snapshots[key] = snapshot
-        snapshotsVersion += 1
-    }
-
     /// Seed display snapshots for the media-library items in `items` from their
-    /// carried metadata. File items are ignored (they scan from disk).
+    /// carried metadata, bypassing the file scan — a Music-library item's metadata
+    /// comes from the MPMediaItem, not from a file's tags. File items are ignored
+    /// (they scan from disk).
+    ///
+    /// The tags are kept in memory only: these `medialib:` keys are intentionally
+    /// NOT written to the durable TrackMetadata store, which is file-oriented and
+    /// feeds the remote resolver's metadata match. Measurements are a different
+    /// story — TrackAnalysis holds those for library items too, so a track is read
+    /// once and not again next launch.
     @MainActor
     func seedMedia(_ items: [QueueItem]) {
         var changed = false
+        var measurable: [(key: String, url: URL)] = []
         for item in items {
             guard item.isMediaLibrary, let snapshot = item.mediaSnapshot else { continue }
-            snapshots[item.trackKey] = snapshot
+            publish(snapshot, forKey: item.trackKey)
             changed = true
+            // No file to scan, but there is audio to measure — a library item's
+            // queue row reads its BPM and genre from here like any other. Items
+            // with no readable asset (DRM, not yet downloaded) have no url and
+            // are simply skipped.
+            if let url = item.url { measurable.append((key: item.trackKey, url: url)) }
         }
         if changed { snapshotsVersion += 1 }
+        resolveAnalysis(for: measurable, as: .standing)
+    }
+
+    /// Publish a snapshot, carrying over any measurement already folded into the
+    /// one it replaces. Every write to `snapshots` goes through here: re-scanning a
+    /// file's tags says nothing about its audio, so it must not throw away what the
+    /// analyser found — that would send the whole folder back through a decode.
+    @MainActor
+    private func publish(_ snapshot: TrackMetadataSnapshot, forKey key: String) {
+        var merged = snapshot
+        if let previous = snapshots[key] {
+            merged.estimatedBPM = previous.estimatedBPM
+            merged.estimatedGenre = previous.estimatedGenre
+        }
+        snapshots[key] = merged
     }
 
     // MARK: - Scanning
@@ -93,10 +130,14 @@ final class MetadataService {
     @MainActor
     func scanFolder(urls: [URL], baseURL: URL?) {
         folderScanTask?.cancel()
+        analysis.cancelFolderWork()
         let pending = urls.isEmpty ? [] : pendingItems(urls: urls, baseURL: baseURL)
         guard !pending.isEmpty else {
-            // Nothing to scan for this folder (empty or fully cached).
+            // Nothing to scan for this folder (empty or fully cached) — but a
+            // cached tag scan says nothing about whether the audio was measured,
+            // so that pass still has to be offered the folder.
             isScanningFolder = false
+            resolveAnalysis(urls: urls, baseURL: baseURL, as: .folder)
             return
         }
         isScanningFolder = true
@@ -108,6 +149,9 @@ final class MetadataService {
             // must not clear it out from under its replacement.
             if generation == self.folderScanGeneration {
                 self.isScanningFolder = false
+                // After the tags, not beside them: which tracks have a gap worth
+                // measuring is not known until they have been read.
+                self.resolveAnalysis(urls: urls, baseURL: baseURL, as: .folder)
             }
         }
     }
@@ -118,9 +162,14 @@ final class MetadataService {
     func scan(urls: [URL], baseURL: URL?) {
         guard !urls.isEmpty else { return }
         let pending = pendingItems(urls: urls, baseURL: baseURL)
-        guard !pending.isEmpty else { return }
+        guard !pending.isEmpty else {
+            // Tags already cached — the measuring pass still has to see them.
+            resolveAnalysis(urls: urls, baseURL: baseURL, as: .standing)
+            return
+        }
         Task { @MainActor in
             await self.performScan(pending)
+            self.resolveAnalysis(urls: urls, baseURL: baseURL, as: .standing)
         }
     }
 
@@ -155,10 +204,11 @@ final class MetadataService {
         guard !missing.isEmpty else { return }
         var changed = false
         for (key, m) in existingRows(forKeys: missing, context: container.mainContext) {
-            snapshots[key] = TrackMetadataSnapshot(title: m.title, artist: m.artist, genre: m.genre,
-                                                   dateText: m.dateText, year: m.year, bpm: m.bpm,
-                                                   trackGainDB: m.trackGainDB,
-                                                   sourceModDate: m.sourceModDate, fileSize: m.fileSize ?? 0)
+            publish(TrackMetadataSnapshot(title: m.title, artist: m.artist, taggedGenre: m.genre,
+                                          dateText: m.dateText, year: m.year, taggedBPM: m.bpm,
+                                          trackGainDB: m.trackGainDB,
+                                          sourceModDate: m.sourceModDate, fileSize: m.fileSize ?? 0),
+                    forKey: key)
             changed = true
         }
         if changed { snapshotsVersion += 1 }
@@ -169,15 +219,31 @@ final class MetadataService {
     @MainActor
     private func existingRows(forKeys keys: [String], context: ModelContext) -> [String: TrackMetadata] {
         var rows: [String: TrackMetadata] = [:]
-        let chunkSize = 400
-        var start = 0
-        while start < keys.count {
-            let chunk = Array(keys[start..<min(start + chunkSize, keys.count)])
+        for chunk in Self.chunked(keys) {
             let descriptor = FetchDescriptor<TrackMetadata>(predicate: #Predicate { chunk.contains($0.trackKey) })
             for row in (try? context.fetch(descriptor)) ?? [] { rows[row.trackKey] = row }
-            start += chunkSize
         }
         return rows
+    }
+
+    /// The same, for the measurements. Two functions rather than one generic one
+    /// because `#Predicate` has to name the model's own key path.
+    @MainActor
+    private func analysisRows(forKeys keys: [String], context: ModelContext) -> [String: TrackAnalysis] {
+        var rows: [String: TrackAnalysis] = [:]
+        for chunk in Self.chunked(keys) {
+            let descriptor = FetchDescriptor<TrackAnalysis>(predicate: #Predicate { chunk.contains($0.trackKey) })
+            for row in (try? context.fetch(descriptor)) ?? [] { rows[row.trackKey] = row }
+        }
+        return rows
+    }
+
+    /// Keys split small enough to stay under SQLite's bound-variable limit on the
+    /// `IN (…)` query a chunk becomes.
+    private static func chunked(_ keys: [String]) -> [[String]] {
+        stride(from: 0, to: keys.count, by: 400).map {
+            Array(keys[$0..<min($0 + 400, keys.count)])
+        }
     }
 
     @MainActor
@@ -225,7 +291,7 @@ final class MetadataService {
     @MainActor
     private func apply(key: String, modDate: Date, size: Int, extracted: ExtractedMetadata,
                        existing: TrackMetadata?, context: ModelContext) {
-        snapshots[key] = extracted.snapshot(sourceModDate: modDate, fileSize: size)
+        publish(extracted.snapshot(sourceModDate: modDate, fileSize: size), forKey: key)
 
         if let existing {
             existing.title = extracted.title
@@ -245,5 +311,87 @@ final class MetadataService {
                                          trackGainDB: extracted.trackGainDB,
                                          sourceModDate: modDate, fileSize: size, lastScanned: .now))
         }
+    }
+
+    // MARK: - Analysis
+
+    /// Fold in what has already been measured for these tracks, and set the rest
+    /// going.
+    ///
+    /// A track is measured only where its tags left a gap — no BPM, or no genre.
+    /// Nothing has to be undone when a tag turns up later: the snapshot prefers it
+    /// on its own, and the measurement simply stops being the one that shows.
+    @MainActor
+    private func resolveAnalysis(for items: [(key: String, url: URL)],
+                                 as batch: TrackAnalysisQueue.Batch) {
+        guard !items.isEmpty else { return }
+        let measured = analysisRows(forKeys: items.map(\.key), context: container.mainContext)
+
+        var changed = false
+        var jobs: [TrackAnalysisQueue.Job] = []
+        var seen = Set<String>()
+        for item in items where seen.insert(item.key).inserted {
+            guard var snapshot = snapshots[item.key] else { continue }
+            if let row = measured[item.key] {
+                // Already measured, in an earlier session or an earlier visit.
+                let result = row.result
+                guard snapshot.estimatedBPM != result.bpm || snapshot.estimatedGenre != result.genre
+                else { continue }
+                snapshot.estimatedBPM = result.bpm
+                snapshot.estimatedGenre = result.genre
+                snapshots[item.key] = snapshot
+                changed = true
+            } else if snapshot.taggedBPM == nil || (snapshot.taggedGenre ?? "").isEmpty {
+                jobs.append(TrackAnalysisQueue.Job(key: item.key, url: item.url))
+            }
+        }
+        if changed { snapshotsVersion += 1 }
+        analysis.submit(jobs, as: batch)
+    }
+
+    /// The same for a listing, which is held as URLs.
+    @MainActor
+    private func resolveAnalysis(urls: [URL], baseURL: URL?, as batch: TrackAnalysisQueue.Batch) {
+        resolveAnalysis(for: urls.map { (key: StableTrackID.key(for: $0, baseURL: baseURL), url: $0) },
+                        as: batch)
+    }
+
+    /// One track measured. Buffered rather than published: see `pendingAnalysis`.
+    @MainActor
+    private func recordAnalysis(key: String, result: TrackAnalysisResult) {
+        pendingAnalysis[key] = result
+        guard !analysisFlushScheduled else { return }
+        analysisFlushScheduled = true
+        Task { @MainActor in
+            try? await Task.sleep(for: self.analysisFlushDelay)
+            self.flushAnalysis()
+        }
+    }
+
+    /// Write the buffered measurements and publish them as one batch.
+    @MainActor
+    private func flushAnalysis() {
+        analysisFlushScheduled = false
+        let batch = pendingAnalysis
+        pendingAnalysis.removeAll()
+        guard !batch.isEmpty else { return }
+
+        let context = container.mainContext
+        let existing = analysisRows(forKeys: Array(batch.keys), context: context)
+        for (key, result) in batch {
+            if let row = existing[key] {
+                row.update(with: result)
+            } else {
+                context.insert(TrackAnalysis(trackKey: key, result: result))
+            }
+            // Only where the track is still on screen; the measurement is stored
+            // either way, and a folder the user has left has no snapshot to update.
+            guard var snapshot = snapshots[key] else { continue }
+            snapshot.estimatedBPM = result.bpm
+            snapshot.estimatedGenre = result.genre
+            snapshots[key] = snapshot
+        }
+        snapshotsVersion += 1
+        try? context.save()
     }
 }

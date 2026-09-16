@@ -94,10 +94,7 @@ final class MediaTrackDecoder {
     /// or the decode was cancelled.
     func decode(assetURL: URL, onChunk: ChunkHandler) throws {
         let asset = AVURLAsset(url: assetURL)
-        // `loadTracks` is async; bridge it back into this synchronous, off-main
-        // decode with a semaphore. Safe to block: we run on a private dispatch
-        // queue, never on a Swift Concurrency executor thread.
-        guard let track = try loadFirstAudioTrack(of: asset) else {
+        guard let track = try asset.firstAudioTrackSynchronously() else {
             throw DecodeError.noAudioTrack
         }
 
@@ -243,24 +240,5 @@ final class MediaTrackDecoder {
         }
         buffer.frameLength = 0
         return buffer
-    }
-
-    /// Load the first audio track, bridging `AVAsset.loadTracks` (async) into the
-    /// synchronous `decode`. Blocking is safe here — `decode` runs on a dedicated
-    /// dispatch queue, so the wait can't starve the concurrency cooperative pool.
-    private func loadFirstAudioTrack(of asset: AVURLAsset) throws -> AVAssetTrack? {
-        // Reference box so the load task hands its result back across the
-        // semaphore without tripping "mutation of captured var"; the wait/signal
-        // pair is the happens-before that makes the unchecked Sendable sound.
-        final class Box: @unchecked Sendable { var result: Result<[AVAssetTrack], Error>? }
-        let box = Box()
-        let semaphore = DispatchSemaphore(value: 0)
-        Task {
-            do { box.result = .success(try await asset.loadTracks(withMediaType: .audio)) }
-            catch { box.result = .failure(error) }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return try box.result?.get().first
     }
 }

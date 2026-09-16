@@ -316,7 +316,7 @@ struct MainScreenView: View {
 #Preview {
     let session = AudioSessionController()
     let queue = PlayQueue()
-    let container = try! ModelContainer(for: TrackMetadata.self,
+    let container = try! ModelContainer(for: TrackMetadata.self, TrackAnalysis.self,
                                         configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     let metadata = MetadataService(container: container)
     let equalizer = Equalizer()

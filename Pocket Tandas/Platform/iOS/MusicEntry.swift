@@ -69,10 +69,10 @@ extension TrackMetadataSnapshot {
         let year: Int? = item.releaseDate.map { Calendar.current.component(.year, from: $0) }
         self.init(title: item.title,
                   artist: item.artist,
-                  genre: item.genre,
+                  taggedGenre: item.genre,
                   dateText: year.map(String.init),
                   year: year,
-                  bpm: item.beatsPerMinute > 0 ? Int(item.beatsPerMinute) : nil,
+                  taggedBPM: item.beatsPerMinute > 0 ? Int(item.beatsPerMinute) : nil,
                   trackGainDB: nil)
     }
 }
