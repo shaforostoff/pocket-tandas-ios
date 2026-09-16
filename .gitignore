@@ -3,6 +3,8 @@ build/
 DerivedData/
 *.ipa
 Payload/
+*.app/
+*-macOS.zip
 
 # Xcode user state
 xcuserdata/
