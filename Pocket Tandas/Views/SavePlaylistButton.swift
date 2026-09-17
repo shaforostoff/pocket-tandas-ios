@@ -202,6 +202,10 @@ struct SavePlaylistButton: View {
                 let result = try await MusicPlaylistSaver.save(items: items, name: title,
                                                               replacingExisting: replacingExisting)
                 resultMessage = describe(result)
+                // Show the work: the browser jumps to Playlists — re-reading them
+                // if it is already there — so the playlist is on screen behind the
+                // confirmation rather than somewhere the user has to go find.
+                browser.musicModel.showPlaylists(revealing: result.libraryPlaylistID)
             } catch {
                 resultMessage = "Couldn’t save the playlist: \(error.localizedDescription)"
             }

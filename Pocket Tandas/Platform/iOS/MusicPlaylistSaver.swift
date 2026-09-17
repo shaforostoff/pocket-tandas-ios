@@ -58,6 +58,11 @@ struct MusicPlaylistSaveResult {
     /// Distinct titles of library tracks that couldn't be written: gone from the
     /// library, or (replacing only) not matchable back to a MusicKit Song.
     let unmatched: [String]
+    /// MPMediaEntity persistent id of a playlist this save CREATED, so the browser
+    /// can jump straight to it. Nil when an existing playlist was replaced: that
+    /// one is already in the user's list, and MusicKit hands back its own id
+    /// rather than a MediaPlayer one.
+    let libraryPlaylistID: UInt64?
 }
 
 enum MusicPlaylistSaveError: LocalizedError {
@@ -162,7 +167,8 @@ enum MusicPlaylistSaver {
         await linkForLaterReplace(playlist, named: title)
         return MusicPlaylistSaveResult(name: title, replacedExisting: false,
                                        submitted: mediaItems.count,
-                                       filesSkipped: filesSkipped, unmatched: unmatched)
+                                       filesSkipped: filesSkipped, unmatched: unmatched,
+                                       libraryPlaylistID: playlist.persistentID)
     }
 
     private static func makePlaylist(uuid: UUID,
@@ -209,7 +215,8 @@ enum MusicPlaylistSaver {
         }
         return MusicPlaylistSaveResult(name: title, replacedExisting: true,
                                        submitted: songs.count,
-                                       filesSkipped: filesSkipped, unmatched: missed)
+                                       filesSkipped: filesSkipped, unmatched: missed,
+                                       libraryPlaylistID: nil)
     }
 
     // MARK: - Library lookup

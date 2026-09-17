@@ -45,12 +45,12 @@ struct MusicBrowserView: View {
             ScrollViewReader { proxy in
                 content
                     // The listing loads asynchronously, so when this view is (re)built
-                    // (e.g. an iPad rotation) scroll to the auditioned track once the
-                    // rows populate — keeping the currently playing row visible.
-                    .onChange(of: displayed) { _, _ in scrollToAudition(proxy: proxy) }
+                    // (e.g. an iPad rotation) bring the row that matters into view
+                    // once the rows populate.
+                    .onChange(of: displayed) { _, _ in reveal(proxy: proxy) }
             }
         }
-        .task(id: browser.musicModel.current) { reload() }
+        .task(id: browser.musicModel.listingToken) { reload() }
         .onChange(of: browser.musicFilter) { _, _ in applyArrange() }
         .onChange(of: browser.musicSort) { _, _ in applyArrange() }
         .onChange(of: browser.musicDirection) { _, _ in applyArrange() }
@@ -187,6 +187,11 @@ struct MusicBrowserView: View {
         case .container:
             rawEntries = makeTrackEntries(MusicLibrary.tracks(in: browser.musicModel.current))
         }
+        // A playlist we just saved can only be found among the Playlists, so a
+        // pending reveal doesn't outlive browsing away from them.
+        if browser.musicModel.current != .category(.playlists) {
+            browser.musicModel.pendingReveal = nil
+        }
         // Keep the sort valid for the destination: a playlist defaults to its own
         // listed order; folders/track lists never use it.
         if browser.musicModel.current.isPlaylist {
@@ -305,11 +310,36 @@ struct MusicBrowserView: View {
     /// Center the auditioned track if it's in the shown list — used when the view
     /// is (re)built or the listing changes, so the currently playing row stays
     /// visible. Deferred so a freshly built List has committed its rows first.
-    private func scrollToAudition(proxy: ScrollViewProxy) {
-        guard let target = displayed.first(where: { isAuditioning($0) })?.id else { return }
+    /// Bring the row that matters into view once a listing has rebuilt. A playlist
+    /// this app has just saved wins over the track being auditioned: the save is
+    /// what the user asked for a moment ago and is looking for the result of.
+    private func reveal(proxy: ScrollViewProxy) {
+        let target = savedPlaylistRow()?.id ?? displayed.first(where: { isAuditioning($0) })?.id
+        guard let target else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             proxy.scrollTo(target, anchor: .center)
         }
+    }
+
+    /// The row for the playlist this app just wrote, if this listing has it yet.
+    /// The library can be a beat behind its own write, so a first miss re-reads it
+    /// once rather than leaving the user looking at a list of playlists that
+    /// doesn't include the one they just made.
+    private func savedPlaylistRow() -> MusicEntry? {
+        guard let pending = browser.musicModel.pendingReveal else { return nil }
+        let row = displayed.first { entry in
+            guard case .container(let container) = entry.kind else { return false }
+            return container.kind == .playlist && container.persistentID == pending.persistentID
+        }
+        if row != nil || pending.retried {
+            browser.musicModel.pendingReveal = nil
+        } else {
+            var again = pending
+            again.retried = true
+            browser.musicModel.pendingReveal = again
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { browser.musicModel.refresh() }
+        }
+        return row
     }
 
     // MARK: - Actions

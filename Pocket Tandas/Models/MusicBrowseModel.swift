@@ -116,10 +116,49 @@ enum MusicNode: Hashable {
 final class MusicBrowseModel {
     private(set) var stack: [MusicNode] = [.root]
 
+    /// Bumped to make the browser re-read the level it is already on. A node is a
+    /// value, so standing still is otherwise indistinguishable from a listing that
+    /// hasn't changed — and the library can change under us, e.g. when this app
+    /// writes a playlist into it.
+    private(set) var revision = 0
+
+    /// A playlist this app has just saved, for the browser to bring into view once
+    /// the Playlists listing has rebuilt. Cleared once shown, once given up on, or
+    /// as soon as the user browses somewhere it could not appear.
+    var pendingReveal: PendingReveal?
+
+    struct PendingReveal: Equatable {
+        let persistentID: UInt64
+        /// Set once the browser has re-read the library waiting for it to show up.
+        var retried = false
+    }
+
     var current: MusicNode { stack.last ?? .root }
     var canGoUp: Bool { stack.count > 1 }
+
+    /// What the browser should be showing: the level, plus the counter that tells
+    /// a deliberate re-read apart from the level simply not having moved.
+    var listingToken: ListingToken { ListingToken(node: current, revision: revision) }
+
+    struct ListingToken: Equatable {
+        let node: MusicNode
+        let revision: Int
+    }
 
     func push(_ node: MusicNode) { stack.append(node) }
     func pop() { if stack.count > 1 { stack.removeLast() } }
     func reset() { stack = [.root] }
+
+    /// Re-read the current level in place.
+    func refresh() { revision += 1 }
+
+    /// Show the Playlists category — freshly read even when it is already open —
+    /// so a playlist just written to the library is on screen without the user
+    /// having to go looking for it. `persistentID` is the new playlist's, scrolled
+    /// to when the listing has it.
+    func showPlaylists(revealing persistentID: UInt64?) {
+        stack = [.root, .category(.playlists)]
+        pendingReveal = persistentID.map { PendingReveal(persistentID: $0) }
+        revision += 1
+    }
 }
