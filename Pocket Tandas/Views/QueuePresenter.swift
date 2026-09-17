@@ -21,7 +21,10 @@ struct QueueRowVM: Identifiable, Hashable {
     let id: UUID
     let title: String
     let artist: String?
-    let detail: String?
+    /// The detail line as its separate fields, so the row can still tell a
+    /// measured BPM from a tagged one after the flattening this view-model does
+    /// to everything else.
+    let detail: [TrackDisplay.DetailPart]
     let isCurrent: Bool
     let isFading: Bool
     let isAnchor: Bool
@@ -63,7 +66,7 @@ struct LocalQueuePresenter: QueuePresenting {
             }
             let isCurrent = item.id == currentID
             return QueueRowVM(id: item.id, title: display.titleLine, artist: display.artistLine,
-                              detail: display.detailLine, isCurrent: isCurrent,
+                              detail: display.detailParts, isCurrent: isCurrent,
                               isFading: isCurrent && fading, isAnchor: item.id == anchorID)
         }
     }
@@ -101,7 +104,7 @@ struct RemoteQueuePresenter: QueuePresenting {
             // Mirror rows are always merged to full text before they land here; the
             // fallback only covers a row we somehow never learned the name of.
             return QueueRowVM(id: item.id, title: item.title ?? "…", artist: item.artist,
-                              detail: item.detail, isCurrent: isCurrent,
+                              detail: TrackDisplay.DetailPart.opaque(item.detail), isCurrent: isCurrent,
                               isFading: isCurrent && fading, isAnchor: item.isAnchor)
         }
     }

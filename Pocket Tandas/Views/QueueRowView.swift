@@ -97,7 +97,7 @@ struct QueueRowView: View {
     }
 
     private var display: TrackDisplay {
-        TrackDisplay(titleLine: row.title, artistLine: row.artist, detailLine: row.detail)
+        TrackDisplay(titleLine: row.title, artistLine: row.artist, detail: row.detail)
     }
 
     private var icon: String {

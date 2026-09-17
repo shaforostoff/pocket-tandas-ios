@@ -59,6 +59,15 @@ struct TrackMetadataSnapshot: Hashable {
         return estimatedGenre
     }
 
+    /// Whether the value `bpm` resolves to came from the analyser rather than the
+    /// tags — what the row tints to say so. Phrased against `bpm` itself, not
+    /// against `estimatedBPM`, so it cannot drift from what is actually shown.
+    var isBPMEstimated: Bool { taggedBPM == nil && bpm != nil }
+
+    /// The same for `genre`. An empty tag counts as no tag here too, matching the
+    /// rule above it.
+    var isGenreEstimated: Bool { (taggedGenre ?? "").isEmpty && genre != nil }
+
     var isEmpty: Bool {
         title == nil && artist == nil && genre == nil && dateText == nil && year == nil && bpm == nil
     }
