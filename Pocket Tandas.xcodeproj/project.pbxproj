@@ -1217,11 +1217,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"\"$(SRCROOT)/Pocket Tandas/Audio\"",
-					"\"$(SRCROOT)/Pocket Tandas/Remote\"",
-					"\"$(SRCROOT)/Pocket Tandas/Views\"",
-				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-Tandas";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1261,11 +1256,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"\"$(SRCROOT)/Pocket Tandas/Audio\"",
-					"\"$(SRCROOT)/Pocket Tandas/Remote\"",
-					"\"$(SRCROOT)/Pocket Tandas/Views\"",
-				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-Tandas";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1285,11 +1275,6 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LIBRARY_SEARCH_PATHS = (
-					"\"$(SRCROOT)/Pocket Tandas/Audio\"",
-					"\"$(SRCROOT)/Pocket Tandas/Remote\"",
-					"\"$(SRCROOT)/Pocket Tandas/Views\"",
-				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1310,11 +1295,6 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LIBRARY_SEARCH_PATHS = (
-					"\"$(SRCROOT)/Pocket Tandas/Audio\"",
-					"\"$(SRCROOT)/Pocket Tandas/Remote\"",
-					"\"$(SRCROOT)/Pocket Tandas/Views\"",
-				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1333,11 +1313,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				LIBRARY_SEARCH_PATHS = (
-					"\"$(SRCROOT)/Pocket Tandas/Audio\"",
-					"\"$(SRCROOT)/Pocket Tandas/Remote\"",
-					"\"$(SRCROOT)/Pocket Tandas/Views\"",
-				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1355,11 +1330,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				LIBRARY_SEARCH_PATHS = (
-					"\"$(SRCROOT)/Pocket Tandas/Audio\"",
-					"\"$(SRCROOT)/Pocket Tandas/Remote\"",
-					"\"$(SRCROOT)/Pocket Tandas/Views\"",
-				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.shaforostoff.Pocket-TandasUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
