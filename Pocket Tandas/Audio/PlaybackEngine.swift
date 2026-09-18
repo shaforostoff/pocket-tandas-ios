@@ -79,6 +79,13 @@ final class PlaybackEngine {
 
     @ObservationIgnored private var pausedReleaseTimer: Timer?
 
+    /// The block-based observer's token. Held so it can be withdrawn: the block
+    /// form keeps the closure alive on the centre until the token is removed, and
+    /// `[weak self]` only stops it reaching a dead engine — it does not unregister
+    /// it. The engine outlives the app today, so nothing leaks in practice; this
+    /// is so that stops being load-bearing.
+    @ObservationIgnored private var configurationObserver: NSObjectProtocol?
+
     /// The item currently loaded, plus its duration — for Now Playing info.
     @ObservationIgnored private(set) var currentItem: QueueItem?
     @ObservationIgnored private(set) var currentDuration: TimeInterval = 0
@@ -172,7 +179,12 @@ final class PlaybackEngine {
         wireSessionEvents()
     }
 
-    deinit { pausedReleaseTimer?.invalidate() }
+    deinit {
+        pausedReleaseTimer?.invalidate()
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+        }
+    }
 
     // MARK: - Setup
 
@@ -228,10 +240,11 @@ final class PlaybackEngine {
     }
 
     private func observeConfigurationChange() {
-        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange,
-                                               object: engine, queue: .main) { [weak self] _ in
-            self?.handleConfigurationChange()
-        }
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine, queue: .main) { [weak self] _ in
+                self?.handleConfigurationChange()
+            }
     }
 
     private func wireSessionEvents() {
