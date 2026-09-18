@@ -11,7 +11,8 @@
 //  `scheduleBuffer`. Consecutive scheduled buffers play with no gap, so the track
 //  still sounds like one continuous schedule — but only a few seconds of audio is
 //  ever resident instead of the whole track (Float32/44.1k/stereo costs ~0.34 MB
-//  per second, so a 10-minute track as one buffer was over 200 MB).
+//  per second, so a 10-minute track as one buffer was over 200 MB; as chunks it
+//  is 4 MB whatever the track's length).
 //
 //  The decoder runs ahead of playback by at most `maxChunksInFlight` chunks: it
 //  parks on a semaphore that the consumer signals (via `releaseChunk`) as each
@@ -43,10 +44,16 @@ final class MediaTrackDecoder {
                                             channels: 2,
                                             interleaved: false)!
 
-    /// Length of one decoded chunk (~3.4 MB at the format above). Long enough that
+    /// Length of one decoded chunk (~1.4 MB at the format above). Long enough that
     /// the decode thread wakes only a handful of times per track, short enough that
     /// resident audio stays a few MB.
-    static let chunkDuration: TimeInterval = 10
+    ///
+    /// Four seconds rather than ten: three of these are live at the peak (see
+    /// `maxChunksInFlight`), so ten cost 10.1 MB of audio to keep a deck fed and
+    /// four cost 4.0 MB. What it buys back is wake-ups, and a three minute side
+    /// goes from 18 of them to 45 — a handful either way, on a thread that sleeps
+    /// between each.
+    static let chunkDuration: TimeInterval = 4
 
     /// How far the decoder may run ahead of playback, in delivered-but-not-yet-
     /// played chunks. Two keeps the player fed across a chunk boundary while
