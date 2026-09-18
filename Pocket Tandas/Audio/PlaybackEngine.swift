@@ -88,7 +88,6 @@ final class PlaybackEngine {
     @ObservationIgnored private let playerB = AVAudioPlayerNode()
     @ObservationIgnored private var activePlayer: AVAudioPlayerNode
     @ObservationIgnored private var standbyPlayer: AVAudioPlayerNode
-    @ObservationIgnored private var preloadedItemID: UUID?
 
     #if os(macOS)
     /// Set when the output device was changed while the deck was busy; applied on
@@ -97,11 +96,20 @@ final class PlaybackEngine {
     #endif
 
     /// Monotonic schedule tokens. `activeScheduleID` is the token of the audible
-    /// schedule; only its completion may advance. `preloadedScheduleID` is the
-    /// token of the standby's preloaded schedule (becomes active on swap).
+    /// schedule; only its completion may advance.
     @ObservationIgnored private var scheduleSeq = 0
     @ObservationIgnored private var activeScheduleID = 0
-    @ObservationIgnored private var preloadedScheduleID = 0
+
+    /// What is sitting ready on the standby deck, if anything: which item, its
+    /// schedule token (which becomes the active one on the swap), and the
+    /// duration read when its file was opened. One optional rather than three
+    /// fields, so "preloaded" cannot be half true.
+    @ObservationIgnored private var preload: Preload?
+
+    private struct Preload {
+        let itemID: UUID
+        let schedule: ScheduledFile
+    }
 
     /// Off-main decode for media-library items (AVAssetReader → a stream of short
     /// PCM chunks, see MediaTrackDecoder). `decodeToken` is bumped whenever a
@@ -408,22 +416,24 @@ final class PlaybackEngine {
         cancelDecode()
         switch item.source {
         case .file(let url):
-            guard let scheduleID = scheduleFile(item, url: url, on: activePlayer, startNow: true) else { return }
-            activeScheduleID = scheduleID
-            commitCurrent(item)
+            guard let scheduled = scheduleFile(item, url: url, on: activePlayer, startNow: true) else { return }
+            activeScheduleID = scheduled.id
+            commitCurrent(item, duration: scheduled.duration)
             preloadNext(after: item.id)
         case .mediaLibrary(let ref):
             // Commit to the track now; audio begins when the async decode lands.
-            commitCurrent(item)
+            commitCurrent(item, duration: ref.duration)
             startMediaPlayback(item, ref: ref, on: activePlayer)
             preloadNext(after: item.id)
         }
     }
 
-    /// Shared post-schedule bookkeeping for the now-current track.
-    private func commitCurrent(_ item: QueueItem) {
+    /// Shared post-schedule bookkeeping for the now-current track. `duration` comes
+    /// from whoever scheduled it — the opened file for a track, the MPMediaItem for
+    /// a library one — so nothing here has to go back to disk for it.
+    private func commitCurrent(_ item: QueueItem, duration: TimeInterval) {
         currentItem = item
-        currentDuration = duration(of: item)
+        currentDuration = duration
         setState(.playing(item.id))
         queue.clearAnchor(ifMatches: item.id)
         // Each record carries its own hum, and the whole of this one is readable
@@ -432,20 +442,36 @@ final class PlaybackEngine {
         restoration.trackChanged(to: item.url)
     }
 
-    /// Schedules a FILE item on `player`. Returns the unique schedule token, or nil
-    /// if the file couldn't be opened.
-    private func scheduleFile(_ item: QueueItem, url: URL, on player: AVAudioPlayerNode, startNow: Bool) -> Int? {
+    /// A scheduled file: its token, and how long it runs for.
+    ///
+    /// The duration rides along because opening the file is the only place it is
+    /// free. `AVAudioFile(forReading:)` costs about 3.8ms on an m4a with the page
+    /// cache warm, and this runs on the main thread inside `advance()` — at the
+    /// instant the next track is being made audible. Reading the length off a
+    /// second open, as `commitCurrent` used to, paid that twice per track for a
+    /// number the first open already had.
+    private struct ScheduledFile {
+        let id: Int
+        let duration: TimeInterval
+    }
+
+    /// Schedules a FILE item on `player`. Returns the unique schedule token and
+    /// the track's duration, or nil if the file couldn't be opened.
+    private func scheduleFile(_ item: QueueItem, url: URL, on player: AVAudioPlayerNode,
+                              startNow: Bool) -> ScheduledFile? {
         guard let file = try? AVAudioFile(forReading: url) else {
             ptLog("schedule FAILED to open \(item.filename)")
             return nil
         }
-        let scheduleID = beginSchedule(item, on: player, format: file.processingFormat)
+        let format = file.processingFormat
+        let scheduleID = beginSchedule(item, on: player, format: format)
         player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async { self?.handleScheduleEnded(scheduleID) }
         }
         if startNow { player.play() }
         ptLog("schedule file \(item.filename)#\(item.id.uuidString.prefix(4)) sid=\(scheduleID) startNow=\(startNow)")
-        return scheduleID
+        let rate = format.sampleRate
+        return ScheduledFile(id: scheduleID, duration: rate > 0 ? Double(file.length) / rate : 0)
     }
 
     /// Common scheduling prologue: issue a new token, (re)connect at `format`, stop
@@ -593,20 +619,17 @@ final class PlaybackEngine {
 
     private func preloadNext(after id: UUID) {
         guard let next = queue.item(after: id) else {
-            preloadedItemID = nil
-            preloadedScheduleID = 0
+            preload = nil
             return
         }
         // Only file items preload gaplessly on standby. Media items are decoded and
         // scheduled at advance() time (no gapless), so clear any prior preload.
         guard case .file(let url) = next.source,
-              let scheduleID = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
-            preloadedItemID = nil
-            preloadedScheduleID = 0
+              let scheduled = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
+            preload = nil
             return
         }
-        preloadedItemID = next.id
-        preloadedScheduleID = scheduleID
+        preload = Preload(itemID: next.id, schedule: scheduled)
     }
 
     /// Called (on main) when a scheduled file finishes. Only the audible
@@ -639,31 +662,35 @@ final class PlaybackEngine {
             stop()                       // queue exhausted
             return
         }
-        ptLog("advance current=\(currentID.uuidString.prefix(4)) next=\(next.filename)#\(next.id.uuidString.prefix(4)) preloaded=\(preloadedItemID?.uuidString.prefix(4) ?? "nil") | queue: \(queue.debugOrder)")
+        ptLog("advance current=\(currentID.uuidString.prefix(4)) next=\(next.filename)#\(next.id.uuidString.prefix(4)) preloaded=\(preload?.itemID.uuidString.prefix(4) ?? "nil") | queue: \(queue.debugOrder)")
 
         switch next.source {
         case .file(let url):
-            if preloadedItemID != next.id {
-                guard let scheduleID = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
+            // Whatever is on standby, if it is this track; otherwise schedule it
+            // there now (a queue edit since the preload).
+            let scheduled: ScheduledFile
+            if let ready = preload, ready.itemID == next.id {
+                scheduled = ready.schedule
+            } else {
+                guard let fresh = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
                     stop(); return
                 }
-                preloadedItemID = next.id
-                preloadedScheduleID = scheduleID
+                scheduled = fresh
             }
+            preload = nil                         // consumed: it is the active deck now
             swap(&activePlayer, &standbyPlayer)   // standby (holding `next`) becomes active
-            activeScheduleID = preloadedScheduleID
+            activeScheduleID = scheduled.id
             engine.mainMixerNode.outputVolume = normalVolume
             activePlayer.play()
-            commitCurrent(next)
+            commitCurrent(next, duration: scheduled.duration)
             preloadNext(after: next.id)
         case .mediaLibrary(let ref):
             // No gapless for media: reuse the just-stopped active deck and decode
             // asynchronously. Any stale preload on standby is overwritten by the
             // next preloadNext.
-            preloadedItemID = nil
-            preloadedScheduleID = 0
+            preload = nil
             engine.mainMixerNode.outputVolume = normalVolume
-            commitCurrent(next)
+            commitCurrent(next, duration: ref.duration)
             startMediaPlayback(next, ref: ref, on: activePlayer)
             preloadNext(after: next.id)
         }
@@ -696,24 +723,8 @@ final class PlaybackEngine {
     }
 
     private func clearSchedules() {
-        preloadedItemID = nil
         activeScheduleID = 0      // 0 never matches a real token (tokens start at 1)
-        preloadedScheduleID = 0
-    }
-
-    /// Track length: from the MPMediaItem for media (no AVAudioFile probe), or the
-    /// file's frame count for files.
-    private func duration(of item: QueueItem) -> TimeInterval {
-        switch item.source {
-        case .file(let url): return duration(of: url)
-        case .mediaLibrary(let ref): return ref.duration
-        }
-    }
-
-    private func duration(of url: URL) -> TimeInterval {
-        guard let file = try? AVAudioFile(forReading: url) else { return 0 }
-        let rate = file.processingFormat.sampleRate
-        return rate > 0 ? Double(file.length) / rate : 0
+        preload = nil
     }
 
     private func connectIfNeeded(_ player: AVAudioPlayerNode, format: AVAudioFormat) {
