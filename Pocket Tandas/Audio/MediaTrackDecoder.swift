@@ -60,7 +60,9 @@ final class MediaTrackDecoder {
     /// holding at most three chunks (two queued plus the one being filled).
     static let maxChunksInFlight = 2
 
-    enum DecodeError: Error { case noAudioTrack, readerFailed, allocFailed, emptyTrack, cancelled }
+    // `noAudioTrack` lives on PCMAssetReader.ReaderError now, which is what opens
+    // the reader; the consumer only ever logs whichever it gets.
+    enum DecodeError: Error { case readerFailed, allocFailed, emptyTrack, cancelled }
 
     /// Receives each decoded chunk in order. `isLast` marks the final one — the
     /// consumer hangs its end-of-track handling off that buffer. Called on the
@@ -100,28 +102,11 @@ final class MediaTrackDecoder {
     /// Returns once the whole track has been delivered; throws if the read failed
     /// or the decode was cancelled.
     func decode(assetURL: URL, onChunk: ChunkHandler) throws {
-        let asset = AVURLAsset(url: assetURL)
-        guard let track = try asset.firstAudioTrackSynchronously() else {
-            throw DecodeError.noAudioTrack
-        }
-
         let format = Self.outputFormat
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: Int(format.channelCount),
-        ]
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
-        output.alwaysCopiesSampleData = false   // we copy each block immediately
-
-        guard let reader = try? AVAssetReader(asset: asset), reader.canAdd(output) else {
-            throw DecodeError.readerFailed
-        }
-        reader.add(output)
+        let (reader, output) = try PCMAssetReader.make(assetURL: assetURL,
+                                                       sampleRate: format.sampleRate,
+                                                       channels: Int(format.channelCount),
+                                                       layout: .deinterleaved)
 
         lock.lock()
         if cancelled { lock.unlock(); throw DecodeError.cancelled }
@@ -184,23 +169,7 @@ final class MediaTrackDecoder {
         guard totalFrames > 0 else { return }
         let channels = Int(format.channelCount)
 
-        let list = AudioBufferList.allocate(maximumBuffers: channels)
-        defer { free(list.unsafeMutablePointer) }
-        var blockBuffer: CMBlockBuffer?
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sample,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: list.unsafeMutablePointer,
-            bufferListSize: AudioBufferList.sizeInBytes(maximumBuffers: channels),
-            blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: &blockBuffer)
-        guard status == noErr, list.count > 0 else { return }
-
-        // The list's pointers are owned by `blockBuffer`; keep it alive across
-        // every copy below rather than trusting ARC not to release it early.
-        try withExtendedLifetime(blockBuffer) {
+        try PCMAssetReader.withAudioBuffers(sample, maximumBuffers: channels) { list, _ in
             var srcOffset = 0
             while srcOffset < totalFrames {
                 let copied = copyFrames(from: list, srcOffset: srcOffset,

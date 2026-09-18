@@ -86,22 +86,13 @@ enum TrackAnalyzer {
         // duration reads 0, which the core takes as "not told".
         let expectedSeconds = min(asset.durationSecondsSynchronously(), maximumDuration)
 
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            // Interleaved, which is the layout the core takes: it downmixes to
-            // mono on the way in, so the channel count is its business and not
-            // something to pin here.
-            AVLinearPCMIsNonInterleaved: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVSampleRateKey: sampleRate,
-        ])
-        output.alwaysCopiesSampleData = false   // every block is consumed immediately
-
-        guard let reader = try? AVAssetReader(asset: asset), reader.canAdd(output) else { return .failed }
-        reader.add(output)
-        guard reader.startReading() else { return .failed }
+        // Interleaved, which is the layout the core takes, and at the track's own
+        // channel count: it downmixes on the way in, so that is its business and
+        // not something to pin here.
+        guard let (reader, output) = try? PCMAssetReader.make(track: track, of: asset,
+                                                              sampleRate: sampleRate,
+                                                              channels: nil, layout: .interleaved),
+              reader.startReading() else { return .failed }
 
         var analyzer: PTBPMAnalyzer?
         var framesRead = 0
@@ -142,42 +133,20 @@ enum TrackAnalyzer {
     /// length cap counts.
     private static func feed(_ sample: CMSampleBuffer, into analyzer: inout PTBPMAnalyzer?,
                              expectedSeconds: TimeInterval) -> Int {
-        guard let description = CMSampleBufferGetFormatDescription(sample),
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
-              asbd.mChannelsPerFrame > 0 else { return 0 }
+        PCMAssetReader.withAudioBuffers(sample, maximumBuffers: 1) { list, asbd -> Int in
+            guard let buffer = list.first, let data = buffer.mData else { return 0 }
+            let channels = Int(asbd.mChannelsPerFrame)
+            let frames = PCMAssetReader.frameCount(of: buffer, channels: channels)
+            guard frames > 0 else { return 0 }
 
-        let list = AudioBufferList.allocate(maximumBuffers: 1)   // interleaved: one buffer
-        defer { free(list.unsafeMutablePointer) }
-        var blockBuffer: CMBlockBuffer?
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sample,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: list.unsafeMutablePointer,
-            bufferListSize: AudioBufferList.sizeInBytes(maximumBuffers: 1),
-            blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: &blockBuffer)
-        guard status == noErr, let buffer = list.first, let data = buffer.mData else { return 0 }
-
-        // Frames from the byte count rather than CMSampleBufferGetNumSamples:
-        // it is the block we are about to read, so it is what bounds the read.
-        let channels = Int(asbd.mChannelsPerFrame)
-        let frames = Int(buffer.mDataByteSize) / (MemoryLayout<Float>.size * channels)
-        guard frames > 0 else { return 0 }
-
-        if analyzer == nil {
-            analyzer = PTBPMAnalyzer(sampleRate: asbd.mSampleRate, channels: UInt(channels),
-                                     expectedSeconds: expectedSeconds)
-        }
-
-        // The list's pointers are owned by `blockBuffer`; keep it alive across the
-        // copy rather than trusting ARC not to release it early.
-        withExtendedLifetime(blockBuffer) {
+            if analyzer == nil {
+                analyzer = PTBPMAnalyzer(sampleRate: asbd.mSampleRate, channels: UInt(channels),
+                                         expectedSeconds: expectedSeconds)
+            }
             analyzer?.addInterleavedFloats(data.assumingMemoryBound(to: Float.self),
                                            frameCount: UInt(frames))
-        }
-        return frames
+            return frames
+        } ?? 0
     }
 
     private static func result(from measurement: PTBPMMeasurement) -> TrackAnalysisResult {

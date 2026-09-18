@@ -137,6 +137,7 @@
 		B65167D14365F2263FCF8EEF /* EQButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23540369F03A26D4315C3F2 /* EQButton.swift */; };
 		B6C2AFE429D0B94DC20D0F35 /* VolumeButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7648CFBB140C25F62D7B4A /* VolumeButton.swift */; };
 		B8794538BBB6C30C230772F7 /* StayAwake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B194BB3837007A3B31A6A1B /* StayAwake.swift */; };
+		B8B6404FA2876C005AE58A75 /* PCMAssetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4994D3AB3530B40A75A1150 /* PCMAssetReader.swift */; };
 		B93B40358CB52B3131C99486 /* resample.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5F054B4588BF5BCD5D8514CD /* resample.cpp */; };
 		B995518595693C2BDAC612E2 /* BrowserRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */; };
 		BCD2C1BEBA21F9DBBDDF9244 /* SavePlaylistButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117D4F0B8209DA7F1CDC67F6 /* SavePlaylistButton.swift */; };
@@ -184,6 +185,7 @@
 		EA7149499E0752379BE20A21 /* RestorationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A444E18E085C787F2F4893 /* RestorationSettings.swift */; };
 		EC004156BD2E3158E037828C /* LauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */; };
 		EDD0706A4478BDB1F5373185 /* RestorationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9739488D829648FB3542B387 /* RestorationSettingsView.swift */; };
+		EE8343CFA19B9C2DCEDF0380 /* PCMAssetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4354162BD24926E589F5762 /* PCMAssetReader.swift */; };
 		EFEB40888A3BB8CA808A503E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
 		F08A448DB14F8409AC71B513 /* AudioSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51ED43F1BF0AD0EADA70EF50 /* AudioSessionController.swift */; };
 		F397059BB19F718336BEDE26 /* PlaybackControlling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A789455796DA2EC4EB76F57E /* PlaybackControlling.swift */; };
@@ -322,11 +324,13 @@
 		DAEB4CA58A42864EDBA197EC /* MediaAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaAvailability.swift; path = MediaAvailability.swift; sourceTree = "<group>"; };
 		E112487F8DED525D48E18718 /* PlaybackState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackState.swift; path = PlaybackState.swift; sourceTree = "<group>"; };
 		E23540369F03A26D4315C3F2 /* EQButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQButton.swift; path = EQButton.swift; sourceTree = "<group>"; };
+		E4354162BD24926E589F5762 /* PCMAssetReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCMAssetReader.swift; path = "Pocket Tandas/Audio/PCMAssetReader.swift"; sourceTree = SOURCE_ROOT; };
 		EB774D14B26DCD27A530AB67 /* SortMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortMenu.swift; path = SortMenu.swift; sourceTree = "<group>"; };
 		EE7648CFBB140C25F62D7B4A /* VolumeButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VolumeButton.swift; path = VolumeButton.swift; sourceTree = "<group>"; };
 		EF264FDE876C3D059EEC95D6 /* StableTrackIDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StableTrackIDTests.swift; path = "Pocket TandasTests/StableTrackIDTests.swift"; sourceTree = SOURCE_ROOT; };
 		F1304B149B1EF5DBB84CB3A1 /* FolderBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FolderBookmark.swift; path = FolderBookmark.swift; sourceTree = "<group>"; };
 		F3A246E49919EC948B4EA25C /* declick_core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = declick_core.h; path = "Pocket Tandas/DSP/declick_core.h"; sourceTree = SOURCE_ROOT; };
+		F4994D3AB3530B40A75A1150 /* PCMAssetReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCMAssetReader.swift; path = "Pocket Tandas/Audio/PCMAssetReader.swift"; sourceTree = SOURCE_ROOT; };
 		F64C4DFE914725695EC89080 /* TrackAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackAnalysis.swift; path = "Pocket Tandas/Analysis/TrackAnalysis.swift"; sourceTree = SOURCE_ROOT; };
 		F6874211A675329F735826B0 /* pffft.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = pffft.h; path = "Pocket Tandas/Analysis/pffft/pffft.h"; sourceTree = SOURCE_ROOT; };
 		F7C04B609FFC1EBC5EAB5869 /* DehumTrackScout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DehumTrackScout.swift; path = "Pocket Tandas/Audio/DehumTrackScout.swift"; sourceTree = SOURCE_ROOT; };
@@ -524,6 +528,8 @@
 				FC484D589ED786605E1B7B1F /* RestorationFilters.swift */,
 				F7C04B609FFC1EBC5EAB5869 /* DehumTrackScout.swift */,
 				9739488D829648FB3542B387 /* RestorationSettingsView.swift */,
+				E4354162BD24926E589F5762 /* PCMAssetReader.swift */,
+				F4994D3AB3530B40A75A1150 /* PCMAssetReader.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -852,6 +858,7 @@
 				2B584503BCE037075C627575 /* rhythm.cpp in Sources */,
 				48ED43DBB5A495ACD73C3026 /* tempo.cpp in Sources */,
 				F4B94D15A9B0EC5203EE260D /* pffft.c in Sources */,
+				B8B6404FA2876C005AE58A75 /* PCMAssetReader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -947,6 +954,7 @@
 				AE57465D9F821B3408CAA715 /* rhythm.cpp in Sources */,
 				DCF14B4D99E171D505330DB9 /* tempo.cpp in Sources */,
 				D1D54DBB897FB4D4A90B9658 /* pffft.c in Sources */,
+				EE8343CFA19B9C2DCEDF0380 /* PCMAssetReader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

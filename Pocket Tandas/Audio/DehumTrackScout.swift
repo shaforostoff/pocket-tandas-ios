@@ -170,26 +170,11 @@ final class DehumTrackScout {
     /// detector still gets there, just later.
     private static func run(url: URL, params: PTDehumParams, job: Job) -> [DehumLine] {
         let rate = analysisSampleRate
-        let asset = AVURLAsset(url: url)
 
-        guard let track = try? asset.firstAudioTrackSynchronously(), !job.isCancelled else { return [] }
-
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVSampleRateKey: rate,
-            // Mono: the reader does the downmix, which is what the detector wants.
-            AVNumberOfChannelsKey: 1,
-        ]
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
-        output.alwaysCopiesSampleData = false
-
-        guard let reader = try? AVAssetReader(asset: asset), reader.canAdd(output) else { return [] }
-        reader.add(output)
-        guard job.adopt(reader), reader.startReading() else { return [] }
+        // Mono: the reader does the downmix, which is what the detector wants.
+        guard let (reader, output) = try? PCMAssetReader.make(assetURL: url, sampleRate: rate,
+                                                              channels: 1, layout: .interleaved),
+              !job.isCancelled, job.adopt(reader), reader.startReading() else { return [] }
 
         let scout = PTDehumScout(sampleRate: rate, params: params)
         let wanted = Int(secondsToRead * rate)
@@ -226,25 +211,13 @@ final class DehumTrackScout {
         let frames = min(CMSampleBufferGetNumSamples(sample), limit)
         guard frames > 0 else { return 0 }
 
-        var blockBuffer: CMBlockBuffer?
-        var list = AudioBufferList()
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sample,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: &list,
-            bufferListSize: MemoryLayout<AudioBufferList>.size,
-            blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: &blockBuffer)
-        guard status == noErr, let data = list.mBuffers.mData else { return 0 }
-
-        return withExtendedLifetime(blockBuffer) {
-            let available = Int(list.mBuffers.mDataByteSize) / MemoryLayout<Float>.size
-            let count = min(frames, available)
+        return PCMAssetReader.withAudioBuffers(sample, maximumBuffers: 1) { list, _ -> Int in
+            guard let buffer = list.first, let data = buffer.mData else { return 0 }
+            // The reader was asked for mono, so a frame is a sample.
+            let count = min(frames, PCMAssetReader.frameCount(of: buffer, channels: 1))
             guard count > 0 else { return 0 }
             scout.feedMono(data.assumingMemoryBound(to: Float.self), frames: count)
             return count
-        }
+        } ?? 0
     }
 }
