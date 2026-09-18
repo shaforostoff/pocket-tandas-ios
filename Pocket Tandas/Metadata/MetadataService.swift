@@ -378,6 +378,7 @@ final class MetadataService {
 
         let context = container.mainContext
         let existing = analysisRows(forKeys: Array(batch.keys), context: context)
+        var changed = false
         for (key, result) in batch {
             if let row = existing[key] {
                 row.update(with: result)
@@ -390,8 +391,13 @@ final class MetadataService {
             snapshot.estimatedBPM = result.bpm
             snapshot.estimatedGenre = result.genre
             snapshots[key] = snapshot
+            changed = true
         }
-        snapshotsVersion += 1
+        // Only when a snapshot actually moved. The version is what the browser
+        // re-arranges on, and measurements keep landing for folders the user has
+        // walked away from — bumping it for those re-sorted the folder they are
+        // looking at, every flush, for nothing.
+        if changed { snapshotsVersion += 1 }
         try? context.save()
     }
 }
