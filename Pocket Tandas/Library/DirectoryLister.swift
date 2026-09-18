@@ -74,14 +74,15 @@ enum DirectoryLister {
         return folders + sortedFiles
     }
 
-    private typealias Decorated = (entry: LibraryEntry, name: String, snapshot: TrackMetadataSnapshot?)
+    private typealias Decorated = (entry: LibraryEntry, snapshot: TrackMetadataSnapshot?)
 
     /// Sort the file entries by the chosen option. Metadata sorts use decorate–
-    /// sort–undecorate: each file's key (name + cached snapshot) is computed ONCE
-    /// up front, so the metadata lookup runs n times rather than on every one of
-    /// the O(n log n) comparisons — that per-comparison lookup (which recomputes
-    /// the StableTrackID key and probes the dict twice each compare) is what made
-    /// date/BPM/artist sorts slow on large folders versus filename.
+    /// sort–undecorate: each file's snapshot is looked up ONCE up front, so the
+    /// lookup runs n times rather than on every one of the O(n log n) comparisons
+    /// — that per-comparison lookup (which recomputes the StableTrackID key and
+    /// probes the dict twice each compare) is what made date/BPM/artist sorts slow
+    /// on large folders versus filename. The name needs no decoration: the entry
+    /// carries it (see LibraryEntry.name).
     private static func sortFiles(_ files: [LibraryEntry],
                                   sort: SortOption,
                                   metadata: (URL) -> TrackMetadataSnapshot?) -> [LibraryEntry] {
@@ -89,13 +90,10 @@ enum DirectoryLister {
         case .listed:
             return files   // given order (e.g. a playlist's own order)
         case .filename:
-            return files
-                .map { (entry: $0, name: $0.name) }
-                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-                .map(\.entry)
+            return files.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         case .dateYear, .genre, .bpm, .artist:
             return files
-                .map { (entry: $0, name: $0.name, snapshot: metadata($0.url)) }
+                .map { (entry: $0, snapshot: metadata($0.url)) }
                 .sorted { ascendingOrder($0, $1, sort: sort) }
                 .map(\.entry)
         }
@@ -123,7 +121,7 @@ enum DirectoryLister {
         case .listed, .filename:
             c = .orderedSame   // handled in sortFiles
         }
-        if c == .orderedSame { c = a.name.localizedStandardCompare(b.name) }
+        if c == .orderedSame { c = a.entry.name.localizedStandardCompare(b.entry.name) }
         return c == .orderedAscending
     }
 
