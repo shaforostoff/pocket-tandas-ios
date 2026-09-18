@@ -69,7 +69,7 @@ final class AudioSessionController {
             try session.setCategory(.playback, mode: .default,
                                     options: [.allowBluetoothA2DP, .allowAirPlay])
         } catch {
-            print("[AudioSession] setCategory failed: \(error)")
+            ptLog("[AudioSession] setCategory failed: \(error)")
         }
     }
 
@@ -80,7 +80,7 @@ final class AudioSessionController {
             try session.setActive(true)
             refreshRoute()
         } catch {
-            print("[AudioSession] activate failed: \(error)")
+            ptLog("[AudioSession] activate failed: \(error)")
         }
     }
 
@@ -110,7 +110,7 @@ final class AudioSessionController {
             try session.setActive(false, options: notifyOthers ? [.notifyOthersOnDeactivation] : [])
             ptLog("[AudioSession] released — nothing holds it")
         } catch {
-            print("[AudioSession] deactivate failed: \(error)")
+            ptLog("[AudioSession] deactivate failed: \(error)")
         }
     }
 

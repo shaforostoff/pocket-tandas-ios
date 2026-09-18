@@ -236,7 +236,7 @@ final class PlaybackEngine {
 
     private func ensureEngineRunning() {
         guard !engine.isRunning else { return }
-        do { try engine.start() } catch { print("[Engine] start failed: \(error)") }
+        do { try engine.start() } catch { ptLog("[Engine] start failed: \(error)") }
     }
 
     private func observeConfigurationChange() {

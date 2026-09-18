@@ -459,7 +459,7 @@ struct BrowserView: View {
         case .success(let urls):
             if let url = urls.first { library.chooseBaseFolder(url) }
         case .failure(let error):
-            print("[Browser] folder pick failed: \(error)")
+            ptLog("[Browser] folder pick failed: \(error)")
         }
     }
 }
