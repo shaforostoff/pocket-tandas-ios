@@ -15,8 +15,10 @@
 //  Audio goes in as it is decoded and one measurement comes out at the end. The
 //  onset envelope has to be normalised by the track's overall level before it is
 //  compressed, and that isn't knowable until the whole side has been seen, so the
-//  core buffers rather than streams — about 10 MB of mono float for a three
-//  minute track, capped at `maximumDuration`.
+//  core buffers rather than streams — one mono float per sample at the analysis
+//  rate, capped at `maximumDuration`. That rate is the decoder's own wherever it
+//  already suits the model, so what a side costs depends on what it is decoded
+//  at: 15 MB for three minutes at 22.05 kHz, twice that at 44.1.
 //
 //  Not thread-safe: one analyzer belongs to the one thread decoding its track.
 //
@@ -78,8 +80,16 @@ typedef NS_ENUM(NSInteger, PTRhythmClass) {
 /// `sampleRate` and `channels` are the decoder's, not the analysis's: the core
 /// downmixes and resamples on the way in, so a 48 kHz stereo file costs no more
 /// to collect than a 44.1 kHz mono one.
+///
+/// `expectedSeconds` is how long the track is, where the caller knows before it
+/// starts decoding, and 0 where it does not. It sizes the buffer and nothing
+/// else: told nothing, or told wrong, the analyzer holds the same audio and
+/// still stops at `maximumDuration`. Telling it is what stops a side longer than
+/// the default reserve from outgrowing the buffer and doubling it — the copy has
+/// both the old and the new allocation resident at once.
 - (instancetype)initWithSampleRate:(double)sampleRate
-                          channels:(NSUInteger)channels NS_DESIGNATED_INITIALIZER;
+                          channels:(NSUInteger)channels
+                   expectedSeconds:(NSTimeInterval)expectedSeconds NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
 
 /// YES once `maximumDuration` has been reached; the caller can stop decoding.

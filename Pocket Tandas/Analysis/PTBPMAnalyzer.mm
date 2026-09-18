@@ -69,10 +69,13 @@ private:
     return bpmcore::max_seconds();
 }
 
-- (instancetype)initWithSampleRate:(double)sampleRate channels:(NSUInteger)channels {
+- (instancetype)initWithSampleRate:(double)sampleRate
+                          channels:(NSUInteger)channels
+                   expectedSeconds:(NSTimeInterval)expectedSeconds {
     if ((self = [super init])) {
         _channels = channels > 0 ? (unsigned)channels : 1;
-        _collector.reset(new bpmcore::collector(sampleRate > 0 ? (unsigned)sampleRate : 0));
+        _collector.reset(new bpmcore::collector(sampleRate > 0 ? (unsigned)sampleRate : 0,
+                                                expectedSeconds));
     }
     return self;
 }

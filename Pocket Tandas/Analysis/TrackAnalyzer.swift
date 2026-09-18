@@ -37,31 +37,54 @@ enum TrackAnalyzer {
     ///
     /// The core's analysis geometry is fixed in seconds, but its window still has
     /// to be a power of two, so only the model rate (22050) times a power of two
-    /// reproduces exactly the analysis the rhythm model was fitted at. 44.1 kHz
-    /// is one of those, is what almost every tango transfer already is — so the
-    /// common case converts nothing — and settles every other rate here, with
-    /// AVFoundation's converter, rather than leaving each file to be analysed on
-    /// its own time base.
-    static let sampleRate: Double = 44_100
+    /// reproduces exactly the analysis the rhythm model was fitted at. Asking for
+    /// the model rate itself settles every file here, with AVFoundation's
+    /// converter, rather than leaving each one to be analysed on its own time
+    /// base — and it is the cheapest of those rates to then analyse.
+    ///
+    /// It used to be 44.1 kHz, on the reasoning that almost every tango transfer
+    /// already is one and the common case would convert nothing. What that missed
+    /// is that a rate the core does not have to resample is a rate it BUFFERS at:
+    /// 44.1 kHz held the whole side at 44.1 kHz, twice the memory and a quarter
+    /// more work, to reach the same answer. The same tango side measured at both:
+    ///
+    ///     44100 Hz   bpm=127.860  beat=128.506  meter=2  tango  conf=0.9998
+    ///     22050 Hz   bpm=127.861  beat=128.508  meter=2  tango  conf=0.9998
+    ///
+    /// — 0.001 BPM apart, for half the memory (28.6 MB against 14.3 MB on that
+    /// side) and about a quarter less time.
+    static let sampleRate: Double = 22_050
 
     /// Longest stretch of one track read into memory.
     ///
     /// The core buffers the whole side rather than streaming it — the onset
     /// envelope has to be normalised by the track's overall level, which is not
-    /// known until the end — at roughly 5 MB a minute, and `concurrency` of these
-    /// run at once. The core's own cap is fifteen minutes, which is there to bound
-    /// a mis-tagged file rather than to describe any music; several of those at
-    /// once is a few hundred MB on a phone, which is worth not risking.
+    /// known until the end — at 5.3 MB a minute at `sampleRate`, and
+    /// `concurrency` of these run at once. The core's own cap is fifteen minutes,
+    /// which is there to bound a mis-tagged file rather than to describe any
+    /// music; several of those at once is a few hundred MB on a phone, which is
+    /// worth not risking.
     ///
     /// Six minutes covers every tango side twice over, so in practice this only
     /// ever truncates a DJ set or a mis-tagged file — and the tempo of its first
     /// six minutes is a better answer for one of those than no answer at all.
+    ///
+    /// This is a cap on what is READ, not on what is reserved: the buffer is
+    /// sized from the track's own length (see `analyze`), so an ordinary side
+    /// costs what it is rather than what the longest one might be.
     static let maximumDuration: TimeInterval = 360
 
     /// Read `url` and measure it. See the type's note on blocking.
     static func analyze(url: URL, isCancelled: @escaping () -> Bool) -> Outcome {
         let asset = AVURLAsset(url: url)
         guard let track = try? asset.firstAudioTrackSynchronously() else { return .failed }
+
+        // Told up front, the collector reserves for this side instead of growing
+        // into a default and doubling — a copy that has both allocations resident
+        // at once. Capped at what will actually be read, so a mis-tagged
+        // three-hour file reserves six minutes and not three hours. Unreadable
+        // duration reads 0, which the core takes as "not told".
+        let expectedSeconds = min(asset.durationSecondsSynchronously(), maximumDuration)
 
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM,
@@ -94,7 +117,7 @@ enum TrackAnalyzer {
             }
             guard let sample = output.copyNextSampleBuffer() else { break }
             autoreleasepool {
-                framesRead += feed(sample, into: &analyzer)
+                framesRead += feed(sample, into: &analyzer, expectedSeconds: expectedSeconds)
             }
             if framesRead >= frameLimit || analyzer?.isFull == true {
                 reachedLimit = true
@@ -117,7 +140,8 @@ enum TrackAnalyzer {
     /// the format the reader actually produced is the one to trust, rather than
     /// what was asked for. Returns the frames handed over, which is what the
     /// length cap counts.
-    private static func feed(_ sample: CMSampleBuffer, into analyzer: inout PTBPMAnalyzer?) -> Int {
+    private static func feed(_ sample: CMSampleBuffer, into analyzer: inout PTBPMAnalyzer?,
+                             expectedSeconds: TimeInterval) -> Int {
         guard let description = CMSampleBufferGetFormatDescription(sample),
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
               asbd.mChannelsPerFrame > 0 else { return 0 }
@@ -143,7 +167,8 @@ enum TrackAnalyzer {
         guard frames > 0 else { return 0 }
 
         if analyzer == nil {
-            analyzer = PTBPMAnalyzer(sampleRate: asbd.mSampleRate, channels: UInt(channels))
+            analyzer = PTBPMAnalyzer(sampleRate: asbd.mSampleRate, channels: UInt(channels),
+                                     expectedSeconds: expectedSeconds)
         }
 
         // The list's pointers are owned by `blockBuffer`; keep it alive across the
