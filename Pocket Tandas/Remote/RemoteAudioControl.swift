@@ -137,7 +137,7 @@ final class RemoteAudioControl {
 // MARK: - EqualizerControlling (drives EQButton / EqualizerView in Remote Control mode)
 
 extension RemoteAudioControl: EqualizerControlling {
-    var isActive: Bool { isEnabled && bands.contains { abs($0.gain) >= 0.1 } }
+    var isActive: Bool { isEnabled && bands.contains(where: \.isColouring) }
 
     func setEnabled(_ on: Bool) {
         isEnabled = on
@@ -146,7 +146,10 @@ extension RemoteAudioControl: EqualizerControlling {
     }
 
     func setGain(_ value: Float, bandID: Int) {
-        mutate(bandID) { $0.gain = value.clamped(to: Equalizer.gainRange) }
+        mutate(bandID) { band in
+            guard band.kind.hasGain else { return }
+            band.gain = value.clamped(to: Equalizer.gainRange)
+        }
     }
 
     func setFrequency(_ value: Float, bandID: Int) {
@@ -154,16 +157,31 @@ extension RemoteAudioControl: EqualizerControlling {
     }
 
     func setBandwidth(_ value: Float, bandID: Int) {
-        mutate(bandID) { $0.bandwidth = value.clamped(to: Equalizer.bandwidthRange) }
+        mutate(bandID) { band in
+            guard band.kind.hasQ else { return }
+            band.bandwidth = value.clamped(to: Equalizer.bandwidthRange)
+        }
     }
 
-    /// Reset optimistically to the shared factory preset; the receiver's own
-    /// defaults arrive in the echo and win if they ever differ.
-    func reset() {
-        bands = Equalizer.defaultBands()
+    func setBandEnabled(_ on: Bool, bandID: Int) {
+        guard let index = bands.firstIndex(where: { $0.id == bandID }),
+              bands[index].kind.isCut else { return }
+        bands[index].isEnabled = on
         noteEdit()
-        link.send(.resetEQ)
+        link.send(.setEQBandEnabled(id: bandID, on: on))
     }
+
+    /// Load a preset optimistically from the shared table; the receiver's own
+    /// bands arrive in the echo and win if they ever differ.
+    func apply(_ preset: EQPreset) {
+        bands = Equalizer.bands(for: preset)
+        noteEdit()
+        // Flat has always been `.resetEQ`, and still is — a receiver on an older
+        // build understands it, where it would drop `.setEQPreset` unread.
+        link.send(preset == .flat ? .resetEQ : .setEQPreset(preset))
+    }
+
+    func reset() { apply(.flat) }
 
     private func mutate(_ bandID: Int, _ change: (inout EQBand) -> Void) {
         guard let index = bands.firstIndex(where: { $0.id == bandID }) else { return }

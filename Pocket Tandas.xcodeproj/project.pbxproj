@@ -63,6 +63,11 @@
 		4C3141D8AC88818DF0C59799 /* declick_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D80F41F3997423635A64AE94 /* declick_core.cpp */; };
 		4CA3AF96FEEF6F1F23A51F2D /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE986D212FDDF87C003B2F2A /* Preview Assets.xcassets */; };
 		4FBA4152A48621059B0B0C90 /* Equalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67984284884245074A7BDCAE /* Equalizer.swift */; };
+		0A0B2C7FD7F237FC440BA019 /* EQCurve.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E14B5304CF9D4D4978C909 /* EQCurve.swift */; };
+		0BF61225694636D955FE07D5 /* EQCurve.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E14B5304CF9D4D4978C909 /* EQCurve.swift */; };
+		9737FC7F2FA6AB3811932983 /* EQCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B69BA1CCC54312A42455CB5 /* EQCurveView.swift */; };
+		A73FB5DF98202B0F018CA416 /* EQCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B69BA1CCC54312A42455CB5 /* EQCurveView.swift */; };
+		258A3577901F5DB3457EF136 /* EqualizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F51A8AF65C344967C38D366 /* EqualizerTests.swift */; };
 		4FCE4A0F93E9B22BC03FF48B /* TrackAnalysisQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6F4655AE41A3AC7EF6E771 /* TrackAnalysisQueue.swift */; };
 		50305EFC3EDA8D3843BFD4BD /* EqualizerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76764CC68526E0C71A84329B /* EqualizerView.swift */; };
 		53F6489A7161EA22BECFEA7C /* MetadataKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA2E43419B557AAEC3742CE2 /* MetadataKeys.swift */; };
@@ -256,6 +261,9 @@
 		654C4C87AB98F4DA4103E134 /* bpmcore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = bpmcore.h; path = "Pocket Tandas/Analysis/bpmcore/bpmcore.h"; sourceTree = SOURCE_ROOT; };
 		6654A17EF3825FB1EF5D9B5F /* AudioSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionController.swift; sourceTree = "<group>"; };
 		67984284884245074A7BDCAE /* Equalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Equalizer.swift; path = Equalizer.swift; sourceTree = "<group>"; };
+		10E14B5304CF9D4D4978C909 /* EQCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQCurve.swift; path = EQCurve.swift; sourceTree = "<group>"; };
+		7B69BA1CCC54312A42455CB5 /* EQCurveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQCurveView.swift; path = EQCurveView.swift; sourceTree = "<group>"; };
+		1F51A8AF65C344967C38D366 /* EqualizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EqualizerTests.swift; path = EqualizerTests.swift; sourceTree = "<group>"; };
 		6B934CF3B6BEEA7A878FE0F7 /* analyse.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = analyse.cpp; path = "Pocket Tandas/Analysis/bpmcore/analyse.cpp"; sourceTree = SOURCE_ROOT; };
 		72C74E75B1F091A21869F10B /* PlaylistParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaylistParserTests.swift; path = PlaylistParserTests.swift; sourceTree = "<group>"; };
 		737C41A1A07C1158688B2CCC /* TrackAnalysisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackAnalysisTests.swift; path = TrackAnalysisTests.swift; sourceTree = "<group>"; };
@@ -362,6 +370,7 @@
 				1C3A4024A7FA93B8956DA286 /* FadeController.swift */,
 				3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */,
 				67984284884245074A7BDCAE /* Equalizer.swift */,
+				10E14B5304CF9D4D4978C909 /* EQCurve.swift */,
 				76124D929F0AFEA8128073DF /* PreListenPlayer.swift */,
 				F80042B1A005AAD4ABA98817 /* MediaTrackDecoder.swift */,
 				BC4E416886B461A5F0353C2D /* AudioControlling.swift */,
@@ -563,6 +572,7 @@
 				AD42454D852234C6AD343708 /* PlayQueueTests.swift */,
 				72C74E75B1F091A21869F10B /* PlaylistParserTests.swift */,
 				793840C9AF05E7B7D618259E /* FadeControllerTests.swift */,
+				1F51A8AF65C344967C38D366 /* EqualizerTests.swift */,
 				737C41A1A07C1158688B2CCC /* TrackAnalysisTests.swift */,
 			);
 			path = "Pocket TandasTests";
@@ -607,6 +617,7 @@
 				117D4F0B8209DA7F1CDC67F6 /* SavePlaylistButton.swift */,
 				E23540369F03A26D4315C3F2 /* EQButton.swift */,
 				76764CC68526E0C71A84329B /* EqualizerView.swift */,
+				7B69BA1CCC54312A42455CB5 /* EQCurveView.swift */,
 				1DCD4630A30D4AE666147A03 /* QueuePresenter.swift */,
 				EE7648CFBB140C25F62D7B4A /* VolumeButton.swift */,
 			);
@@ -794,8 +805,10 @@
 				CDAC054D94ECB36DF53B9814 /* ClearQueueButton.swift in Sources */,
 				BCD2C1BEBA21F9DBBDDF9244 /* SavePlaylistButton.swift in Sources */,
 				8A2170BDB55C072283603D9D /* Equalizer.swift in Sources */,
+				0A0B2C7FD7F237FC440BA019 /* EQCurve.swift in Sources */,
 				B65167D14365F2263FCF8EEF /* EQButton.swift in Sources */,
 				50305EFC3EDA8D3843BFD4BD /* EqualizerView.swift in Sources */,
+				9737FC7F2FA6AB3811932983 /* EQCurveView.swift in Sources */,
 				3BFF18357ACAD5881FF5C606 /* PreListenPlayer.swift in Sources */,
 				45D22139AC7F395FCD794444 /* RemoteWireTypes.swift in Sources */,
 				7C29330A8F4D077719F03141 /* RemoteMessage.swift in Sources */,
@@ -885,8 +898,10 @@
 				722D4902ACB43586D0F1AC08 /* ClearQueueButton.swift in Sources */,
 				FE2E4759A8836E761F23F38E /* SavePlaylistButton.swift in Sources */,
 				4FBA4152A48621059B0B0C90 /* Equalizer.swift in Sources */,
+				0BF61225694636D955FE07D5 /* EQCurve.swift in Sources */,
 				3F5D44CBA62ADB4D9E438575 /* EQButton.swift in Sources */,
 				46FD481BB5597FB8B3FA30B7 /* EqualizerView.swift in Sources */,
+				A73FB5DF98202B0F018CA416 /* EQCurveView.swift in Sources */,
 				DC9E448E9D47F2AF03F1B15D /* PreListenPlayer.swift in Sources */,
 				23344A74AE6B0704EE6504E9 /* RemoteWireTypes.swift in Sources */,
 				5930485BA7FCD1A190D203C8 /* RemoteMessage.swift in Sources */,
@@ -941,6 +956,7 @@
 				391B4B12B9CE60484B72F5E2 /* PlayQueueTests.swift in Sources */,
 				462943C2808343F92EB059C3 /* PlaylistParserTests.swift in Sources */,
 				20724BE78F3BDBA17F2BD71E /* FadeControllerTests.swift in Sources */,
+				258A3577901F5DB3457EF136 /* EqualizerTests.swift in Sources */,
 				21AD409BB690517F6DB5851E /* TrackAnalysisTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -157,7 +157,8 @@ final class RemoteQueue {
             audio.apply(settings)
         case .requestPlay, .stopWithFade, .resumeFromFade,
              .setAnchor, .move, .removeItems, .addTracks, .requestSnapshot,
-             .setEQEnabled, .setEQBand, .resetEQ, .setVolume, .requestAudioSettings,
+             .setEQEnabled, .setEQBand, .setEQBandEnabled, .setEQPreset, .resetEQ,
+             .setVolume, .requestAudioSettings,
              .setDeclickEnabled, .setDehumEnabled, .setDeclick, .setDehum,
              .resetDeclick, .resetDehum:
             break   // not consumed by the sender

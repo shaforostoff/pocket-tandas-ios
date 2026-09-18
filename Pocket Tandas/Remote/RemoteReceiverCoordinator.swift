@@ -417,6 +417,10 @@ final class RemoteReceiverCoordinator {
             equalizer.setGain(gain, bandID: id)
             equalizer.setFrequency(frequency, bandID: id)
             equalizer.setBandwidth(bandwidth, bandID: id)
+        case .setEQBandEnabled(let id, let on):
+            equalizer.setBandEnabled(on, bandID: id)
+        case .setEQPreset(let preset):
+            equalizer.apply(preset)
         case .resetEQ:
             equalizer.reset()
         case .setVolume(let level):

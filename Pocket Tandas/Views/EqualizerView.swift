@@ -6,10 +6,18 @@
 //  EqualizerView.swift
 //  Pocket Tandas
 //
-//  The parametric EQ panel (a sheet). One section per band, each exposing Gain,
-//  Frequency (log-scaled slider) and Bandwidth. Edits apply live to the audio
-//  node and persist. A master enable toggle bypasses the whole unit; Reset
-//  returns every band to flat defaults.
+//  The parametric EQ panel (a sheet): the response curve pinned at the top, and
+//  below it one section per band. The curve stays put while a slider is dragged —
+//  the point of the "EQ 4 TJ" technique is the shape of the whole curve, not any
+//  one band's number, and a section that scrolled away with the sliders would
+//  never be looked at.
+//
+//  Each band shows only the controls its kind has: the two rails a corner
+//  frequency and a switch, the shelves frequency and gain, the two peaking bands
+//  frequency, gain and Q. Tapping a marker on the curve selects a band and scrolls
+//  to it. Edits apply live to the audio node and persist. A master enable toggle
+//  bypasses the whole unit; the presets at the bottom load the article's three
+//  starting points.
 //
 //  The same panel edits the local EQ or — in Remote Control mode — the receiver's,
 //  through whichever EqualizerControlling it was handed. While a remote EQ hasn't
@@ -33,36 +41,23 @@ struct EqualizerView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var editing: RestorationFilter?
+    /// The band whose marker was last tapped on the curve, if any.
+    @State private var selected: Int?
 
     var body: some View {
         NavigationStack {
-            Form {
-                if !isReady {
-                    Section {
-                        Label("Waiting for the receiver…", systemImage: "antenna.radiowaves.left.and.right.slash")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            VStack(spacing: 0) {
+                EQCurveView(bands: control.bands, sampleRate: control.sampleRate,
+                            selection: $selected, isEQEnabled: control.isEnabled && isReady)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 4)
 
-                Section {
-                    Toggle("Enable EQ", isOn: Binding(
-                        get: { control.isEnabled },
-                        set: { control.setEnabled($0) }))
-                }
-
-                ForEach(control.bands) { band in
-                    bandSection(band)
-                }
-
-                Section {
-                    Button("Reset to Flat", role: .destructive) { control.reset() }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-
-                // Last, and after Reset to Flat, which resets the bands above it
-                // and nothing here.
-                if let restoration {
-                    restorationSection(restoration)
+                ScrollViewReader { proxy in
+                    form
+                        .onChange(of: selected) { _, band in
+                            guard let band else { return }
+                            withAnimation { proxy.scrollTo(band, anchor: .top) }
+                        }
                 }
             }
             .disabled(!isReady)
@@ -81,7 +76,62 @@ struct EqualizerView: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        // Six bands and a plot don't fit a medium detent, and half a curve is
+        // worse than none.
+        .presentationDetents([.large])
+    }
+
+    private var form: some View {
+        Form {
+            if !isReady {
+                Section {
+                    Label("Waiting for the receiver…", systemImage: "antenna.radiowaves.left.and.right.slash")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                Toggle("Enable EQ", isOn: Binding(
+                    get: { control.isEnabled },
+                    set: { control.setEnabled($0) }))
+            }
+
+            ForEach(control.bands) { band in
+                bandSection(band)
+            }
+
+            presetSection
+
+            // Last, and after the presets, which reload the bands above them
+            // and nothing here.
+            if let restoration {
+                restorationSection(restoration)
+            }
+        }
+    }
+
+    // MARK: - Presets
+
+    private var presetSection: some View {
+        Section {
+            Menu {
+                ForEach(EQPreset.allCases) { preset in
+                    Button {
+                        selected = nil
+                        control.apply(preset)
+                    } label: {
+                        Text(preset.title)
+                        Text(preset.detail)
+                    }
+                }
+            } label: {
+                Text("Load a Preset")
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        } footer: {
+            Text(Caption.presets)
+        }
+        .disabled(!control.isEnabled)
     }
 
     /// Declick and Dehum: a switch each, and a "…" onto the parameters overlay.
@@ -124,29 +174,64 @@ struct EqualizerView: View {
         }
     }
 
+    // MARK: - One band
+
     @ViewBuilder
     private func bandSection(_ band: EQBand) -> some View {
-        Section(band.name) {
-            paramRow(title: "Gain", value: String(format: "%+.1f dB", band.gain)) {
-                Slider(value: Binding(get: { band.gain },
-                                      set: { control.setGain($0, bandID: band.id) }),
-                       in: Equalizer.gainRange)
+        Section {
+            // The disable goes on the rows rather than the Section, or a switched
+            // -out cut filter would disable its own switch in the header.
+            Group {
+                if band.kind.hasGain {
+                    paramRow(title: "Gain", value: String(format: "%+.1f dB", band.gain)) {
+                        Slider(value: Binding(get: { band.gain },
+                                              set: { control.setGain($0, bandID: band.id) }),
+                               in: Equalizer.gainRange)
+                    }
+                }
+                paramRow(title: band.kind.isCut ? "Corner" : "Frequency",
+                         value: frequencyLabel(band.frequency)) {
+                    // Log-scaled: musical pitch is logarithmic, so a linear Hz slider
+                    // wastes most of its travel on the top octave.
+                    Slider(value: Binding(
+                        get: { log10(Double(band.frequency)) },
+                        set: { control.setFrequency(Float(pow(10.0, $0)), bandID: band.id) }),
+                        in: log10(Double(band.frequencyRange.lowerBound))...log10(Double(band.frequencyRange.upperBound)))
+                }
+                if band.kind.hasQ {
+                    // Shown and dragged as Q — what every EQ labels this control —
+                    // while the model and the node keep octaves. Log-scaled like
+                    // the frequency slider, and rightwards is narrower, as on every
+                    // other EQ a DJ has touched.
+                    paramRow(title: "Q", value: String(format: "%.2f", band.q)) {
+                        Slider(value: Binding(
+                            get: { log10(Double(band.q)) },
+                            set: { control.setBandwidth(EQBandwidth.octaves(forQ: Float(pow(10.0, $0))),
+                                                        bandID: band.id) }),
+                            in: log10(Double(EQBandwidth.qRange.lowerBound))...log10(Double(EQBandwidth.qRange.upperBound)))
+                    }
+                }
             }
-            paramRow(title: "Frequency", value: frequencyLabel(band.frequency)) {
-                // Log-scaled: musical pitch is logarithmic, so a linear Hz slider
-                // wastes most of its travel on the top octave.
-                Slider(value: Binding(
-                    get: { log10(Double(band.frequency)) },
-                    set: { control.setFrequency(Float(pow(10.0, $0)), bandID: band.id) }),
-                    in: log10(Double(band.frequencyRange.lowerBound))...log10(Double(band.frequencyRange.upperBound)))
+            .disabled(!control.isEnabled || (band.kind.isCut && !band.isEnabled))
+        } header: {
+            HStack {
+                Text(band.name)
+                    .foregroundStyle(band.id == selected ? Color.accentColor : Color.secondary)
+                Spacer()
+                if band.kind.isCut {
+                    Toggle(band.name, isOn: Binding(
+                        get: { band.isEnabled },
+                        set: { control.setBandEnabled($0, bandID: band.id) }))
+                        .labelsHidden()
+                        .disabled(!control.isEnabled)
+                }
             }
-            paramRow(title: "Bandwidth", value: String(format: "%.2f oct", band.bandwidth)) {
-                Slider(value: Binding(get: { band.bandwidth },
-                                      set: { control.setBandwidth($0, bandID: band.id) }),
-                       in: Equalizer.bandwidthRange)
+        } footer: {
+            if !band.caption.isEmpty {
+                Text(band.caption)
             }
         }
-        .disabled(!control.isEnabled)
+        .id(band.id)
     }
 
     private func paramRow<Content: View>(title: String, value: String,
@@ -164,4 +249,14 @@ struct EqualizerView: View {
     private func frequencyLabel(_ hz: Float) -> String {
         hz >= 1000 ? String(format: "%.1f kHz", hz / 1000) : String(format: "%.0f Hz", hz)
     }
+}
+
+/// Hoisted out of the body: long literals inside a view builder are what the
+/// type-checker chokes on first.
+private enum Caption {
+    static let presets = """
+        Golden Age is the starting point for electrical shellac, 1926–49: \
+        bass and brilliance up, hiss down, both rails in. Post-1950 leaves \
+        tape and vinyl alone. Then adjust by ear, and back off a little.
+        """
 }

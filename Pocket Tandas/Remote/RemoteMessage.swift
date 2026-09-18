@@ -35,6 +35,11 @@ enum RemoteMessage: Codable {
     // two sides disagreeing about the band.
     case setEQEnabled(Bool)
     case setEQBand(id: Int, gain: Float, frequency: Float, bandwidth: Float)
+    /// Switches one of the two cut filters in or out.
+    case setEQBandEnabled(id: Int, on: Bool)
+    /// Loads a whole band table at once. `.resetEQ` is still Flat, so the Flat
+    /// preset keeps working against a peer that predates the other two.
+    case setEQPreset(EQPreset)
     case resetEQ
     case setVolume(Float)
     // Disc restoration: the switches, and each filter's parameters as one whole
