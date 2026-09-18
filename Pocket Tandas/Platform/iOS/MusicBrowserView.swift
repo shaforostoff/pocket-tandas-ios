@@ -50,7 +50,7 @@ struct MusicBrowserView: View {
                     .onChange(of: displayed) { _, _ in reveal(proxy: proxy) }
             }
         }
-        .task(id: browser.musicModel.listingToken) { reload() }
+        .task(id: browser.musicModel.listingToken) { await reload() }
         .onChange(of: browser.musicFilter) { _, _ in applyArrange() }
         .onChange(of: browser.musicSort) { _, _ in applyArrange() }
         .onChange(of: browser.musicDirection) { _, _ in applyArrange() }
@@ -176,25 +176,25 @@ struct MusicBrowserView: View {
 
     // MARK: - Loading
 
-    private func reload() {
-        switch browser.musicModel.current {
-        case .root:
-            rawEntries = []
-        case .category(.songs):
-            rawEntries = makeTrackEntries(MusicLibrary.tracks(in: browser.musicModel.current))
-        case .category(let category):
-            rawEntries = MusicLibrary.containers(for: category).map(makeContainerEntry)
-        case .container:
-            rawEntries = makeTrackEntries(MusicLibrary.tracks(in: browser.musicModel.current))
-        }
+    /// Read the level the model is on and show it.
+    ///
+    /// The read itself is off-main. MPMediaQuery is an indexed database and most
+    /// levels come back at once, but "Songs" asks it for the whole library and a
+    /// big one is not instant — nor is walking every artist or album collection.
+    /// None of that belongs on the main thread, and none of it needs to be there:
+    /// `entries(for:)` returns plain values and the MPMediaItems never come back
+    /// with them.
+    private func reload() async {
+        let node = browser.musicModel.current
+
         // A playlist we just saved can only be found among the Playlists, so a
         // pending reveal doesn't outlive browsing away from them.
-        if browser.musicModel.current != .category(.playlists) {
+        if node != .category(.playlists) {
             browser.musicModel.pendingReveal = nil
         }
         // Keep the sort valid for the destination: a playlist defaults to its own
         // listed order; folders/track lists never use it.
-        if browser.musicModel.current.isPlaylist {
+        if node.isPlaylist {
             browser.musicSort = .listed
             browser.musicDirection = .ascending
         } else if browser.musicSort == .listed {
@@ -202,13 +202,36 @@ struct MusicBrowserView: View {
             browser.musicDirection = .ascending
         }
         browser.musicFilter = ""
+
+        let entries = await Task.detached(priority: .userInitiated) {
+            Self.entries(for: node)
+        }.value
+
+        // The level moved on while that ran — `.task(id:)` has already started the
+        // read for wherever the user is now, and this listing is not it.
+        guard !Task.isCancelled, browser.musicModel.current == node else { return }
+        rawEntries = entries
         applyArrange()
+    }
+
+    /// One level's rows. `nonisolated` so it actually runs where the detached
+    /// task put it: the view is @MainActor, and a static member of it would
+    /// otherwise be main-actor isolated too and hop straight back.
+    private nonisolated static func entries(for node: MusicNode) -> [MusicEntry] {
+        switch node {
+        case .root:
+            return []
+        case .category(.songs), .container:
+            return makeTrackEntries(MusicLibrary.tracks(in: node))
+        case .category(let category):
+            return MusicLibrary.containers(for: category).map(makeContainerEntry)
+        }
     }
 
     /// Copy each library item down to the fields the rows need and drop the
     /// MPMediaItem — a big category would otherwise keep one library object per row
     /// alive for as long as it is browsed.
-    private func makeTrackEntries(_ items: [MPMediaItem]) -> [MusicEntry] {
+    private nonisolated static func makeTrackEntries(_ items: [MPMediaItem]) -> [MusicEntry] {
         items.enumerated().map { offset, item in
             let track = MusicTrackRef(item)
             return MusicEntry(id: "medialib:\(track.persistentID)#\(offset)", kind: .track,
@@ -218,7 +241,7 @@ struct MusicBrowserView: View {
         }
     }
 
-    private func makeContainerEntry(_ container: MusicContainer) -> MusicEntry {
+    private nonisolated static func makeContainerEntry(_ container: MusicContainer) -> MusicEntry {
         let ident = container.persistentID.map(String.init) ?? container.filterValue ?? container.title
         return MusicEntry(id: "con:\(container.kind):\(ident)", kind: .container(container),
                           title: container.title, systemImage: container.systemImage,
