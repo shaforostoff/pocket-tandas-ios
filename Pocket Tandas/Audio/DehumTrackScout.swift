@@ -172,7 +172,7 @@ final class DehumTrackScout {
         let rate = analysisSampleRate
         let asset = AVURLAsset(url: url)
 
-        guard let track = firstAudioTrack(of: asset), !job.isCancelled else { return [] }
+        guard let track = try? asset.firstAudioTrackSynchronously(), !job.isCancelled else { return [] }
 
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
@@ -246,21 +246,5 @@ final class DehumTrackScout {
             scout.feedMono(data.assumingMemoryBound(to: Float.self), frames: count)
             return count
         }
-    }
-
-    /// `AVAsset.loadTracks` is async; this runs on a private dispatch queue and
-    /// never on a Swift Concurrency executor, so bridging it back with a
-    /// semaphore cannot starve the cooperative pool — the same trade
-    /// MediaTrackDecoder makes for the same reason.
-    private static func firstAudioTrack(of asset: AVURLAsset) -> AVAssetTrack? {
-        final class Box: @unchecked Sendable { var tracks: [AVAssetTrack] = [] }
-        let box = Box()
-        let semaphore = DispatchSemaphore(value: 0)
-        Task {
-            box.tracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return box.tracks.first
     }
 }

@@ -6,12 +6,12 @@
 //  SynchronousAssetLoading.swift
 //  Pocket Tandas
 //
-//  `AVAsset.loadTracks` is async; the two things in this app that read an asset
-//  front to back — the media decoder that feeds playback, and the BPM analyser —
-//  are both synchronous loops on a dedicated dispatch queue. This is the one
-//  bridge between the two, rather than one each.
+//  `AVAsset.loadTracks` is async; the three things in this app that read an asset
+//  off-main — the media decoder that feeds playback, the BPM analyser, and the
+//  hum scout — are all synchronous loops on a dedicated dispatch queue. This is
+//  the one bridge for all of them, rather than one each.
 //
-//  Blocking here is safe BECAUSE of that: both callers run on a private queue,
+//  Blocking here is safe BECAUSE of that: every caller runs on a private queue,
 //  never on a Swift Concurrency executor thread, so the wait cannot starve the
 //  cooperative pool.
 //
