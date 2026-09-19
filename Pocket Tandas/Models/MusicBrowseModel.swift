@@ -156,9 +156,9 @@ final class MusicBrowseModel {
     /// so a playlist just written to the library is on screen without the user
     /// having to go looking for it. `persistentID` is the new playlist's, scrolled
     /// to when the listing has it.
-    func showPlaylists(revealing persistentID: UInt64?) {
+    func showPlaylists(revealing persistentID: UInt64) {
         stack = [.root, .category(.playlists)]
-        pendingReveal = persistentID.map { PendingReveal(persistentID: $0) }
+        pendingReveal = PendingReveal(persistentID: persistentID)
         revision += 1
     }
 }

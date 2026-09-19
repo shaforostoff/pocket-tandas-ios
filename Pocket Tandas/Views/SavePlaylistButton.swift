@@ -11,7 +11,8 @@
 //  WHERE it saves is never asked — it follows what the browser above is showing.
 //  Files and folders save an .m3u8 (PlaylistWriter) into a folder chosen from the
 //  browsed folder and its parents; the Music library saves a real library playlist
-//  (MusicPlaylistSaver). You save to whatever you were just picking tracks from.
+//  (MusicPlaylistSaver), always a new one — nothing already in the library is
+//  touched. You save to whatever you were just picking tracks from.
 //
 //  The two destinations hold different things — an .m3u8 can only carry file
 //  paths, a library playlist can only carry library tracks — so either save
@@ -27,18 +28,14 @@ struct SavePlaylistButton: View {
 
     @State private var askingName = false
     @State private var askingFolder = false
-    /// Music library only: the typed name already belongs to a playlist this app
-    /// made, so the user picks between replacing it and making another.
-    @State private var askingReplace = false
     @State private var name = ""
     @State private var isSaving = false
     @State private var resultMessage: String?
 
     var body: some View {
         // The result alert is hosted on a separate view so it never contends with
-        // the name alert for the same presentation slot — as is the replace
-        // dialog, which can follow the name alert immediately.
-        withReplaceDialog(saveButton)
+        // the name alert for the same presentation slot.
+        saveButton
             .background(
                 Color.clear.alert("Save Playlist", isPresented: resultPresented) {
                     Button("OK", role: .cancel) { }
@@ -73,28 +70,6 @@ struct SavePlaylistButton: View {
             }
             Button("Cancel", role: .cancel) { }
         }
-    }
-
-    /// The name-collision step exists only where there is a Music library to
-    /// collide with, so on macOS the whole modifier drops out rather than being
-    /// carried as dead state.
-    @ViewBuilder
-    private func withReplaceDialog(_ content: some View) -> some View {
-        #if os(iOS)
-        content.background(
-            Color.clear.confirmationDialog(
-                "“\(MusicPlaylistSaver.displayName(from: name))” already exists",
-                isPresented: $askingReplace, titleVisibility: .visible) {
-                    Button("Replace Its Contents") { saveToMusicLibrary(replacingExisting: true) }
-                    Button("Save as a New Playlist") { saveToMusicLibrary(replacingExisting: false) }
-                    Button("Cancel", role: .cancel) { }
-                } message: {
-                    Text("Pocket Tandas saved a Music playlist with this name before.")
-                }
-        )
-        #else
-        content
-        #endif
     }
 
     // MARK: - Destination
@@ -161,18 +136,7 @@ struct SavePlaylistButton: View {
             return
         }
         #if os(iOS)
-        // Ask before clobbering a playlist we made under this name; a first save
-        // under a fresh name goes straight through.
-        isSaving = true
-        Task { @MainActor in
-            let collides = await MusicPlaylistSaver.wouldReplacePlaylist(named: name)
-            isSaving = false
-            if collides {
-                askingReplace = true
-            } else {
-                saveToMusicLibrary(replacingExisting: false)
-            }
-        }
+        saveToMusicLibrary()
         #endif
     }
 
@@ -193,14 +157,13 @@ struct SavePlaylistButton: View {
     }
 
     #if os(iOS)
-    private func saveToMusicLibrary(replacingExisting: Bool) {
+    private func saveToMusicLibrary() {
         isSaving = true
         let items = queue.items
         let title = name
         Task { @MainActor in
             do {
-                let result = try await MusicPlaylistSaver.save(items: items, name: title,
-                                                              replacingExisting: replacingExisting)
+                let result = try await MusicPlaylistSaver.save(items: items, name: title)
                 resultMessage = describe(result)
                 // Show the work: the browser jumps to Playlists — re-reading them
                 // if it is already there — so the playlist is on screen behind the
@@ -215,9 +178,7 @@ struct SavePlaylistButton: View {
 
     private func describe(_ result: MusicPlaylistSaveResult) -> String {
         let tracks = result.submitted == 1 ? "1 track" : "\(result.submitted) tracks"
-        var message = result.replacedExisting
-            ? "Replaced “\(result.name)” in your Music library with \(tracks)."
-            : "Saved \(tracks) to “\(result.name)” in your Music library."
+        var message = "Saved \(tracks) to “\(result.name)” in your Music library."
 
         if result.filesSkipped > 0 {
             message += result.filesSkipped == 1
