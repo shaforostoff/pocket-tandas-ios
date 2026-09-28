@@ -10,9 +10,13 @@ algorithmic is written here: `PTBPMAnalyzer.mm` is host glue, exactly as
     the tempo + rhythm analysis behind foo_rubato (the "Rubato BPM Analyzer"
     foobar2000 component), which is itself only a shell around these files.
 
-Copied 2026-09-18 from `d853d0b` (`bpmcore/{analyse,odf,real_fft,resample,rhythm,tempo}.cpp`
-and `bpmcore/{bpmcore,internal,parallel,real_fft,rhythm_model}.h`); first taken
-2026-09-16 from `550f387`.
+Copied 2026-09-28 from `b61c77a` (`bpmcore/{analyse,key,odf,real_fft,resample,rhythm,tempo}.cpp`
+and `bpmcore/{bpmcore,internal,parallel,real_fft,rhythm_model}.h`); earlier from
+`d853d0b` (2026-09-18) and first taken 2026-09-16 from `550f387`.
+
+`key.cpp` (tuning offset and key) is compiled but switched off:
+`PTBPMAnalyzer.mm` sets `options::detect_key = false`, since the app shows
+neither and the core defaults it on at roughly twice the analysis cost.
 
 `kiss_fft/` is deliberately NOT carried over: bpmcore names its transform in one
 place, and this port takes the pffft backend.

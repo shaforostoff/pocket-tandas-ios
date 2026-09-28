@@ -129,6 +129,7 @@
 		A73FB5DF98202B0F018CA416 /* EQCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B69BA1CCC54312A42455CB5 /* EQCurveView.swift */; };
 		A81194B7F8E3048B32B504A0 /* TrackMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF644EF6A222E63934494281 /* TrackMetadata.swift */; };
 		A95A299BEA76A84616E58439 /* AudioFileTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30346998D30D95ACE9AA293 /* AudioFileTypes.swift */; };
+		AB2347F286EB497DC7EDDAFF /* key.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0FE44251B77072D157BF8D06 /* key.cpp */; };
 		AB6E41BFA064CEC4758958D9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */; };
 		AE57465D9F821B3408CAA715 /* rhythm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4D3D4C53B95ED4EF602DE593 /* rhythm.cpp */; };
 		AF8EF521E184786F66F03958 /* QueueItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DF4E2A802765BB203C5F04 /* QueueItem.swift */; };
@@ -185,6 +186,7 @@
 		EA7149499E0752379BE20A21 /* RestorationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A444E18E085C787F2F4893 /* RestorationSettings.swift */; };
 		EC004156BD2E3158E037828C /* LauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */; };
 		EDD0706A4478BDB1F5373185 /* RestorationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9739488D829648FB3542B387 /* RestorationSettingsView.swift */; };
+		EE724469B6FCEE7735FFAB7F /* key.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0FE44251B77072D157BF8D06 /* key.cpp */; };
 		EE8343CFA19B9C2DCEDF0380 /* PCMAssetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4354162BD24926E589F5762 /* PCMAssetReader.swift */; };
 		EFEB40888A3BB8CA808A503E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
 		F08A448DB14F8409AC71B513 /* AudioSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51ED43F1BF0AD0EADA70EF50 /* AudioSessionController.swift */; };
@@ -223,6 +225,7 @@
 		05CA4CC6BD25E7D5C99BCA7B /* PlayQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayQueue.swift; path = PlayQueue.swift; sourceTree = "<group>"; };
 		094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = "Pocket Tandas/PrivacyInfo.xcprivacy"; sourceTree = SOURCE_ROOT; };
 		0D6F4655AE41A3AC7EF6E771 /* TrackAnalysisQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackAnalysisQueue.swift; path = "Pocket Tandas/Analysis/TrackAnalysisQueue.swift"; sourceTree = SOURCE_ROOT; };
+		0FE44251B77072D157BF8D06 /* key.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = key.cpp; path = "Pocket Tandas/Analysis/bpmcore/key.cpp"; sourceTree = SOURCE_ROOT; };
 		10E14B5304CF9D4D4978C909 /* EQCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQCurve.swift; path = EQCurve.swift; sourceTree = "<group>"; };
 		117D4F0B8209DA7F1CDC67F6 /* SavePlaylistButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SavePlaylistButton.swift; path = SavePlaylistButton.swift; sourceTree = "<group>"; };
 		1646A25D1C9E837E5AD1B1BF /* OutputDevicePickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDevicePickers.swift; sourceTree = "<group>"; };
@@ -453,6 +456,7 @@
 				5F054B4588BF5BCD5D8514CD /* resample.cpp */,
 				4D3D4C53B95ED4EF602DE593 /* rhythm.cpp */,
 				1C6B4E8DA356A73DE344214B /* tempo.cpp */,
+				0FE44251B77072D157BF8D06 /* key.cpp */,
 			);
 			name = bpmcore;
 			sourceTree = "<group>";
@@ -859,6 +863,7 @@
 				48ED43DBB5A495ACD73C3026 /* tempo.cpp in Sources */,
 				F4B94D15A9B0EC5203EE260D /* pffft.c in Sources */,
 				B8B6404FA2876C005AE58A75 /* PCMAssetReader.swift in Sources */,
+				EE724469B6FCEE7735FFAB7F /* key.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -955,6 +960,7 @@
 				DCF14B4D99E171D505330DB9 /* tempo.cpp in Sources */,
 				D1D54DBB897FB4D4A90B9658 /* pffft.c in Sources */,
 				EE8343CFA19B9C2DCEDF0380 /* PCMAssetReader.swift in Sources */,
+				AB2347F286EB497DC7EDDAFF /* key.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

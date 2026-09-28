@@ -99,6 +99,9 @@ private:
     // but the scheduler noise it avoids.
     bpmcore::options options;
     options.threads = 1;
+    // The core now measures tuning and key too, at about the cost of the tempo
+    // again. Nothing in the app shows either yet, so don't pay for them.
+    options.detect_key = false;
 
     const bpmcore::analysis result = _collector->finish(&listener, &options);
     if (listener.cancelled()) return nil;
