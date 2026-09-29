@@ -10,16 +10,11 @@
 	<string>Pocket Tandas adds tracks from your Music library to the play queue.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Pocket Tandas uses Bluetooth to connect to a nearby phone for remote DJ control.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_pt-djremote._tcp</string>
-		<string>_pt-djremote._udp</string>
-	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Pocket Tandas uses the local network to control playback between two phones running the app.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
 	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>

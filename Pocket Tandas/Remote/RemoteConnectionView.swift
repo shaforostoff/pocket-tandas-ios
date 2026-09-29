@@ -18,7 +18,6 @@
 //
 
 import SwiftUI
-import MultipeerConnectivity
 
 struct RemoteConnectionView: View {
     let link: PeerLink
@@ -45,9 +44,8 @@ struct RemoteConnectionView: View {
             hideWhileConnected = false
             showRadioHint = false
             guard isConnected else {
-                // Searching this long is nearly always one of the two radios being
-                // off. Wi-Fi switched off in Settings drops the pair to Bluetooth,
-                // which is slow — no network is needed, but the radio is.
+                // Searching this long is nearly always Bluetooth being off on the
+                // other phone, or the phones being out of range of each other.
                 guard wantsRadioHint else { return }
                 try? await Task.sleep(for: Self.hintDelay)
                 guard !Task.isCancelled else { return }
@@ -83,7 +81,7 @@ struct RemoteConnectionView: View {
             if showRadioHint, wantsRadioHint {
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
-                    Text("Taking a while? Turn on Wi-Fi and Bluetooth on both phones — they connect directly, so no network is needed.")
+                    Text("Taking a while? Turn on Bluetooth on both phones and keep them near each other — they connect directly, so no network is needed.")
                     Spacer(minLength: 0)
                 }
                 .font(.caption)
@@ -126,7 +124,10 @@ struct RemoteConnectionView: View {
     /// there is nothing to explain. Nor is there once the sender is listing peers:
     /// finding one proves both radios are up, and the wait is now the DJ's own tap.
     private var wantsRadioHint: Bool {
-        guard link.connectionState != .idle else { return false }
+        switch link.connectionState {
+        case .idle, .unavailable: return false   // off on purpose, or already explained
+        default: break
+        }
         if role == .sender, !link.discoveredPeers.isEmpty { return false }
         return true
     }
@@ -144,6 +145,7 @@ struct RemoteConnectionView: View {
         case .connecting(let name): return "Connecting to \(name)…"
         case .connected(let name): return "Connected to \(name)"
         case .disconnected: return role == .sender ? "Disconnected — searching…" : "Disconnected — waiting…"
+        case .unavailable(let reason): return reason
         }
     }
 

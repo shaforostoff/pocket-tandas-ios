@@ -7,9 +7,10 @@
 //  Pocket Tandas
 //
 //  Two opt-in ways to stop iOS suspending the app while it sits idle — which is
-//  what makes a Remote Controllable phone unreachable after the screen locks
-//  (MultipeerConnectivity has no background mode of its own; the link only
-//  survives suspension when something keeps the process running):
+//  can make a Remote Controllable phone unreachable after the screen locks
+//  (Bluetooth keeps advertising in the background and wakes a suspended app to
+//  accept a connection, but whether the link's data keeps flowing to a suspended
+//  app is unverified; playing audio, real or silent, keeps the process running):
 //
 //   - "Screen stays awake" — the idle timer is disabled, so the phone doesn't
 //     auto-lock. Handled by MainScreenView.
