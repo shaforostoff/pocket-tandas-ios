@@ -24,6 +24,11 @@ enum AudioFileTypes {
         "alac", "flac", "m4b", "mp4", "aifc", "ogg", "opus"
     ]
 
+    /// `audioExtensions` in a fixed order, for anything that tries them one by one.
+    /// A Set's iteration order changes from launch to launch, so trying it directly
+    /// makes "which of BBB.mp3 / BBB.flac wins" a coin toss.
+    static let orderedAudioExtensions: [String] = audioExtensions.sorted()
+
     static func isPlaylist(_ url: URL) -> Bool {
         playlistExtensions.contains(url.pathExtension.lowercased())
     }

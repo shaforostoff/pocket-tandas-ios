@@ -82,21 +82,14 @@ struct RemoteTrackResolver {
 
     private func resolveFile(_ request: TrackAddRequest, baseURL: URL) -> URL? {
         guard let relativePath = request.relativePath else { return nil }
-        let relative = relativePath as NSString
-        let relativeDir = relative.deletingLastPathComponent
-        let stem = (relative.lastPathComponent as NSString).deletingPathExtension
+        let stem = ((relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
 
-        // 1. Exact relative path.
+        // 1. Exact relative path; 2. same folder + stem, any other supported audio
+        // extension — tried in a fixed order, the same lenient match a playlist
+        // entry gets.
         let exact = baseURL.appending(path: relativePath)
-        if isAudioFile(exact) { return exact }
-
-        // 2. Same folder + stem, any other supported audio extension.
-        if !stem.isEmpty {
-            let dir = relativeDir.isEmpty ? baseURL : baseURL.appending(path: relativeDir)
-            for ext in AudioFileTypes.audioExtensions {
-                let candidate = dir.appending(path: "\(stem).\(ext)")
-                if isAudioFile(candidate) { return candidate }
-            }
+        if let found = PlaylistParser.existingFile(at: exact, accepting: AudioFileTypes.isAudio) {
+            return found
         }
 
         // 3. Metadata match (title + artist, year disambiguates).

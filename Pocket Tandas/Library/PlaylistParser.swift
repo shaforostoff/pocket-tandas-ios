@@ -71,17 +71,18 @@ enum PlaylistParser {
         return nil
     }
 
-    /// The file at `url` if it exists; otherwise the same path carrying a
-    /// different known audio extension (e.g. BBB.mp3 → BBB.m4a), so a playlist
-    /// still resolves after a track was re-encoded to another format. The
-    /// extensions are tried in a stable order; nil if nothing matches.
-    static func existingFile(at url: URL) -> URL? {
+    /// The file at `url` if it exists (and `accept` takes it); otherwise the same
+    /// path carrying a different known audio extension (e.g. BBB.mp3 → BBB.m4a), so
+    /// a playlist still resolves after a track was re-encoded to another format.
+    /// The extensions are tried in a stable order; nil if nothing matches. Shared
+    /// with RemoteTrackResolver, which only accepts audio for the exact path.
+    static func existingFile(at url: URL, accepting accept: (URL) -> Bool = { _ in true }) -> URL? {
         let fm = FileManager.default
-        if fm.fileExists(atPath: url.path) { return url }
+        if fm.fileExists(atPath: url.path), accept(url) { return url }
 
         let base = url.deletingPathExtension()
         let original = url.pathExtension.lowercased()
-        for ext in AudioFileTypes.audioExtensions.sorted() where ext != original {
+        for ext in AudioFileTypes.orderedAudioExtensions where ext != original {
             let candidate = base.appendingPathExtension(ext)
             if fm.fileExists(atPath: candidate.path) { return candidate }
         }
