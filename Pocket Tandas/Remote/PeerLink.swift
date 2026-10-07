@@ -329,7 +329,10 @@ final class PeerLink: NSObject {
                 unintroduced.removeAll { entry in expired.contains { $0.channel === entry.channel } }
             }
         case .sender:
-            if let contact, now.timeIntervalSince(contact.startedAt) > Self.attemptLimit {
+            // The contact outlives its attempt — it stays set for as long as the
+            // channel it produced is up — so only an attempt still without a channel
+            // can time out.
+            if channel == nil, let contact, now.timeIntervalSince(contact.startedAt) > Self.attemptLimit {
                 ptLog("[PeerLink] connection attempt to \(displayName(for: contact.peripheral.identifier)) timed out")
                 contactFailed()
             }
