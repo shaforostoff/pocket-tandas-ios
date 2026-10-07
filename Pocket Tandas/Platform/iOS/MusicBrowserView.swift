@@ -259,12 +259,7 @@ struct MusicBrowserView: View {
         let needle = browser.musicFilter.trimmingCharacters(in: .whitespacesAndNewlines)
         var entries = rawEntries
         if !needle.isEmpty {
-            entries = entries.filter { entry in
-                if entry.title.localizedStandardContains(needle) { return true }
-                guard let m = entry.snapshot else { return false }
-                return [m.title, m.artist, m.genre].compactMap { $0 }
-                    .contains { $0.localizedStandardContains(needle) }
-            }
+            entries = entries.filter { DirectoryLister.matches(needle, name: $0.title, snapshot: $0.snapshot) }
         }
         // Container lists sort alphabetically (like folders); track lists use the
         // chosen metadata sort, with listed order preserved for playlists.
@@ -274,49 +269,12 @@ struct MusicBrowserView: View {
         if browser.musicSort == .listed {
             return browser.musicDirection == .descending ? entries.reversed() : entries
         }
-        var sorted = entries.sorted { ascending($0, $1) }
+        let sort = browser.musicSort
+        var sorted = entries.sorted {
+            DirectoryLister.metadataOrder($0.title, $0.snapshot, $1.title, $1.snapshot, by: sort)
+        }
         if browser.musicDirection == .descending { sorted.reverse() }
         return sorted
-    }
-
-    /// Ascending order for the metadata sorts, mirroring DirectoryLister's chains
-    /// (each option falls through to the next on a tie; title is the final tiebreak).
-    private func ascending(_ a: MusicEntry, _ b: MusicEntry) -> Bool {
-        var c: ComparisonResult
-        switch browser.musicSort {
-        case .dateYear:
-            c = cmpYear(a, b)
-        case .genre:
-            c = cmpGenre(a, b)
-            if c == .orderedSame { c = cmpYear(a, b) }
-        case .artist:
-            c = cmpArtist(a, b)
-            if c == .orderedSame { c = cmpGenre(a, b) }
-            if c == .orderedSame { c = cmpYear(a, b) }
-        case .bpm:
-            c = cmpBPM(a, b)
-            if c == .orderedSame { c = cmpArtist(a, b) }
-            if c == .orderedSame { c = cmpYear(a, b) }
-        case .listed, .filename:
-            c = .orderedSame
-        }
-        if c == .orderedSame { c = a.title.localizedStandardCompare(b.title) }
-        return c == .orderedAscending
-    }
-
-    private func cmpYear(_ a: MusicEntry, _ b: MusicEntry) -> ComparisonResult {
-        let x = a.snapshot?.year ?? Int.min, y = b.snapshot?.year ?? Int.min
-        return x == y ? .orderedSame : (x < y ? .orderedAscending : .orderedDescending)
-    }
-    private func cmpBPM(_ a: MusicEntry, _ b: MusicEntry) -> ComparisonResult {
-        let x = a.snapshot?.bpm ?? Int.min, y = b.snapshot?.bpm ?? Int.min
-        return x == y ? .orderedSame : (x < y ? .orderedAscending : .orderedDescending)
-    }
-    private func cmpGenre(_ a: MusicEntry, _ b: MusicEntry) -> ComparisonResult {
-        (a.snapshot?.genre ?? "").localizedStandardCompare(b.snapshot?.genre ?? "")
-    }
-    private func cmpArtist(_ a: MusicEntry, _ b: MusicEntry) -> ComparisonResult {
-        (a.snapshot?.artist ?? "").localizedStandardCompare(b.snapshot?.artist ?? "")
     }
 
     // MARK: - Prelisten

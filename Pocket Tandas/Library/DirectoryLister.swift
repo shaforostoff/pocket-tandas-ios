@@ -13,7 +13,7 @@
 //  Folders are always grouped first; files are sorted by the chosen option.
 //  Metadata-based sorts (date/genre/bpm/artist) read the cached snapshot and
 //  apply a fixed chain of secondary criteria, with filename as the final
-//  tiebreak (see `ascendingOrder`).
+//  tiebreak (see `metadataOrder`, which the Music-library browser shares).
 //
 
 import Foundation
@@ -60,16 +60,7 @@ enum DirectoryLister {
 
         let needle = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         if !needle.isEmpty {
-            // Match the filename and, when scanned, the track's title/artist/genre.
-            // `localizedStandardContains` folds case *and* diacritics (so "anibal"
-            // finds "Aníbal"), matching the locale-aware sort used elsewhere.
-            entries = entries.filter { entry in
-                if entry.name.localizedStandardContains(needle) { return true }
-                guard let m = metadata(entry) else { return false }
-                return [m.title, m.artist, m.genre]
-                    .compactMap { $0 }
-                    .contains { $0.localizedStandardContains(needle) }
-            }
+            entries = entries.filter { matches(needle, name: $0.name, snapshot: metadata($0)) }
         }
 
         let folders = entries
@@ -82,8 +73,6 @@ enum DirectoryLister {
 
         return folders + sortedFiles
     }
-
-    private typealias Decorated = (entry: LibraryEntry, snapshot: TrackMetadataSnapshot?)
 
     /// Sort the file entries by the chosen option. Metadata sorts use decorate–
     /// sort–undecorate: each file's snapshot is looked up ONCE up front, so the
@@ -103,15 +92,31 @@ enum DirectoryLister {
         case .dateYear, .genre, .bpm, .artist:
             return files
                 .map { (entry: $0, snapshot: metadata($0)) }
-                .sorted { ascendingOrder($0, $1, sort: sort) }
+                .sorted { metadataOrder($0.entry.name, $0.snapshot, $1.entry.name, $1.snapshot, by: sort) }
                 .map(\.entry)
         }
     }
 
-    /// Multi-level order for metadata sorts. Each option has a priority chain of
-    /// criteria; when one ties, the next decides, and filename is always the final
-    /// tiebreak. Short-circuits, so a deeper field is only compared on a tie.
-    private static func ascendingOrder(_ a: Decorated, _ b: Decorated, sort: SortOption) -> Bool {
+    // MARK: - Shared with the Music-library browser
+
+    /// Whether a row matches the filter: its name and, when scanned, the track's
+    /// title/artist/genre. `localizedStandardContains` folds case *and* diacritics
+    /// (so "anibal" finds "Aníbal"), matching the locale-aware sort used elsewhere.
+    static func matches(_ needle: String, name: String, snapshot: TrackMetadataSnapshot?) -> Bool {
+        if name.localizedStandardContains(needle) { return true }
+        guard let m = snapshot else { return false }
+        return [m.title, m.artist, m.genre]
+            .compactMap { $0 }
+            .contains { $0.localizedStandardContains(needle) }
+    }
+
+    /// Multi-level ascending order for metadata sorts. Each option has a priority
+    /// chain of criteria; when one ties, the next decides, and the row's name — a
+    /// filename here, a title in the Music browser — is always the final tiebreak.
+    /// Short-circuits, so a deeper field is only compared on a tie.
+    static func metadataOrder(_ aName: String, _ a: TrackMetadataSnapshot?,
+                              _ bName: String, _ b: TrackMetadataSnapshot?,
+                              by sort: SortOption) -> Bool {
         var c: ComparisonResult
         switch sort {
         case .dateYear:
@@ -128,25 +133,26 @@ enum DirectoryLister {
             if c == .orderedSame { c = compareArtist(a, b) }
             if c == .orderedSame { c = compareYear(a, b) }
         case .listed, .filename:
-            c = .orderedSame   // handled in sortFiles
+            c = .orderedSame   // name order only
         }
-        if c == .orderedSame { c = a.entry.name.localizedStandardCompare(b.entry.name) }
+        if c == .orderedSame { c = aName.localizedStandardCompare(bName) }
         return c == .orderedAscending
     }
 
     // Per-field comparators for the chains above (nil sorts first: Int.min / "").
-    private static func compareYear(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
-        let x = a.snapshot?.year ?? Int.min, y = b.snapshot?.year ?? Int.min
+    private typealias Snapshot = TrackMetadataSnapshot?
+    private static func compareYear(_ a: Snapshot, _ b: Snapshot) -> ComparisonResult {
+        let x = a?.year ?? Int.min, y = b?.year ?? Int.min
         return x == y ? .orderedSame : (x < y ? .orderedAscending : .orderedDescending)
     }
-    private static func compareBPM(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
-        let x = a.snapshot?.bpm ?? Int.min, y = b.snapshot?.bpm ?? Int.min
+    private static func compareBPM(_ a: Snapshot, _ b: Snapshot) -> ComparisonResult {
+        let x = a?.bpm ?? Int.min, y = b?.bpm ?? Int.min
         return x == y ? .orderedSame : (x < y ? .orderedAscending : .orderedDescending)
     }
-    private static func compareGenre(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
-        (a.snapshot?.genre ?? "").localizedStandardCompare(b.snapshot?.genre ?? "")
+    private static func compareGenre(_ a: Snapshot, _ b: Snapshot) -> ComparisonResult {
+        (a?.genre ?? "").localizedStandardCompare(b?.genre ?? "")
     }
-    private static func compareArtist(_ a: Decorated, _ b: Decorated) -> ComparisonResult {
-        (a.snapshot?.artist ?? "").localizedStandardCompare(b.snapshot?.artist ?? "")
+    private static func compareArtist(_ a: Snapshot, _ b: Snapshot) -> ComparisonResult {
+        (a?.artist ?? "").localizedStandardCompare(b?.artist ?? "")
     }
 }
