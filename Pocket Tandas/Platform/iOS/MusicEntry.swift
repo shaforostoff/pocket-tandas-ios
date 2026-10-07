@@ -39,7 +39,13 @@ struct MusicTrackRef: Hashable {
     }
 }
 
-struct MusicEntry: Identifiable {
+/// A class, not a struct: an entry is 336 bytes of mostly metadata, and the browser
+/// holds every row of a level twice — as read, and filtered + sorted for display —
+/// and copies it again on each re-sort. "Songs" on a 10 000-track library was
+/// 3.4 MB per copy, and every comparison-driven move during the sort shifted the
+/// whole value. As a reference each extra copy is a pointer per row. Every field
+/// is a `let`, so sharing one is safe.
+final class MusicEntry: Identifiable {
     enum Kind {
         case container(MusicContainer)
         case track
@@ -55,6 +61,17 @@ struct MusicEntry: Identifiable {
     let snapshot: TrackMetadataSnapshot?
     /// The library track this row stands for (nil for containers).
     let track: MusicTrackRef?
+
+    init(id: String, kind: Kind, title: String, systemImage: String, isNavigable: Bool,
+         snapshot: TrackMetadataSnapshot?, track: MusicTrackRef?) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.systemImage = systemImage
+        self.isNavigable = isNavigable
+        self.snapshot = snapshot
+        self.track = track
+    }
 }
 
 extension MusicEntry: Hashable {
