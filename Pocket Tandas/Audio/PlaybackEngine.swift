@@ -298,16 +298,11 @@ final class PlaybackEngine {
     ///    and the fade is cancelled; and
     ///  - while paused, the tapped track (re)starts from the beginning, so even
     ///    the currently paused track can be restarted from the top.
+    /// A tapped file that can't be opened changes nothing — see `startPlaying`.
     func requestPlay(_ item: QueueItem) {
         ptLog("requestPlay tapped=\(item.filename)#\(item.id.uuidString.prefix(4)) state=\(state.debugLabel) | queue: \(queue.debugOrder)")
         switch state {
-        case .idle:
-            startPlaying(item)
-        case .fadingOut:
-            fader.cancel()
-            engine.mainMixerNode.outputVolume = normalVolume
-            startPlaying(item)
-        case .paused:
+        case .idle, .fadingOut, .paused:
             startPlaying(item)
         case .playing:
             break
@@ -420,16 +415,27 @@ final class PlaybackEngine {
         pausedReleaseTimer = timer
     }
 
+    /// Make `item` the audible track. A file is opened before anything else is
+    /// touched, so a tap on one that can't be read leaves the deck exactly as it
+    /// was — a fade-out still fading, an audition still playing, an idle app not
+    /// holding the audio session.
     private func startPlaying(_ item: QueueItem) {
         ptLog("startPlaying \(item.filename)#\(item.id.uuidString.prefix(4))")
+        var file: AVAudioFile?
+        if case .file(let url) = item.source {
+            guard let opened = openFile(item, url: url) else { return }
+            file = opened
+        }
+        fader.cancel()   // a tap during a fade-out takes over from it
         onPlaybackStart?()
         audioSession.activate(for: .queue)
         ensureEngineRunning()
         engine.mainMixerNode.outputVolume = normalVolume
         cancelDecode()
         switch item.source {
-        case .file(let url):
-            guard let scheduled = scheduleFile(item, url: url, on: activePlayer, startNow: true) else { return }
+        case .file:
+            guard let file else { return }
+            let scheduled = schedule(file, for: item, on: activePlayer, startNow: true)
             activeScheduleID = scheduled.id
             commitCurrent(item, duration: scheduled.duration)
             preloadNext(after: item.id)
@@ -478,10 +484,19 @@ final class PlaybackEngine {
     /// the track's duration, or nil if the file couldn't be opened.
     private func scheduleFile(_ item: QueueItem, url: URL, on player: AVAudioPlayerNode,
                               startNow: Bool) -> ScheduledFile? {
+        openFile(item, url: url).map { schedule($0, for: item, on: player, startNow: startNow) }
+    }
+
+    private func openFile(_ item: QueueItem, url: URL) -> AVAudioFile? {
         guard let file = try? AVAudioFile(forReading: url) else {
             ptLog("schedule FAILED to open \(item.filename)")
             return nil
         }
+        return file
+    }
+
+    private func schedule(_ file: AVAudioFile, for item: QueueItem, on player: AVAudioPlayerNode,
+                          startNow: Bool) -> ScheduledFile {
         let format = file.processingFormat
         let scheduleID = beginSchedule(item, on: player, format: format)
         player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
@@ -636,19 +651,23 @@ final class PlaybackEngine {
         return Float(pow(10.0, db / 20.0))
     }
 
+    /// Put the track after `id` on standby, ready for a gapless swap. A file that
+    /// won't open is passed over for the one after it — `advance` skips it the same
+    /// way — so a dead file in the middle of a set doesn't cost the next track its
+    /// gapless start.
     private func preloadNext(after id: UUID) {
-        guard let next = queue.item(after: id) else {
-            preload = nil
-            return
+        preload = nil
+        var candidate = queue.item(after: id)
+        while let next = candidate {
+            // Only file items preload gaplessly on standby. Media items are decoded
+            // and scheduled at advance() time (no gapless).
+            guard case .file(let url) = next.source else { return }
+            if let scheduled = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) {
+                preload = Preload(itemID: next.id, schedule: scheduled)
+                return
+            }
+            candidate = queue.item(after: next.id)
         }
-        // Only file items preload gaplessly on standby. Media items are decoded and
-        // scheduled at advance() time (no gapless), so clear any prior preload.
-        guard case .file(let url) = next.source,
-              let scheduled = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
-            preload = nil
-            return
-        }
-        preload = Preload(itemID: next.id, schedule: scheduled)
     }
 
     /// Called (on main) when a scheduled file finishes. Only the audible
@@ -681,43 +700,47 @@ final class PlaybackEngine {
         // that completion advances a second time and skips the new track.
         activeScheduleID = 0
 
-        guard let next = queue.item(after: currentID) else {
-            ptLog("advance current=\(currentID.uuidString.prefix(4)) next=nil → stop | queue: \(queue.debugOrder)")
-            stop()                       // queue exhausted
+        // Walk forward to the first track that will play. A file that can't be
+        // opened — renamed, deleted, its folder's access lapsed — is skipped
+        // rather than ending the set; a library track that fails to decode is
+        // skipped the same way (see handleMediaDecodeFailure).
+        var candidate = queue.item(after: currentID)
+        while let next = candidate {
+            ptLog("advance current=\(currentID.uuidString.prefix(4)) next=\(next.filename)#\(next.id.uuidString.prefix(4)) preloaded=\(preload?.itemID.uuidString.prefix(4) ?? "nil") | queue: \(queue.debugOrder)")
+            switch next.source {
+            case .file(let url):
+                // Whatever is on standby, if it is this track; otherwise schedule it
+                // there now (a queue edit since the preload).
+                let scheduled: ScheduledFile
+                if let ready = preload, ready.itemID == next.id {
+                    scheduled = ready.schedule
+                } else if let fresh = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) {
+                    scheduled = fresh
+                } else {
+                    candidate = queue.item(after: next.id)
+                    continue
+                }
+                preload = nil                         // consumed: it is the active deck now
+                swap(&activePlayer, &standbyPlayer)   // standby (holding `next`) becomes active
+                activeScheduleID = scheduled.id
+                engine.mainMixerNode.outputVolume = normalVolume
+                activePlayer.play()
+                commitCurrent(next, duration: scheduled.duration)
+                preloadNext(after: next.id)
+            case .mediaLibrary(let ref):
+                // No gapless for media: reuse the just-stopped active deck and decode
+                // asynchronously. Any stale preload on standby is overwritten by the
+                // next preloadNext.
+                preload = nil
+                engine.mainMixerNode.outputVolume = normalVolume
+                commitCurrent(next, duration: ref.duration)
+                startMediaPlayback(next, ref: ref, on: activePlayer)
+                preloadNext(after: next.id)
+            }
             return
         }
-        ptLog("advance current=\(currentID.uuidString.prefix(4)) next=\(next.filename)#\(next.id.uuidString.prefix(4)) preloaded=\(preload?.itemID.uuidString.prefix(4) ?? "nil") | queue: \(queue.debugOrder)")
-
-        switch next.source {
-        case .file(let url):
-            // Whatever is on standby, if it is this track; otherwise schedule it
-            // there now (a queue edit since the preload).
-            let scheduled: ScheduledFile
-            if let ready = preload, ready.itemID == next.id {
-                scheduled = ready.schedule
-            } else {
-                guard let fresh = scheduleFile(next, url: url, on: standbyPlayer, startNow: false) else {
-                    stop(); return
-                }
-                scheduled = fresh
-            }
-            preload = nil                         // consumed: it is the active deck now
-            swap(&activePlayer, &standbyPlayer)   // standby (holding `next`) becomes active
-            activeScheduleID = scheduled.id
-            engine.mainMixerNode.outputVolume = normalVolume
-            activePlayer.play()
-            commitCurrent(next, duration: scheduled.duration)
-            preloadNext(after: next.id)
-        case .mediaLibrary(let ref):
-            // No gapless for media: reuse the just-stopped active deck and decode
-            // asynchronously. Any stale preload on standby is overwritten by the
-            // next preloadNext.
-            preload = nil
-            engine.mainMixerNode.outputVolume = normalVolume
-            commitCurrent(next, duration: ref.duration)
-            startMediaPlayback(next, ref: ref, on: activePlayer)
-            preloadNext(after: next.id)
-        }
+        ptLog("advance current=\(currentID.uuidString.prefix(4)) next=nil → stop | queue: \(queue.debugOrder)")
+        stop()                       // queue exhausted
     }
 
     private func finishFadeStop() {
