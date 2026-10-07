@@ -55,6 +55,21 @@ final class RemoteQueue {
     /// buttons on the Remote Control screen. Shares this link.
     @ObservationIgnored let audio: RemoteAudioControl
 
+    /// Sends the receiver tracks it doesn't have. Shares this link.
+    @ObservationIgnored let files: RemoteFileSender
+
+    /// What each add batch in flight was, by request ref, oldest first — the
+    /// receiver answers batches in the order they were sent. Kept so the requests
+    /// it couldn't find can be traced back to files on this phone.
+    @ObservationIgnored private var pendingAdds: [[Int: PendingAdd]] = []
+    @ObservationIgnored private var nextRef = 1
+
+    private struct PendingAdd {
+        let localURL: URL?
+        let relativePath: String?
+        let title: String
+    }
+
     /// Handle ↔ local UUID, pruned to the live rows on each snapshot.
     @ObservationIgnored private var localIDs: [RowHandle: UUID] = [:]
     @ObservationIgnored private var handles: [UUID: RowHandle] = [:]
@@ -66,6 +81,7 @@ final class RemoteQueue {
     init(link: PeerLink) {
         self.link = link
         self.audio = RemoteAudioControl(link: link)
+        self.files = RemoteFileSender(link: link)
         link.onReceive = { [weak self] message in self?.handle(message) }
         link.onConnected = { [weak self] _ in
             guard let self else { return }
@@ -95,6 +111,8 @@ final class RemoteQueue {
         lastPlaybackSeq = 0
         lastProgressSeq = 0
         audio.clear()
+        pendingAdds = []
+        files.linkDropped()
     }
 
     // MARK: - Read-throughs for the UI
@@ -153,7 +171,13 @@ final class RemoteQueue {
             lastProgressSeq = progress.seq
             progressBase = (progress.elapsed, Date())
         case .addTrackResult(_, let failed):
+            // An older receiver, which answers without naming the misses.
+            if !pendingAdds.isEmpty { pendingAdds.removeFirst() }
             noteAddResult(failed: failed)
+        case .addTracksOutcome(let outcome):
+            noteOutcome(outcome)
+        case .fileResult(let result):
+            files.handle(result)
         case .audioSettings(let settings):
             audio.apply(settings)
         case .requestPlay, .stopWithFade, .resumeFromFade,
@@ -161,7 +185,7 @@ final class RemoteQueue {
              .setEQEnabled, .setEQBand, .setEQBandEnabled, .setEQPreset, .resetEQ,
              .setVolume, .requestAudioSettings,
              .setDeclickEnabled, .setDehumEnabled, .setDeclick, .setDehum,
-             .resetDeclick, .resetDehum:
+             .resetDeclick, .resetDehum, .fileStart, .fileEnd, .fileCancel:
             break   // not consumed by the sender
         case .goodbye:
             break   // PeerLink acts on it (stops auto-reconnect); the mirror clears
@@ -256,15 +280,32 @@ final class RemoteQueue {
 
     /// Surface a brief notice when the receiver couldn't resolve some adds. Runs on
     /// main (PeerLink delivers on main); auto-clears after a few seconds.
-    private func noteAddResult(failed: Int) {
+    private func noteAddResult(failed: Int, reason: String = "not found on the receiver") {
         guard failed > 0 else { return }
         let notice = failed == 1
-            ? "1 track couldn’t be added — not found on the receiver."
-            : "\(failed) tracks couldn’t be added — not found on the receiver."
+            ? "1 track couldn’t be added — \(reason)."
+            : "\(failed) tracks couldn’t be added — \(reason)."
         addFailureNotice = notice
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
             if self?.addFailureNotice == notice { self?.addFailureNotice = nil }
         }
+    }
+
+    /// The receiver named the adds it couldn't find. Those that are files here are
+    /// offered for sending across; the rest (Music-library tracks, or a receiver
+    /// with nowhere to put files) are reported as before.
+    private func noteOutcome(_ outcome: AddTracksOutcome) {
+        let batch = pendingAdds.isEmpty ? [:] : pendingAdds.removeFirst()
+        let sendable = outcome.missing.sorted().compactMap { ref -> RemoteFileSender.Candidate? in
+            guard let add = batch[ref], let url = add.localURL, let path = add.relativePath else { return nil }
+            return RemoteFileSender.Candidate(url: url, relativePath: path, title: add.title)
+        }
+        guard outcome.acceptsFiles else {
+            return noteAddResult(failed: outcome.missing.count,
+                                 reason: "not on the receiver, and it has no music folder to send them to")
+        }
+        noteAddResult(failed: outcome.missing.count - sendable.count)
+        files.propose(sendable)
     }
 
     // MARK: - Outbound intents (commands)
@@ -293,9 +334,25 @@ final class RemoteQueue {
         guard !removed.isEmpty else { return }
         link.send(.removeItems(itemIDs: removed))
     }
-    func addTracks(_ requests: [TrackAddRequest]) {
+    /// `localFiles`, where given, are the files on this phone the requests stand
+    /// for, in the same order — what gets offered for sending if the receiver
+    /// can't find them.
+    func addTracks(_ requests: [TrackAddRequest], localFiles: [URL] = []) {
         guard !requests.isEmpty else { return }
-        link.send(.addTracks(requests))
+        var batch: [Int: PendingAdd] = [:]
+        let numbered = requests.enumerated().map { index, request -> TrackAddRequest in
+            var request = request
+            let ref = nextRef
+            nextRef += 1
+            request.ref = ref
+            let url = index < localFiles.count ? localFiles[index] : nil
+            batch[ref] = PendingAdd(localURL: url, relativePath: request.relativePath,
+                                    title: request.title ?? url?.deletingPathExtension().lastPathComponent
+                                        ?? request.relativePath ?? "Track")
+            return request
+        }
+        pendingAdds.append(batch)
+        link.send(.addTracks(numbered))
     }
 }
 

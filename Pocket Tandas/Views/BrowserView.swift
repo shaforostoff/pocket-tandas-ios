@@ -85,6 +85,7 @@ struct BrowserView: View {
         .onChange(of: browser.fileDirection) { _, _ in arrangeEntries() }
         .onChange(of: metadata.isScanningFolder) { _, _ in arrangeEntries() }
         .onChange(of: metadata.snapshotsVersion) { _, _ in arrangeEntries() }
+        .onChange(of: library.contentsVersion) { _, _ in loadFolder() }
     }
 
     /// Filter + sort the listing for display. While a scan is in flight,
@@ -350,7 +351,7 @@ struct BrowserView: View {
     private func add(_ entry: LibraryEntry) {
         let tracks = tracks(in: entry)
         if mode.isRemoteSend {
-            remoteQueue?.addTracks(tracks.map(trackAddRequest(for:)))
+            remoteQueue?.addTracks(tracks.map(trackAddRequest(for:)), localFiles: tracks.map(\.url))
             return
         }
         queue.enqueue(contentsOf: tracks.map { QueueItem(url: $0.url, trackKey: $0.key) })

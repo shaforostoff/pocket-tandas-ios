@@ -29,6 +29,8 @@ import MediaPlayer
 @Observable
 final class RemoteReceiverCoordinator {
     @ObservationIgnored let link: PeerLink
+    /// Saves tracks the sender sends across, and queues them as they land.
+    @ObservationIgnored let files: RemoteFileReceiver
 
     @ObservationIgnored private let queue: PlayQueue
     @ObservationIgnored private let engine: PlaybackEngine
@@ -94,7 +96,12 @@ final class RemoteReceiverCoordinator {
         self.restoration = restoration
         self.container = container
         self.link = PeerLink(role: .receiver)
+        self.files = RemoteFileReceiver(link: link, library: library)
         link.onReceive = { [weak self] message in self?.handle(message) }
+        link.onFileChunk = { [weak self] id, bytes in self?.files.chunk(id, bytes) }
+        link.onDisconnected = { [weak self] in self?.files.abortAll() }
+        // Delivered on main.
+        files.onSaved = { [weak self] url in MainActor.assumeIsolated { self?.enqueueReceived(url) } }
         link.onConnected = { [weak self] _ in
             // A new sender knows nothing: start describing every row in full again.
             self?.forgetSentText()
@@ -124,6 +131,7 @@ final class RemoteReceiverCoordinator {
         progressTimer?.invalidate()
         progressTimer = nil
         link.stop()
+        files.abortAll()
     }
 
     // MARK: - Observe → broadcast
@@ -446,7 +454,14 @@ final class RemoteReceiverCoordinator {
             restoration.resetDehum()
         case .requestAudioSettings:
             broadcastAudioSettings()
-        case .snapshot, .delta, .playbackState, .progress, .addTrackResult, .audioSettings:
+        case .fileStart(let start):
+            files.start(start)
+        case .fileEnd(let id):
+            files.end(id)
+        case .fileCancel(let id):
+            files.cancel(id)
+        case .snapshot, .delta, .playbackState, .progress, .addTrackResult, .audioSettings,
+             .addTracksOutcome, .fileResult:
             break   // receiver→sender messages; ignored here
         case .goodbye:
             break   // handled in PeerLink
@@ -483,16 +498,19 @@ final class RemoteReceiverCoordinator {
             let resolved = await Task.detached(priority: .userInitiated) {
                 requests.map { resolver.resolve($0) }
             }.value
-            self?.enqueueResolved(resolved, requested: requests.count)
+            self?.enqueueResolved(resolved, requests: requests)
         }
     }
 
     @MainActor
-    private func enqueueResolved(_ resolved: [ResolvedTrack?], requested: Int) {
+    private func enqueueResolved(_ resolved: [ResolvedTrack?], requests: [TrackAddRequest]) {
         guard running else { return }
         var items: [QueueItem] = []
         var files: [MetadataService.Track] = []
-        for track in resolved {
+        var missing: [Int] = []
+        for (track, request) in zip(resolved, requests) {
+            let before = items.count
+            defer { if items.count == before, let ref = request.ref { missing.append(ref) } }
             switch track {
             case .file(let url):
                 let key = StableTrackID.key(for: url, baseURL: library.baseURL)
@@ -515,6 +533,24 @@ final class RemoteReceiverCoordinator {
             metadata.scan(files)                                                               // files only
             metadata.seedMedia(items)                                                          // media only
         }
-        link.send(.addTrackResult(resolved: items.count, failed: requested - items.count))
+        // A sender that numbered its requests learns which ones missed, so it can
+        // offer to send those files across; an older one gets the counts.
+        if requests.allSatisfy({ $0.ref != nil }) {
+            link.send(.addTracksOutcome(AddTracksOutcome(resolved: items.count, missing: missing,
+                                                         acceptsFiles: library.baseURL != nil)))
+        } else {
+            link.send(.addTrackResult(resolved: items.count, failed: requests.count - items.count))
+        }
+    }
+
+    /// A track the sender sent across has been saved: queue it like any add, scan
+    /// its tags, and let an open browser listing pick the new file up.
+    @MainActor
+    private func enqueueReceived(_ url: URL) {
+        guard running else { return }
+        let key = StableTrackID.key(for: url, baseURL: library.baseURL)
+        queue.enqueue(contentsOf: [QueueItem(url: url, trackKey: key)])
+        metadata.scan([(url: url, key: key)])
+        library.noteContentsChanged()
     }
 }

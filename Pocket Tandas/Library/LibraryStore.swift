@@ -18,6 +18,9 @@ import Observation
 final class LibraryStore {
     private(set) var baseURL: URL?
     private(set) var accessError: String?
+    /// Bumped when the app itself adds files under the base folder (a track
+    /// received from a Remote Send phone), so an open listing reloads.
+    private(set) var contentsVersion = 0
 
     @ObservationIgnored private var scopedURL: URL?
     @ObservationIgnored private let bookmarkKey = "baseFolderBookmark"
@@ -62,6 +65,10 @@ final class LibraryStore {
         scopedURL = url
         baseURL = url
         accessError = nil
+    }
+
+    func noteContentsChanged() {
+        contentsVersion += 1
     }
 
     /// Disk listing for a folder (unsorted), keyed against the base folder. The

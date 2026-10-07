@@ -336,6 +336,11 @@ struct RemoteAudioSettings: Codable, Hashable {
 ///
 /// JSON/version-tolerant: every field is optional and `source` defaults to `.file`
 /// (via the custom decoder) so a request from an older sender still decodes.
+///
+/// `ref` is the sender's own number for the request. A receiver that sees one on
+/// every request of a batch answers with AddTracksOutcome, naming the requests it
+/// couldn't find, so the sender can offer to send those files across; without
+/// refs (an older sender) it answers with the bare counts.
 struct TrackAddRequest: Codable, Hashable {
     enum Source: String, Codable { case file, mediaLibrary }
 
@@ -347,10 +352,11 @@ struct TrackAddRequest: Codable, Hashable {
     var year: Int?
     var album: String?              // media: extra MPMediaQuery disambiguator
     var durationHint: TimeInterval? // media: tie-break near-equal-length matches
+    var ref: Int?
 
     init(source: Source = .file, relativePath: String? = nil, artist: String? = nil,
          title: String? = nil, dateText: String? = nil, year: Int? = nil,
-         album: String? = nil, durationHint: TimeInterval? = nil) {
+         album: String? = nil, durationHint: TimeInterval? = nil, ref: Int? = nil) {
         self.source = source
         self.relativePath = relativePath
         self.artist = artist
@@ -359,6 +365,7 @@ struct TrackAddRequest: Codable, Hashable {
         self.year = year
         self.album = album
         self.durationHint = durationHint
+        self.ref = ref
     }
 
     init(from decoder: Decoder) throws {
@@ -373,5 +380,6 @@ struct TrackAddRequest: Codable, Hashable {
         year = try c.decodeIfPresent(Int.self, forKey: .year)
         album = try c.decodeIfPresent(String.self, forKey: .album)
         durationHint = try c.decodeIfPresent(TimeInterval.self, forKey: .durationHint)
+        ref = try c.decodeIfPresent(Int.self, forKey: .ref)
     }
 }

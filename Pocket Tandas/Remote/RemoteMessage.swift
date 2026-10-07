@@ -53,6 +53,12 @@ enum RemoteMessage: Codable {
     case resetDeclick
     case resetDehum
     case requestAudioSettings              // sent only by older builds, on connect
+    // File transfer: a track the receiver couldn't find, sent across to be saved
+    // under the same base-relative path. The bytes travel as PeerLink file frames
+    // between the start and the end; see RemoteFileSender / RemoteFileReceiver.
+    case fileStart(FileTransferStart)
+    case fileEnd(id: Int)
+    case fileCancel(id: Int)
 
     // MARK: Receiver → Sender (state)
     case snapshot(RemoteSnapshot)          // on structural change
@@ -60,6 +66,8 @@ enum RemoteMessage: Codable {
     case playbackState(RemotePlaybackUpdate)  // on engine state change, queue unchanged
     case progress(RemoteProgress)          // on timer
     case addTrackResult(resolved: Int, failed: Int)
+    case addTracksOutcome(AddTracksOutcome)   // ...in place of the above, to a sender that sent refs
+    case fileResult(FileTransferResult)
     case audioSettings(RemoteAudioSettings)   // EQ + volume + restoration, on change
 
     // MARK: Either direction

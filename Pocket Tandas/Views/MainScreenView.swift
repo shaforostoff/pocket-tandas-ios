@@ -88,6 +88,7 @@ struct MainScreenView: View {
         // flip the layout mid-typing (notably large iPads in portrait).
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .environment(browser)
+        .remoteTransferOffer(mode.isRemoteSend ? remoteQueue?.files : nil)
         .onAppear {
             startRemoteIfNeeded()
             beginStayAwakeWindow()
@@ -142,17 +143,20 @@ struct MainScreenView: View {
         }
     }
 
-    /// Everything about the link — status, Disconnect, the peer picker, and the
-    /// sender's add-failure notice — sits directly above the queue it governs.
+    /// Everything about the link — status, Disconnect, the peer picker, files
+    /// being sent across, and the sender's add-failure notice — sits directly
+    /// above the queue it governs.
     /// Each piece carries its own separator, since the connection banner hides
     /// itself once the link has settled.
     @ViewBuilder
     private var remoteBanners: some View {
         if mode.isRemoteSend, let remoteQueue {
             RemoteConnectionView(link: remoteQueue.link, role: .sender)
+            RemoteSendTransferBanner(files: remoteQueue.files)
             remoteNotice
         } else if mode.isRemoteReceive, let receiver {
             RemoteConnectionView(link: receiver.link, role: .receiver)
+            RemoteReceiveTransferBanner(files: receiver.files)
         }
     }
 

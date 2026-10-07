@@ -28,7 +28,9 @@
 //  receiver counts the link as up only once it arrives.
 //
 //  Wire: each frame is [UInt32 big-endian length][UInt8 kind][body]. Kinds are a
-//  heartbeat (empty), hello (identity JSON) and message (a RemoteMessage encoding).
+//  heartbeat (empty), hello (identity JSON), message (a RemoteMessage encoding) and
+//  file (a piece of a track being sent across: [UInt32 BE transfer id][bytes] —
+//  raw, since base64 in JSON would add a third to the slowest thing on the link).
 //  The receiver sends a heartbeat when it has been quiet for a few seconds and the
 //  sender answers each one, so both ends notice a dead link within seconds — the
 //  stream alone can sit open on a peer that has gone out of range.
@@ -85,6 +87,13 @@ final class PeerLink: NSObject {
     /// Invoked on the main thread when the peer drops (or a connection attempt
     /// fails), so mirrored state can be discarded rather than lingering as stale truth.
     @ObservationIgnored var onDisconnected: (() -> Void)?
+    /// Receiver: a piece of a file transfer, delivered on main in order with the
+    /// messages around it — so a transfer's start always lands before its bytes.
+    @ObservationIgnored var onFileChunk: ((Int, Data) -> Void)?
+    /// Sender: everything queued has been handed to the stream. A file transfer
+    /// feeds its next piece from here, which keeps at most a piece or two queued
+    /// and lets a Stop the DJ taps meanwhile go out straight behind it.
+    @ObservationIgnored var onOutboundDrained: (() -> Void)?
 
     // MARK: GATT layout
 
@@ -290,6 +299,20 @@ final class PeerLink: NSObject {
         setState(.idle)
     }
 
+    /// Bytes queued on the channel and not yet written to it.
+    var outboundBacklog: Int { channel?.queuedBytes ?? 0 }
+
+    /// One piece of a file transfer. False when there is no link to send it on.
+    @discardableResult
+    func sendFileChunk(transfer id: Int, bytes: Data) -> Bool {
+        guard let channel else { return false }
+        var body = Data(capacity: 4 + bytes.count)
+        withUnsafeBytes(of: UInt32(truncatingIfNeeded: id).bigEndian) { body.append(contentsOf: $0) }
+        body.append(bytes)
+        channel.send(kind: .file, body: body, droppable: false)
+        return true
+    }
+
     func send(_ message: RemoteMessage) {
         guard let channel, let data = message.encoded() else { return }
         // Position updates are superseded by the next one within seconds, so one
@@ -347,6 +370,10 @@ final class PeerLink: NSObject {
             guard let self, let framed else { return }
             self.handleFrame(kind: kind, body: body, on: framed)
         }
+        framed.onDrained = { [weak self, weak framed] in
+            guard let self, let framed, framed === self.channel else { return }
+            self.onOutboundDrained?()
+        }
         framed.onClose = { [weak self, weak framed] in
             guard let self, let framed else { return }
             if framed === self.channel {
@@ -378,6 +405,18 @@ final class PeerLink: NSObject {
                     // The peer is leaving deliberately — don't chase it.
                     if case .goodbye = message { self.forgetPreferred() }
                     self.onReceive?(message)
+                }
+            }
+        case .file:
+            guard framed === channel, body.count >= 4 else { return }
+            let id = Int(body.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
+            let bytes = body.dropFirst(4)
+            // Through the decode queue too, purely to stay in order behind the
+            // message that announced the transfer.
+            decodeQueue.async { [weak self] in
+                DispatchQueue.main.async {
+                    guard let self, framed === self.channel else { return }
+                    self.onFileChunk?(id, Data(bytes))
                 }
             }
         }
@@ -879,6 +918,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
         case heartbeat = 0
         case hello = 1
         case message = 2
+        case file = 3
     }
 
     /// A queue snapshot is the largest thing sent; anything claiming to be bigger
@@ -887,7 +927,12 @@ private final class FramedChannel: NSObject, StreamDelegate {
 
     var onFrame: ((Kind, Data) -> Void)?
     var onClose: (() -> Void)?
+    /// The outbox has just emptied. Posted, never called from inside send(), so a
+    /// handler that sends again can't recurse.
+    var onDrained: (() -> Void)?
     private(set) var lastInbound = Date()
+    /// Bytes in the outbox not yet written.
+    private(set) var queuedBytes = 0
     private(set) var lastOutbound = Date()
 
     private let l2cap: CBL2CAPChannel
@@ -915,6 +960,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
         frame.append(kind.rawValue)
         frame.append(body)
         outbox.append(frame)
+        queuedBytes += frame.count
         lastOutbound = Date()
         pump()
     }
@@ -928,6 +974,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
             stream.remove(from: .main, forMode: .common)
         }
         outbox = []
+        queuedBytes = 0
     }
 
     func stream(_ stream: Stream, handle event: Stream.Event) {
@@ -944,6 +991,15 @@ private final class FramedChannel: NSObject, StreamDelegate {
 
     private func pump() {
         let output = l2cap.outputStream!
+        let hadBacklog = !outbox.isEmpty
+        defer {
+            if hadBacklog, outbox.isEmpty, !closed {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, !self.closed, self.outbox.isEmpty else { return }
+                    self.onDrained?()
+                }
+            }
+        }
         while !closed, output.hasSpaceAvailable, let frame = outbox.first {
             let written = frame.withUnsafeBytes { raw -> Int in
                 let base = raw.bindMemory(to: UInt8.self).baseAddress!
@@ -956,6 +1012,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
             }
             if written == 0 { return }
             outOffset += written
+            queuedBytes -= written
             if outOffset == frame.count {
                 outbox.removeFirst()
                 outOffset = 0
