@@ -250,6 +250,12 @@ final class PlaybackEngine {
     private func wireSessionEvents() {
         audioSession.onInterruptionBegan = { [weak self] in self?.handleInterruptionBegan() }
         audioSession.onInterruptionEnded = { [weak self] resume in self?.handleInterruptionEnded(shouldResume: resume) }
+        #if os(iOS)
+        // The sound system's cable pulled: hold the deck rather than carry on out
+        // of the phone's own speaker, which is where iOS sends it next. Same as an
+        // interruption, except nothing will say "resume" — the DJ does.
+        audioSession.onOutputLost = { [weak self] in self?.handleInterruptionBegan() }
+        #endif
         #if os(macOS)
         audioSession.onMainDeviceChanged = { [weak self] in self?.applyOutputDeviceChange() }
         #endif

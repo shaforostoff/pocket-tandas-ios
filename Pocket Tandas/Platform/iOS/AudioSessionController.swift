@@ -46,6 +46,9 @@ final class AudioSessionController {
     @ObservationIgnored var onInterruptionBegan: (() -> Void)?
     @ObservationIgnored var onInterruptionEnded: ((_ shouldResume: Bool) -> Void)?
     @ObservationIgnored var onRouteChanged: (() -> Void)?
+    /// The output the audio was going to has gone — a cable pulled, a Bluetooth
+    /// speaker out of range. iOS reroutes to the phone's own speaker on its own.
+    @ObservationIgnored var onOutputLost: (() -> Void)?
 
     private let session = AVAudioSession.sharedInstance()
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -155,5 +158,9 @@ final class AudioSessionController {
     private func handleRouteChange(_ note: Notification) {
         refreshRoute()
         onRouteChanged?()
+        if let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+           AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable {
+            onOutputLost?()
+        }
     }
 }
