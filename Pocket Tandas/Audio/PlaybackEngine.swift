@@ -529,7 +529,7 @@ final class PlaybackEngine {
     /// edit mid-stream. There is no gapless preload for media — the first chunk is
     /// started the moment it lands (a small gap is accepted).
     private func startMediaPlayback(_ item: QueueItem, ref: MediaRef, on player: AVAudioPlayerNode) {
-        guard let assetURL = ref.assetURL else {
+        guard let assetURL = ref.assetURL ?? Self.lookUpAssetURL(ref) else {
             ptLog("media \(item.filename) has no asset URL → skip")
             handleMediaDecodeFailure(for: item.id)
             return
@@ -583,6 +583,18 @@ final class PlaybackEngine {
         }
         if startNow { player.play() }
         if isLast { noteMediaDecodeFinished(token: token) }
+    }
+
+    /// A library track restored before Music access was granted comes back with
+    /// no asset URL (see PlayQueue.restoreMediaItem). Its persistent id is still
+    /// good on this device, so it is looked up here — the one point the URL is
+    /// needed — rather than written off.
+    private static func lookUpAssetURL(_ ref: MediaRef) -> URL? {
+        #if os(iOS)
+        return MusicLibrary.item(forPersistentID: ref.persistentID)?.assetURL
+        #else
+        return nil
+        #endif
     }
 
     private func handleMediaChunkPlayed(token: Int) {

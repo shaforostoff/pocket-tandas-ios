@@ -243,8 +243,8 @@ final class PlayQueue {
     /// library index. A hit re-resolves the asset URL (persistent id is stable on
     /// this device); a miss means the track is genuinely gone and the entry is
     /// dropped. With no index at all — access not granted yet, at cold launch —
-    /// keep a placeholder with a nil asset URL so the queue survives; it resolves
-    /// on first play / once granted.
+    /// keep a placeholder with a nil asset URL so the queue survives; the engine
+    /// looks the URL up when the track is played (PlaybackEngine.lookUpAssetURL).
     private static func restoreMediaItem(_ entry: StoredItem, persistentID pid: UInt64,
                                          index: [UInt64: LibraryMatch]?) -> QueueItem? {
         // What was stored is whatever the row displayed when the queue was saved —
