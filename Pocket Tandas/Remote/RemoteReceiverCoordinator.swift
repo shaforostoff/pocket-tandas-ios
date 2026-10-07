@@ -42,6 +42,7 @@ final class RemoteReceiverCoordinator {
     @ObservationIgnored private var broadcastScheduled = false
     @ObservationIgnored private var playbackBroadcastScheduled = false
     @ObservationIgnored private var settingsBroadcastScheduled = false
+    @ObservationIgnored private var lastSettingsBroadcast = Date.distantPast
     @ObservationIgnored private var progressTimer: Timer?
     @ObservationIgnored private var running = false
 
@@ -210,10 +211,17 @@ final class RemoteReceiverCoordinator {
         }
     }
 
+    /// A slider drag on the sender lands here once per movement, and the sender
+    /// holds every echo back until the drag settles anyway. So the echo goes out at
+    /// most this often. Whatever changes meanwhile is read when it fires, so the
+    /// last value of a drag is never lost.
+    @ObservationIgnored private static let settingsEchoInterval: TimeInterval = 0.25
+
     private func scheduleSettingsBroadcast() {
         guard !settingsBroadcastScheduled else { return }
         settingsBroadcastScheduled = true
-        DispatchQueue.main.async { [weak self] in
+        let wait = max(0, Self.settingsEchoInterval - Date().timeIntervalSince(lastSettingsBroadcast))
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
             guard let self else { return }
             self.settingsBroadcastScheduled = false
             self.broadcastAudioSettings()
@@ -271,6 +279,7 @@ final class RemoteReceiverCoordinator {
     }
 
     private func broadcastAudioSettings() {
+        lastSettingsBroadcast = Date()
         link.send(.audioSettings(RemoteAudioSettings(eqEnabled: equalizer.isEnabled,
                                                      bands: equalizer.bands,
                                                      volume: engine.masterVolume,

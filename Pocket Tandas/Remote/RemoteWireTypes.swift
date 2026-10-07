@@ -245,10 +245,76 @@ struct RemoteAudioSettings: Codable, Hashable {
         self.seq = seq
     }
 
+    /// A band as it crosses the wire: only what the DJ edits. The name, kind,
+    /// caption and Hz bounds are fixed by the band table both phones carry, and
+    /// they were most of every broadcast — one of which echoes each slider
+    /// movement — so they stay home and the sender fills them in by id. An older
+    /// receiver still sends whole bands, and their own fields are kept.
+    ///
+    /// Every field is optional, so a band missing any of them still decodes, to the
+    /// same defaults EQBand's own decoder uses.
+    private struct WireBand: Codable {
+        var id: Int
+        var frequency: Float?
+        var bandwidth: Float?
+        var gain: Float?
+        var isEnabled: Bool?
+        var name: String?
+        var kind: EQBandKind?
+        var caption: String?
+        var minFrequency: Float?
+        var maxFrequency: Float?
+
+        init(_ band: EQBand) {
+            id = band.id
+            frequency = band.frequency
+            bandwidth = band.bandwidth
+            gain = band.gain
+            isEnabled = band.isEnabled
+        }
+
+        func band(table: [EQBand]) -> EQBand {
+            let fixed = table.first { $0.id == id }
+            let low = minFrequency ?? fixed?.minFrequency ?? 20
+            let high = max(low, maxFrequency ?? fixed?.maxFrequency ?? 20000)
+            return EQBand(id: id, name: name ?? fixed?.name ?? "",
+                          kind: kind ?? fixed?.kind ?? .peak,
+                          caption: caption ?? fixed?.caption ?? "",
+                          frequency: frequency ?? 1000, bandwidth: bandwidth ?? 1.0,
+                          gain: gain ?? 0, isEnabled: isEnabled ?? true,
+                          frequencyRange: low...high)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case eqEnabled, bands, volume, declickEnabled, dehumEnabled, declick, dehum,
+             dehumLines, scoutPhase, declickLatency, seq
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(eqEnabled, forKey: .eqEnabled)
+        try c.encode(bands.map(WireBand.init), forKey: .bands)
+        try c.encode(volume, forKey: .volume)
+        try c.encode(declickEnabled, forKey: .declickEnabled)
+        try c.encode(dehumEnabled, forKey: .dehumEnabled)
+        try c.encode(declick, forKey: .declick)
+        try c.encode(dehum, forKey: .dehum)
+        try c.encode(dehumLines, forKey: .dehumLines)
+        try c.encode(scoutPhase, forKey: .scoutPhase)
+        try c.encode(declickLatency, forKey: .declickLatency)
+        try c.encode(seq, forKey: .seq)
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? true
-        bands = try c.decodeIfPresent([EQBand].self, forKey: .bands) ?? []
+        if let wire = try c.decodeIfPresent([WireBand].self, forKey: .bands) {
+            let table = Equalizer.defaultBands()
+            bands = wire.map { $0.band(table: table) }
+        } else {
+            bands = []
+        }
         volume = try c.decodeIfPresent(Float.self, forKey: .volume) ?? 1.0
         declickEnabled = try c.decodeIfPresent(Bool.self, forKey: .declickEnabled) ?? false
         dehumEnabled = try c.decodeIfPresent(Bool.self, forKey: .dehumEnabled) ?? false
