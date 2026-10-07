@@ -434,6 +434,12 @@ final class PlaybackEngine {
             commitCurrent(item, duration: scheduled.duration)
             preloadNext(after: item.id)
         case .mediaLibrary(let ref):
+            // Silence whatever the deck still holds — a track fading out, or a
+            // paused one — and retire its token, since the stream's own token only
+            // exists once the first chunk lands. Until then a completion from the
+            // old schedule would match and advance straight past this track.
+            activePlayer.stop()
+            activeScheduleID = 0
             // Commit to the track now; audio begins when the async decode lands.
             commitCurrent(item, duration: ref.duration)
             startMediaPlayback(item, ref: ref, on: activePlayer)
@@ -669,6 +675,11 @@ final class PlaybackEngine {
         ensureEngineRunning()
         cancelDecode()
         activePlayer.stop()
+        // Stopping a deck mid-track (a skip) fires its completion with the token
+        // that is still active. A file next replaces the token below, but a media
+        // stream only gets one when its first chunk lands — so retire it here, or
+        // that completion advances a second time and skips the new track.
+        activeScheduleID = 0
 
         guard let next = queue.item(after: currentID) else {
             ptLog("advance current=\(currentID.uuidString.prefix(4)) next=nil → stop | queue: \(queue.debugOrder)")
