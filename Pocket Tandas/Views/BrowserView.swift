@@ -344,62 +344,48 @@ struct BrowserView: View {
         navigate(to: entry.url)
     }
 
+    /// Swipe-to-add. Remote Send routes the tracks to the receiver as requests
+    /// instead of enqueuing on this device (the receiver honours its own insert
+    /// anchor and resolves each one to a local file).
     private func add(_ entry: LibraryEntry) {
-        // Remote Send: route adds to the receiver as track requests instead of
-        // enqueuing on this device (the receiver honours its own insert anchor).
+        let tracks = tracks(in: entry)
         if mode.isRemoteSend {
-            addToRemote(entry)
+            remoteQueue?.addTracks(tracks.map(trackAddRequest(for:)))
             return
         }
-        switch entry.kind {
-        case .audio:
-            guard let key = entry.trackKey else { return }
-            queue.enqueue(QueueItem(url: entry.url, trackKey: key))
-        case .playlist:
-            let urls = PlaylistParser.parse(playlistURL: entry.url)
-            queue.enqueue(contentsOf: urls.map {
-                QueueItem(url: $0, trackKey: StableTrackID.key(for: $0, baseURL: library.baseURL))
-            })
-            // Scan the referenced tracks' metadata (doesn't disturb folder scan).
-            metadata.scan(urls: urls, baseURL: library.baseURL)
-        case .folder:
-            // The folder's immediate audio files only — no recursion, and any
-            // playlists inside are ignored. Ordered by the browser's active sort;
-            // metadata sorts fall back to filename for tracks not yet scanned.
-            let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
-            let tracks = DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
-                                                 metadata: { snapshot(for: $0) })
-                .compactMap(\.track)
-            queue.enqueue(contentsOf: tracks.map { QueueItem(url: $0.url, trackKey: $0.key) })
-            metadata.scan(tracks)
-        }
+        queue.enqueue(contentsOf: tracks.map { QueueItem(url: $0.url, trackKey: $0.key) })
+        // A playlist's or another folder's tracks may never have been scanned (a
+        // single file is from the folder on screen, which is). This doesn't
+        // disturb the folder scan.
+        if entry.kind != .audio { metadata.scan(tracks) }
     }
 
-    /// Remote Send: turn a swiped entry into TrackAddRequests and send them to the
-    /// receiver. Folders/playlists expand to their audio tracks in the browser's
-    /// current order; the receiver resolves each to a local file.
-    private func addToRemote(_ entry: LibraryEntry) {
-        guard let remoteQueue else { return }
+    /// The tracks a swiped entry stands for, in order: the file itself; a
+    /// playlist's tracks in its own order; or a folder's immediate audio files —
+    /// no recursion, playlists inside ignored — in the browser's active sort, where
+    /// metadata sorts fall back to filename for tracks not yet scanned.
+    private func tracks(in entry: LibraryEntry) -> [MetadataService.Track] {
         switch entry.kind {
         case .audio:
-            remoteQueue.addTracks([trackAddRequest(for: entry.url)])
+            return entry.track.map { [$0] } ?? []
         case .playlist:
-            let urls = PlaylistParser.parse(playlistURL: entry.url)
-            remoteQueue.addTracks(urls.map(trackAddRequest(for:)))
+            return PlaylistParser.parse(playlistURL: entry.url).map {
+                (url: $0, key: StableTrackID.key(for: $0, baseURL: library.baseURL))
+            }
         case .folder:
             let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
-            let urls = DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
-                                               metadata: { snapshot(for: $0) })
-                .map(\.url)
-            remoteQueue.addTracks(urls.map(trackAddRequest(for:)))
+            return DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
+                                           metadata: { snapshot(for: $0) })
+                .compactMap(\.track)
         }
     }
 
     /// Build a track request from the file's base-relative path plus whatever
     /// metadata is cached locally (the receiver uses it for fallback matching).
-    private func trackAddRequest(for url: URL) -> TrackAddRequest {
-        let relativePath = StableTrackID.relativePath(for: url, baseURL: library.baseURL) ?? url.lastPathComponent
-        let snapshot = metadata.snapshot(for: url, baseURL: library.baseURL)
+    private func trackAddRequest(for track: MetadataService.Track) -> TrackAddRequest {
+        let relativePath = StableTrackID.relativePath(for: track.url, baseURL: library.baseURL)
+            ?? track.url.lastPathComponent
+        let snapshot = metadata.snapshot(forKey: track.key)
         return TrackAddRequest(relativePath: relativePath,
                                artist: snapshot?.artist,
                                title: snapshot?.title,

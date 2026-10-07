@@ -161,13 +161,8 @@ final class MetadataService {
         }
     }
 
-    /// Scan specific URLs (e.g. tracks just added to the queue, or a playlist's
+    /// Scan specific tracks (e.g. ones just added to the queue, or a playlist's
     /// tracks) without disturbing an in-flight folder scan or its scanning flag.
-    @MainActor
-    func scan(urls: [URL], baseURL: URL?) {
-        scan(urls.map { (url: $0, key: StableTrackID.key(for: $0, baseURL: baseURL)) })
-    }
-
     @MainActor
     func scan(_ tracks: [Track]) {
         guard !tracks.isEmpty else { return }
