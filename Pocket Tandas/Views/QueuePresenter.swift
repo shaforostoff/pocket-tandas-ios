@@ -27,6 +27,9 @@ struct QueueRowVM: Identifiable, Hashable {
     let detail: [TrackDisplay.DetailPart]
     let isCurrent: Bool
     let isFading: Bool
+    /// The current track's position is moving — playing or fading out, not paused.
+    /// The row's countdown only needs to tick while it is.
+    let isAdvancing: Bool
     let isAnchor: Bool
 }
 
@@ -55,6 +58,7 @@ struct LocalQueuePresenter: QueuePresenting {
     var rows: [QueueRowVM] {
         let currentID = engine.state.currentItemID
         let fading = engine.state.isFadingOut
+        let advancing = engine.state.isPlaying || fading
         let anchorID = queue.anchorID
         return queue.items.map { item in
             let snapshot = metadata.snapshot(forKey: item.trackKey)
@@ -67,7 +71,8 @@ struct LocalQueuePresenter: QueuePresenting {
             let isCurrent = item.id == currentID
             return QueueRowVM(id: item.id, title: display.titleLine, artist: display.artistLine,
                               detail: display.detailParts, isCurrent: isCurrent,
-                              isFading: isCurrent && fading, isAnchor: item.id == anchorID)
+                              isFading: isCurrent && fading, isAdvancing: isCurrent && advancing,
+                              isAnchor: item.id == anchorID)
         }
     }
 
@@ -99,13 +104,15 @@ struct RemoteQueuePresenter: QueuePresenting {
     var rows: [QueueRowVM] {
         let currentID = remote.currentItemID
         let fading = remote.playback.isFadingOut
+        let advancing = remote.playback.isPlaying || fading
         return remote.items.map { item in
             let isCurrent = item.id == currentID
             // Mirror rows are always merged to full text before they land here; the
             // fallback only covers a row we somehow never learned the name of.
             return QueueRowVM(id: item.id, title: item.title ?? "…", artist: item.artist,
                               detail: TrackDisplay.DetailPart.opaque(item.detail), isCurrent: isCurrent,
-                              isFading: isCurrent && fading, isAnchor: item.isAnchor)
+                              isFading: isCurrent && fading, isAdvancing: isCurrent && advancing,
+                              isAnchor: item.isAnchor)
         }
     }
 

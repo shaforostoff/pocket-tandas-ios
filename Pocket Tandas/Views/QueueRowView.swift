@@ -14,6 +14,8 @@
 //  Playback position isn't an observable property, so the current row ticks via
 //  a TimelineView (~4 Hz), reading elapsed/duration live from the presenter — the
 //  local engine in DJ/Explore, the remote progress broadcast in Remote Send. The
+//  timeline is paused while the deck is (the position isn't moving, and a paused
+//  deck can sit on screen for half an hour redrawing the same number). The
 //  progress fill lives in the row *content* (not in .listRowBackground, which a
 //  List doesn't re-render on a timeline tick) and is made full-width by zeroing
 //  the row insets in QueueView.
@@ -28,7 +30,7 @@ struct QueueRowView: View {
 
     var body: some View {
         if row.isCurrent {
-            TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+            TimelineView(.animation(minimumInterval: 0.25, paused: !row.isAdvancing)) { _ in
                 content(remaining: remainingText, progress: fraction)
             }
         } else {
