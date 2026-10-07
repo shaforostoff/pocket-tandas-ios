@@ -170,10 +170,15 @@ final class MediaTrackDecoder {
         let channels = Int(format.channelCount)
 
         try PCMAssetReader.withAudioBuffers(sample, maximumBuffers: channels) { list, _ in
+            // Bounded by the bytes each channel's buffer actually holds, not only by
+            // the count the sample buffer claims — the same guard the analyser and
+            // the hum scout apply — so a short block can't be read past its end.
+            let delivered = list.map { PCMAssetReader.frameCount(of: $0, channels: 1) }.min() ?? 0
+            let frames = min(totalFrames, delivered)
             var srcOffset = 0
-            while srcOffset < totalFrames {
+            while srcOffset < frames {
                 let copied = copyFrames(from: list, srcOffset: srcOffset,
-                                        frames: totalFrames - srcOffset, to: current)
+                                        frames: frames - srcOffset, to: current)
                 guard copied > 0 else { return }   // no room and no progress possible
                 srcOffset += copied
                 if current.frameLength == current.frameCapacity {
