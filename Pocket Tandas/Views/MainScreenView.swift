@@ -44,9 +44,9 @@ struct MainScreenView: View {
     @State private var browser = BrowserState()
 
     /// Live only in Remote Send: the mirror of the receiver's queue plus the peer
-    /// link. Created eagerly (below) so the local queue never flashes before the
-    /// mirror is wired.
-    @State private var remoteQueue: RemoteQueue?
+    /// link. Made by the launcher before this screen is presented, so the local
+    /// queue never flashes before the mirror is wired.
+    let remoteQueue: RemoteQueue?
     /// Live only in Remote Receive: broadcasts local state and applies commands.
     @State private var receiver: RemoteReceiverCoordinator?
     @State private var startedRemote = false
@@ -56,11 +56,9 @@ struct MainScreenView: View {
     @State private var keepAlive: SilentKeepAlive?
     @State private var stayAwakeTimer: Timer?
 
-    init(mode: AppMode) {
+    init(mode: AppMode, remoteQueue: RemoteQueue? = nil) {
         self.mode = mode
-        if mode == .remoteSend {
-            _remoteQueue = State(initialValue: RemoteQueue(link: PeerLink(role: .sender)))
-        }
+        self.remoteQueue = remoteQueue
     }
 
     var body: some View {

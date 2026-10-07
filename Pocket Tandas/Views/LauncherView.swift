@@ -15,6 +15,11 @@ import SwiftUI
 struct LauncherView: View {
     @Environment(AudioSessionController.self) private var audioSession
     @State private var activeMode: AppMode?
+    /// Remote Send's mirror and peer link, made once when the mode is picked and
+    /// handed to the main screen. Made here rather than in MainScreenView's init,
+    /// which SwiftUI re-runs on every re-render of this view while the screen is
+    /// up — each run built (and threw away) a link of its own.
+    @State private var remoteSendQueue: RemoteQueue?
 
     /// DJ-mode Stop fade-out length, shared with the engine via UserDefaults.
     @AppStorage(PlaybackEngine.fadeOutDurationKey)
@@ -66,14 +71,14 @@ struct LauncherView: View {
             #endif
         }
         #if os(iOS)
-        .fullScreenCover(item: $activeMode) { mode in
-            MainScreenView(mode: mode)
+        .fullScreenCover(item: $activeMode, onDismiss: { remoteSendQueue = nil }) { mode in
+            MainScreenView(mode: mode, remoteQueue: mode == .remoteSend ? remoteSendQueue : nil)
         }
         #else
         // A Mac has no full-screen presentation: the mode takes over the window,
         // which is already the size the browser and queue want.
-        .sheet(item: $activeMode) { mode in
-            MainScreenView(mode: mode)
+        .sheet(item: $activeMode, onDismiss: { remoteSendQueue = nil }) { mode in
+            MainScreenView(mode: mode, remoteQueue: mode == .remoteSend ? remoteSendQueue : nil)
                 .frame(minWidth: 900, minHeight: 600)
         }
         #endif
@@ -185,6 +190,7 @@ struct LauncherView: View {
                 .controlSize(.large)
 
                 Button {
+                    remoteSendQueue = RemoteQueue(link: PeerLink(role: .sender))
                     activeMode = .remoteSend
                 } label: {
                     Label("Remote Control", systemImage: "dot.radiowaves.right")
