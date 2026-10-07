@@ -327,7 +327,7 @@ final class PlaybackEngine {
                    duration: fadeOutDuration,
                    shape: FadeCurve.easedProgress,
                    apply: { [weak self] v in self?.engine.mainMixerNode.outputVolume = v },
-                   completion: { [weak self] in self?.finishFadeStop() })
+                   completion: { [weak self] in self?.stop() })
     }
 
     /// Cancel an in-progress fade-out and ramp the volume back up, continuing
@@ -759,12 +759,6 @@ final class PlaybackEngine {
         }
         ptLog("advance current=\(currentID.uuidString.prefix(4)) next=nil → stop | queue: \(queue.debugOrder)")
         stop()                       // queue exhausted
-    }
-
-    private func finishFadeStop() {
-        ptLog("fade complete → idle")
-        cancelDecode()
-        goIdle()
     }
 
     /// Tear the graph back down to rest. The AVAudioEngine is stopped and the
