@@ -19,7 +19,12 @@
 //  folders browsed this session — and stays off the main actor. The cache is read
 //  ONCE per resolver and folded into a title-keyed index (see MetadataIndex): a
 //  resolver serves a whole batch of requests, and when the two libraries don't
-//  line up every one of them falls through to step 3.
+//  line up every one of them falls through to step 3. Step 4 likewise walks the
+//  base folder once per resolver, not once per request.
+//
+//  All of it touches the disk, so the receiver runs a batch off the main thread
+//  (see RemoteReceiverCoordinator.applyAddTracks): track transitions are driven
+//  from main, and a stalled main thread is silence at the next one.
 //
 
 import Foundation
@@ -42,11 +47,11 @@ struct RemoteTrackResolver {
     var container: ModelContainer?
     var fileManager: FileManager = .default
 
-    /// The step-3 index, built on first use and then shared by every request this
-    /// resolver serves. Boxed in a reference type so it survives the struct being
-    /// copied and can be filled from the non-mutating `resolve`. Main-actor only,
-    /// like the batch that drives it.
-    private let index = MetadataIndexBox()
+    /// The step-3 and step-4 indexes, each built on first use and then shared by
+    /// every request this resolver serves. Boxed in a reference type so they
+    /// survive the struct being copied and can be filled from the non-mutating
+    /// `resolve`. Not locked: a resolver serves one batch, on one task.
+    private let caches = ResolverCaches()
 
     /// Explicit because the private `index` would otherwise make the synthesized
     /// memberwise initializer private too.
@@ -106,7 +111,7 @@ struct RemoteTrackResolver {
     private func resolveByMetadata(_ request: TrackAddRequest, baseURL: URL) -> URL? {
         guard let container, let title = request.title, !title.isEmpty else { return nil }
 
-        var candidates = index.index(for: container).rows(title: title).filter { row in
+        var candidates = caches.metadata(container).rows(title: title).filter { row in
             request.artist == nil || equal(row.artist, request.artist)
         }
         // Year only narrows when several title+artist matches remain.
@@ -123,18 +128,26 @@ struct RemoteTrackResolver {
     }
 
     private func resolveByRecursiveStem(_ stem: String, under root: URL) -> URL? {
-        guard !stem.isEmpty,
-              let enumerator = fileManager.enumerator(at: root,
+        guard !stem.isEmpty else { return nil }
+        return caches.stems { stemIndex(under: root) }[stem.lowercased()]
+    }
+
+    /// Every audio file under `root`, by lowercased filename stem. Where two share
+    /// a stem the first one the walk meets wins — the same file a walk that stopped
+    /// at the first match used to return.
+    private func stemIndex(under root: URL) -> [String: URL] {
+        guard let enumerator = fileManager.enumerator(at: root,
                                                       includingPropertiesForKeys: [.isRegularFileKey],
                                                       options: [.skipsHiddenFiles, .skipsPackageDescendants])
-        else { return nil }
-        let target = stem.lowercased()
+        else { return [:] }
+        var index: [String: URL] = [:]
         for case let url as URL in enumerator {
             let isRegular = (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
             guard isRegular, AudioFileTypes.isAudio(url) else { continue }
-            if url.deletingPathExtension().lastPathComponent.lowercased() == target { return url }
+            let key = url.deletingPathExtension().lastPathComponent.lowercased()
+            if index[key] == nil { index[key] = url }
         }
-        return nil
+        return index
     }
 
     // MARK: - Media source (the receiver's own Music library)
@@ -279,15 +292,24 @@ private final class MetadataIndex {
     }
 }
 
-/// Lazy holder for the index, so a resolver that never reaches step 3 (identical
-/// libraries — the common case) never touches SwiftData at all.
-private final class MetadataIndexBox {
-    private var built: MetadataIndex?
+/// Lazy holder for the indexes, so a resolver that never reaches step 3 or 4
+/// (identical libraries — the common case) never touches SwiftData or walks the
+/// library at all.
+private final class ResolverCaches {
+    private var metadataIndex: MetadataIndex?
+    private var stemIndex: [String: URL]?
 
-    func index(for container: ModelContainer) -> MetadataIndex {
-        if let built { return built }
+    func metadata(_ container: ModelContainer) -> MetadataIndex {
+        if let metadataIndex { return metadataIndex }
         let index = MetadataIndex(container: container)
-        built = index
+        metadataIndex = index
+        return index
+    }
+
+    func stems(_ build: () -> [String: URL]) -> [String: URL] {
+        if let stemIndex { return stemIndex }
+        let index = build()
+        stemIndex = index
         return index
     }
 }

@@ -66,6 +66,9 @@ final class RemoteReceiverCoordinator {
     /// The seq of what the sender is holding, so a delta can name the base it edits.
     /// Zero means we can't know — send the whole queue.
     @ObservationIgnored private var lastSentSeq: UInt64 = 0
+    /// The add batch being resolved, so the next one waits its turn and the queue
+    /// takes them in the order the sender sent them.
+    @ObservationIgnored private var addChain: Task<Void, Never>?
 
     private struct RowText: Equatable {
         let title: String
@@ -404,7 +407,7 @@ final class RemoteReceiverCoordinator {
         case .removeItems(let handles):
             applyRemove(ids: handles.compactMap { itemByHandle[$0] })
         case .addTracks(let requests):
-            Task { @MainActor in self.applyAddTracks(requests) }
+            applyAddTracks(requests)
         case .requestSnapshot:
             // A resync request means the sender can't resolve what it has — describe
             // every row in full again.
@@ -461,15 +464,32 @@ final class RemoteReceiverCoordinator {
     }
 
     /// Resolve each request to a local file and enqueue (honouring the anchor),
-    /// then scan their metadata so the rows fill in. @MainActor for metadata.scan
-    /// and queue mutation; reached via a hop from handle().
-    @MainActor
+    /// then scan their metadata so the rows fill in.
+    ///
+    /// Resolving is off the main thread. It is disk work — and when the two
+    /// libraries don't line up, a walk of the whole base folder — on the phone that
+    /// is playing, where every track transition is driven from main: a stall there
+    /// is silence at the next one. Batches are chained so they still land in the
+    /// order they were sent.
     private func applyAddTracks(_ requests: [TrackAddRequest]) {
         let resolver = RemoteTrackResolver(baseURL: library.baseURL, container: container)
+        let previous = addChain
+        addChain = Task { @MainActor [weak self] in
+            await previous?.value
+            let resolved = await Task.detached(priority: .userInitiated) {
+                requests.map { resolver.resolve($0) }
+            }.value
+            self?.enqueueResolved(resolved, requested: requests.count)
+        }
+    }
+
+    @MainActor
+    private func enqueueResolved(_ resolved: [ResolvedTrack?], requested: Int) {
+        guard running else { return }
         var items: [QueueItem] = []
         var fileURLs: [URL] = []
-        for request in requests {
-            switch resolver.resolve(request) {
+        for track in resolved {
+            switch track {
             case .file(let url):
                 items.append(QueueItem(url: url, trackKey: StableTrackID.key(for: url, baseURL: library.baseURL)))
                 fileURLs.append(url)
@@ -490,6 +510,6 @@ final class RemoteReceiverCoordinator {
             if !fileURLs.isEmpty { metadata.scan(urls: fileURLs, baseURL: library.baseURL) }   // files only
             metadata.seedMedia(items)                                                          // media only
         }
-        link.send(.addTrackResult(resolved: items.count, failed: requests.count - items.count))
+        link.send(.addTrackResult(resolved: items.count, failed: requested - items.count))
     }
 }
