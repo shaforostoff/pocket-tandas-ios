@@ -23,8 +23,16 @@ enum DirectoryLister {
     /// `baseURL` is what each audio entry's cache key is derived against.
     static func rawEntries(in folder: URL, baseURL: URL?) -> [LibraryEntry] {
         let fm = FileManager.default
+        // The modification date and size are what the metadata scan checks each
+        // track's cache entry against, right after this listing and in the same
+        // run-loop turn — which is as long as NSURL keeps a prefetched value. One
+        // bulk read here instead of a stat per file there: 982 files listed then
+        // stat'ed one by one took 55-72 ms, prefetched 22 ms. The size is also what
+        // keys a track outside the base folder (see StableTrackID).
         guard let urls = try? fm.contentsOfDirectory(at: folder,
-                                                     includingPropertiesForKeys: [.isDirectoryKey],
+                                                     includingPropertiesForKeys: [.isDirectoryKey,
+                                                                                  .contentModificationDateKey,
+                                                                                  .fileSizeKey],
                                                      options: [.skipsHiddenFiles]) else {
             return []
         }
