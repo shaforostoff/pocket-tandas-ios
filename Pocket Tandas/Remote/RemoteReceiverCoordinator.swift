@@ -294,13 +294,8 @@ final class RemoteReceiverCoordinator {
         let items = queue.items.map { item -> RemoteQueueItem in
             // Media items carry their own snapshot (seeded at enqueue); fall back to
             // it if the cache hasn't been populated.
-            let snapshot = metadata.snapshot(forKey: item.trackKey) ?? item.mediaSnapshot
-            let display: TrackDisplay
-            if let snapshot, !snapshot.isEmpty {
-                display = TrackDisplay(metadata: snapshot, fallback: item.filename)
-            } else {
-                display = TrackDisplay(filename: item.filename)
-            }
+            let display = TrackDisplay(snapshot: metadata.snapshot(forKey: item.trackKey) ?? item.mediaSnapshot,
+                                       fallback: item.filename)
             let row = RowText(title: display.titleLine, artist: display.artistLine,
                               detail: display.detailLine)
             // Pruning falls out of rebuilding the map from the live queue.

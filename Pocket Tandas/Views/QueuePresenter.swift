@@ -61,13 +61,8 @@ struct LocalQueuePresenter: QueuePresenting {
         let advancing = engine.state.isPlaying || fading
         let anchorID = queue.anchorID
         return queue.items.map { item in
-            let snapshot = metadata.snapshot(forKey: item.trackKey)
-            let display: TrackDisplay
-            if let snapshot, !snapshot.isEmpty {
-                display = TrackDisplay(metadata: snapshot, fallback: item.filename)
-            } else {
-                display = TrackDisplay(filename: item.filename)
-            }
+            let display = TrackDisplay(snapshot: metadata.snapshot(forKey: item.trackKey),
+                                       fallback: item.filename)
             let isCurrent = item.id == currentID
             return QueueRowVM(id: item.id, title: display.titleLine, artist: display.artistLine,
                               detail: display.detailParts, isCurrent: isCurrent,

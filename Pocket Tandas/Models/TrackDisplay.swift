@@ -80,6 +80,17 @@ struct TrackDisplay {
         detailParts = []
     }
 
+    /// Whatever the cache holds for a track, or its filename when that is nothing
+    /// — the queue's rows and the remote receiver's broadcast both show a track
+    /// this way.
+    init(snapshot: TrackMetadataSnapshot?, fallback: String) {
+        if let snapshot, !snapshot.isEmpty {
+            self.init(metadata: snapshot, fallback: fallback)
+        } else {
+            self.init(filename: fallback)
+        }
+    }
+
     /// Build directly from already-resolved lines — used by the queue row, whose
     /// view-model carries the parts, and by the Remote Send mirror through
     /// `DetailPart.opaque`.
