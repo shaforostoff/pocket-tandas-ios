@@ -45,12 +45,7 @@ final class PlayQueue {
     /// Add a track, honouring the insert anchor: when an anchor is set, insert
     /// immediately above it; otherwise append at the end.
     func enqueue(_ item: QueueItem) {
-        if let anchorID, let idx = index(of: anchorID) {
-            items.insert(item, at: idx)
-        } else {
-            items.append(item)
-        }
-        persist()
+        enqueue(contentsOf: [item])
     }
 
     /// Add many at once (e.g. a whole playlist) with a single save. The block
