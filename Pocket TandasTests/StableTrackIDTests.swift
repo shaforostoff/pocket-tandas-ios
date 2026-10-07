@@ -12,6 +12,11 @@
 //  `standardizedPath` below is the reference: the plain `standardizedFileURL`
 //  derivation the fast path replaced. Every case asserts the two agree.
 //
+//  The one deliberate departure from the old derivation is the component
+//  boundary: a sibling folder whose name merely starts with the base's ("Tango 2"
+//  next to "Tango") used to count as inside it. The reference carries that fix
+//  too, and `testSiblingFolderSharingTheBasePrefix` pins it.
+//
 
 import XCTest
 @testable import Pocket_Tandas
@@ -32,6 +37,7 @@ final class StableTrackIDTests: XCTestCase {
         let filePath = url.standardizedFileURL.path
         guard filePath.hasPrefix(basePath) else { return nil }
         let suffix = filePath.dropFirst(basePath.count)
+        guard suffix.isEmpty || suffix.first == "/" || basePath.hasSuffix("/") else { return nil }
         return suffix.drop(while: { $0 == "/" }).isEmpty
             ? url.lastPathComponent
             : String(suffix).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -94,6 +100,17 @@ final class StableTrackIDTests: XCTestCase {
         // A base given without the directory flag must key the same as one with it.
         assertMatchesReference(base.appendingPathComponent("x.mp3"),
                                base: URL(fileURLWithPath: "/Users/dj/Music/Tango"), "non-directory base")
+    }
+
+    /// A folder beside the base whose name starts with the base's is outside it.
+    /// It used to key as " 2/x.mp3", which a saved queue then stored as a path
+    /// under the base that does not exist — and dropped on the next launch.
+    func testSiblingFolderSharingTheBasePrefix() {
+        let sibling = URL(fileURLWithPath: "/Users/dj/Music/Tango 2/x.mp3")
+        XCTAssertNil(StableTrackID.relativePath(for: sibling, baseURL: base))
+        XCTAssertEqual(StableTrackID.key(for: sibling, baseURL: base), "x.mp3|0")
+        assertMatchesReference(sibling, base: base, "sibling")
+        assertMatchesReference(URL(fileURLWithPath: "/Users/dj/Music/TangoX.mp3"), base: base, "prefix file")
     }
 
     /// The base path is remembered between calls, so switching base folders — and

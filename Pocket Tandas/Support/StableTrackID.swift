@@ -51,7 +51,12 @@ enum StableTrackID {
         let basePath = basePath(of: base)
         let filePath = standardizedPath(of: url)
         guard filePath.hasPrefix(basePath) else { return nil }
-        var suffix = filePath.dropFirst(basePath.count).drop(while: { $0 == "/" })
+        let rest = filePath.dropFirst(basePath.count)
+        // A prefix of the path is not the same as a parent folder: "…/Tango 2/x"
+        // starts with "…/Tango" and is not inside it. The prefix has to end on a
+        // component boundary — or be the root, whose path already ends in one.
+        guard rest.isEmpty || rest.first == "/" || basePath.hasSuffix("/") else { return nil }
+        var suffix = rest.drop(while: { $0 == "/" })
         while suffix.last == "/" { suffix = suffix.dropLast() }
         return suffix.isEmpty ? url.lastPathComponent : String(suffix)
     }
