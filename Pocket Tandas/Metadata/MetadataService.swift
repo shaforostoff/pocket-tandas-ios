@@ -63,6 +63,11 @@ final class MetadataService {
     @ObservationIgnored private var analysisFlushScheduled = false
     @ObservationIgnored private let analysisFlushDelay: Duration = .milliseconds(1500)
 
+    /// A track as the scans take it: where it is, and its cache key. Callers that
+    /// already hold the key (the browser derives it once per listing) pass it
+    /// along rather than having it derived again here.
+    typealias Track = (url: URL, key: String)
+
     init(container: ModelContainer) {
         self.container = container
     }
@@ -92,7 +97,7 @@ final class MetadataService {
     @MainActor
     func seedMedia(_ items: [QueueItem]) {
         var changed = false
-        var measurable: [(key: String, url: URL)] = []
+        var measurable: [Track] = []
         for item in items {
             guard item.isMediaLibrary, let snapshot = item.mediaSnapshot else { continue }
             publish(snapshot, forKey: item.trackKey)
@@ -101,7 +106,7 @@ final class MetadataService {
             // queue row reads its BPM and genre from here like any other. Items
             // with no readable asset (DRM, not yet downloaded) have no url and
             // are simply skipped.
-            if let url = item.url { measurable.append((key: item.trackKey, url: url)) }
+            if let url = item.url { measurable.append((url: url, key: item.trackKey)) }
         }
         if changed { snapshotsVersion += 1 }
         resolveAnalysis(for: measurable, as: .standing)
@@ -128,16 +133,16 @@ final class MetadataService {
     /// `isScanningFolder` true until the whole folder is done, and publishes the
     /// results as one batch — never one track at a time.
     @MainActor
-    func scanFolder(urls: [URL], baseURL: URL?) {
+    func scanFolder(_ tracks: [Track]) {
         folderScanTask?.cancel()
         analysis.cancelFolderWork()
-        let pending = urls.isEmpty ? [] : pendingItems(urls: urls, baseURL: baseURL)
+        let pending = tracks.isEmpty ? [] : pendingItems(tracks)
         guard !pending.isEmpty else {
             // Nothing to scan for this folder (empty or fully cached) — but a
             // cached tag scan says nothing about whether the audio was measured,
             // so that pass still has to be offered the folder.
             isScanningFolder = false
-            resolveAnalysis(urls: urls, baseURL: baseURL, as: .folder)
+            resolveAnalysis(for: tracks, as: .folder)
             return
         }
         isScanningFolder = true
@@ -151,7 +156,7 @@ final class MetadataService {
                 self.isScanningFolder = false
                 // After the tags, not beside them: which tracks have a gap worth
                 // measuring is not known until they have been read.
-                self.resolveAnalysis(urls: urls, baseURL: baseURL, as: .folder)
+                self.resolveAnalysis(for: tracks, as: .folder)
             }
         }
     }
@@ -160,29 +165,33 @@ final class MetadataService {
     /// tracks) without disturbing an in-flight folder scan or its scanning flag.
     @MainActor
     func scan(urls: [URL], baseURL: URL?) {
-        guard !urls.isEmpty else { return }
-        let pending = pendingItems(urls: urls, baseURL: baseURL)
+        scan(urls.map { (url: $0, key: StableTrackID.key(for: $0, baseURL: baseURL)) })
+    }
+
+    @MainActor
+    func scan(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        let pending = pendingItems(tracks)
         guard !pending.isEmpty else {
             // Tags already cached — the measuring pass still has to see them.
-            resolveAnalysis(urls: urls, baseURL: baseURL, as: .standing)
+            resolveAnalysis(for: tracks, as: .standing)
             return
         }
         Task { @MainActor in
             await self.performScan(pending)
-            self.resolveAnalysis(urls: urls, baseURL: baseURL, as: .standing)
+            self.resolveAnalysis(for: tracks, as: .standing)
         }
     }
 
-    /// Cache misses / stale entries among `urls`, in input order. Hydrates the
+    /// Cache misses / stale entries among `tracks`, in input order. Hydrates the
     /// in-memory cache for these keys first (lazy, per-folder), so a hit here
     /// reflects the durable store even though it was never bulk-loaded at launch.
     @MainActor
-    private func pendingItems(urls: [URL], baseURL: URL?) -> [(url: URL, key: String, modDate: Date, size: Int)] {
-        // Read each file's key + current identity once.
-        let items = urls.map { url -> (url: URL, key: String, modDate: Date, size: Int) in
-            let key = StableTrackID.key(for: url, baseURL: baseURL)
-            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
-            return (url, key, values?.contentModificationDate ?? .distantPast, values?.fileSize ?? 0)
+    private func pendingItems(_ tracks: [Track]) -> [(url: URL, key: String, modDate: Date, size: Int)] {
+        // Read each file's current identity once.
+        let items = tracks.map { track -> (url: URL, key: String, modDate: Date, size: Int) in
+            let values = try? track.url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            return (track.url, track.key, values?.contentModificationDate ?? .distantPast, values?.fileSize ?? 0)
         }
 
         hydrate(keys: items.map(\.key))
@@ -322,7 +331,7 @@ final class MetadataService {
     /// Nothing has to be undone when a tag turns up later: the snapshot prefers it
     /// on its own, and the measurement simply stops being the one that shows.
     @MainActor
-    private func resolveAnalysis(for items: [(key: String, url: URL)],
+    private func resolveAnalysis(for items: [Track],
                                  as batch: TrackAnalysisQueue.Batch) {
         guard !items.isEmpty else { return }
         let measured = analysisRows(forKeys: items.map(\.key), context: container.mainContext)
@@ -347,13 +356,6 @@ final class MetadataService {
         }
         if changed { snapshotsVersion += 1 }
         analysis.submit(jobs, as: batch)
-    }
-
-    /// The same for a listing, which is held as URLs.
-    @MainActor
-    private func resolveAnalysis(urls: [URL], baseURL: URL?, as batch: TrackAnalysisQueue.Batch) {
-        resolveAnalysis(for: urls.map { (key: StableTrackID.key(for: $0, baseURL: baseURL), url: $0) },
-                        as: batch)
     }
 
     /// One track measured. Buffered rather than published: see `pendingAnalysis`.

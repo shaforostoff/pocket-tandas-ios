@@ -71,7 +71,9 @@ struct BrowserView: View {
         .onChange(of: library.baseURL) { _, newValue in
             navigate(to: newValue)
         }
-        .task(id: browser.currentFolder) {
+        // The base folder too: every entry's cache key is derived against it, so a
+        // new base re-lists even when the folder being shown hasn't moved.
+        .task(id: [browser.currentFolder, library.baseURL]) {
             loadFolder()
         }
         // Everything the arrangement depends on. `snapshotsVersion` stands in for
@@ -95,7 +97,7 @@ struct BrowserView: View {
         entries = DirectoryLister.arrange(rawEntries, filter: browser.fileFilter,
                                           sort: deferSort ? naturalSort : browser.fileSort,
                                           direction: deferSort ? .ascending : browser.fileDirection,
-                                          metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
+                                          metadata: { snapshot(for: $0) })
         displayed = DisplayedListing(folder: browser.currentFolder,
                                      urls: entries.filter { $0.kind == .audio }.map(\.url))
     }
@@ -112,13 +114,18 @@ struct BrowserView: View {
             var seen = Set<URL>()
             rawEntries = PlaylistParser.parse(playlistURL: folder)
                 .filter { seen.insert($0).inserted }
-                .map { LibraryEntry(url: $0, kind: AudioFileTypes.isPlaylist($0) ? .playlist : .audio) }
+                .map { LibraryEntry(url: $0, kind: AudioFileTypes.isPlaylist($0) ? .playlist : .audio,
+                                    baseURL: library.baseURL) }
         } else {
             rawEntries = library.rawEntries(in: folder)
         }
         arrangeEntries()
-        let audioURLs = rawEntries.filter { $0.kind == .audio }.map(\.url)
-        metadata.scanFolder(urls: audioURLs, baseURL: library.baseURL)
+        metadata.scanFolder(rawEntries.compactMap(\.track))
+    }
+
+    /// The cached metadata for an entry, by the key it was listed with.
+    private func snapshot(for entry: LibraryEntry) -> TrackMetadataSnapshot? {
+        entry.trackKey.flatMap { metadata.snapshot(forKey: $0) }
     }
 
     /// Single-row header: back (up a folder, or out to the launcher at the root),
@@ -185,7 +192,7 @@ struct BrowserView: View {
                 } else {
                     List(entries) { entry in
                         BrowserRowView(entry: entry,
-                                       metadata: entry.isFolder ? nil : metadata.snapshot(for: entry.url, baseURL: library.baseURL),
+                                       metadata: snapshot(for: entry),
                                        isPlaying: preListen.current == .file(entry.url))
                             .contentShape(Rectangle())
                             .onTapGesture { tap(entry) }
@@ -346,7 +353,7 @@ struct BrowserView: View {
         }
         switch entry.kind {
         case .audio:
-            let key = StableTrackID.key(for: entry.url, baseURL: library.baseURL)
+            guard let key = entry.trackKey else { return }
             queue.enqueue(QueueItem(url: entry.url, trackKey: key))
         case .playlist:
             let urls = PlaylistParser.parse(playlistURL: entry.url)
@@ -360,13 +367,11 @@ struct BrowserView: View {
             // playlists inside are ignored. Ordered by the browser's active sort;
             // metadata sorts fall back to filename for tracks not yet scanned.
             let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
-            let urls = DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
-                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
-                .map(\.url)
-            queue.enqueue(contentsOf: urls.map {
-                QueueItem(url: $0, trackKey: StableTrackID.key(for: $0, baseURL: library.baseURL))
-            })
-            metadata.scan(urls: urls, baseURL: library.baseURL)
+            let tracks = DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
+                                                 metadata: { snapshot(for: $0) })
+                .compactMap(\.track)
+            queue.enqueue(contentsOf: tracks.map { QueueItem(url: $0.url, trackKey: $0.key) })
+            metadata.scan(tracks)
         }
     }
 
@@ -384,7 +389,7 @@ struct BrowserView: View {
         case .folder:
             let audio = library.rawEntries(in: entry.url).filter { $0.kind == .audio }
             let urls = DirectoryLister.arrange(audio, filter: "", sort: browser.fileSort, direction: browser.fileDirection,
-                                               metadata: { metadata.snapshot(for: $0, baseURL: library.baseURL) })
+                                               metadata: { snapshot(for: $0) })
                 .map(\.url)
             remoteQueue.addTracks(urls.map(trackAddRequest(for:)))
         }

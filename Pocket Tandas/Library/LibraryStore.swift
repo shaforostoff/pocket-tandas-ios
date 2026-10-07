@@ -64,10 +64,10 @@ final class LibraryStore {
         accessError = nil
     }
 
-    /// Disk listing for a folder (unsorted). The browser caches this and sorts
-    /// it purely via DirectoryLister.arrange.
+    /// Disk listing for a folder (unsorted), keyed against the base folder. The
+    /// browser caches this and sorts it purely via DirectoryLister.arrange.
     func rawEntries(in folder: URL) -> [LibraryEntry] {
-        DirectoryLister.rawEntries(in: folder)
+        DirectoryLister.rawEntries(in: folder, baseURL: baseURL)
     }
 
     /// True when `folder` is the base folder (cannot navigate above it).

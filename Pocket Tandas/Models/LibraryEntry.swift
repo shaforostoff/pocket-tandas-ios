@@ -29,6 +29,13 @@ struct LibraryEntry: Identifiable, Hashable {
     /// from 22.0ms to 4.8ms.
     let name: String
 
+    /// The metadata cache key (StableTrackID) for an audio entry, nil for folders
+    /// and playlists — derived once, at listing time, for the same reason as
+    /// `name`. The browser's filter, its sort and every visible row each looked
+    /// it up, and they re-run whenever a scan batch lands; for a track outside the
+    /// base folder each derivation is also a file-size stat.
+    let trackKey: String?
+
     var id: URL { url }
     var isFolder: Bool { kind == .folder }
 
@@ -36,11 +43,15 @@ struct LibraryEntry: Identifiable, Hashable {
     /// folders of their tracks).
     var isNavigable: Bool { kind == .folder || kind == .playlist }
 
-    init(url: URL, kind: EntryKind) {
+    init(url: URL, kind: EntryKind, baseURL: URL?) {
         self.url = url
         self.kind = kind
         self.name = url.lastPathComponent
+        self.trackKey = kind == .audio ? StableTrackID.key(for: url, baseURL: baseURL) : nil
     }
+
+    /// The audio entry as the metadata service takes it.
+    var track: MetadataService.Track? { trackKey.map { (url: url, key: $0) } }
 
     var systemImage: String {
         switch kind {

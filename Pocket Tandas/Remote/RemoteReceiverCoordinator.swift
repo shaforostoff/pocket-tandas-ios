@@ -487,12 +487,13 @@ final class RemoteReceiverCoordinator {
     private func enqueueResolved(_ resolved: [ResolvedTrack?], requested: Int) {
         guard running else { return }
         var items: [QueueItem] = []
-        var fileURLs: [URL] = []
+        var files: [MetadataService.Track] = []
         for track in resolved {
             switch track {
             case .file(let url):
-                items.append(QueueItem(url: url, trackKey: StableTrackID.key(for: url, baseURL: library.baseURL)))
-                fileURLs.append(url)
+                let key = StableTrackID.key(for: url, baseURL: library.baseURL)
+                items.append(QueueItem(url: url, trackKey: key))
+                files.append((url: url, key: key))
             #if os(iOS)
             case .media(let mediaItem):
                 guard let assetURL = mediaItem.assetURL else { continue }
@@ -507,7 +508,7 @@ final class RemoteReceiverCoordinator {
         }
         if !items.isEmpty {
             queue.enqueue(contentsOf: items)
-            if !fileURLs.isEmpty { metadata.scan(urls: fileURLs, baseURL: library.baseURL) }   // files only
+            metadata.scan(files)                                                               // files only
             metadata.seedMedia(items)                                                          // media only
         }
         link.send(.addTrackResult(resolved: items.count, failed: requested - items.count))

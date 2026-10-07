@@ -20,7 +20,8 @@ import Foundation
 
 enum DirectoryLister {
     /// Disk listing only (subfolders, audio, playlists), unsorted/unfiltered.
-    static func rawEntries(in folder: URL) -> [LibraryEntry] {
+    /// `baseURL` is what each audio entry's cache key is derived against.
+    static func rawEntries(in folder: URL, baseURL: URL?) -> [LibraryEntry] {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(at: folder,
                                                      includingPropertiesForKeys: [.isDirectoryKey],
@@ -31,11 +32,11 @@ enum DirectoryLister {
         for url in urls {
             let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDir {
-                entries.append(LibraryEntry(url: url, kind: .folder))
+                entries.append(LibraryEntry(url: url, kind: .folder, baseURL: baseURL))
             } else if AudioFileTypes.isPlaylist(url) {
-                entries.append(LibraryEntry(url: url, kind: .playlist))
+                entries.append(LibraryEntry(url: url, kind: .playlist, baseURL: baseURL))
             } else if AudioFileTypes.isAudio(url) {
-                entries.append(LibraryEntry(url: url, kind: .audio))
+                entries.append(LibraryEntry(url: url, kind: .audio, baseURL: baseURL))
             }
         }
         return entries
@@ -46,7 +47,7 @@ enum DirectoryLister {
                         filter: String,
                         sort: SortOption,
                         direction: SortDirection,
-                        metadata: (URL) -> TrackMetadataSnapshot?) -> [LibraryEntry] {
+                        metadata: (LibraryEntry) -> TrackMetadataSnapshot?) -> [LibraryEntry] {
         var entries = entries
 
         let needle = filter.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -56,7 +57,7 @@ enum DirectoryLister {
             // finds "Aníbal"), matching the locale-aware sort used elsewhere.
             entries = entries.filter { entry in
                 if entry.name.localizedStandardContains(needle) { return true }
-                guard let m = metadata(entry.url) else { return false }
+                guard let m = metadata(entry) else { return false }
                 return [m.title, m.artist, m.genre]
                     .compactMap { $0 }
                     .contains { $0.localizedStandardContains(needle) }
@@ -79,13 +80,13 @@ enum DirectoryLister {
     /// Sort the file entries by the chosen option. Metadata sorts use decorate–
     /// sort–undecorate: each file's snapshot is looked up ONCE up front, so the
     /// lookup runs n times rather than on every one of the O(n log n) comparisons
-    /// — that per-comparison lookup (which recomputes the StableTrackID key and
-    /// probes the dict twice each compare) is what made date/BPM/artist sorts slow
-    /// on large folders versus filename. The name needs no decoration: the entry
-    /// carries it (see LibraryEntry.name).
+    /// — that per-comparison lookup (which probed the dict twice each compare, and
+    /// once recomputed the StableTrackID key too) is what made date/BPM/artist sorts
+    /// slow on large folders versus filename. The name and key need no decoration:
+    /// the entry carries both (see LibraryEntry).
     private static func sortFiles(_ files: [LibraryEntry],
                                   sort: SortOption,
-                                  metadata: (URL) -> TrackMetadataSnapshot?) -> [LibraryEntry] {
+                                  metadata: (LibraryEntry) -> TrackMetadataSnapshot?) -> [LibraryEntry] {
         switch sort {
         case .listed:
             return files   // given order (e.g. a playlist's own order)
@@ -93,7 +94,7 @@ enum DirectoryLister {
             return files.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         case .dateYear, .genre, .bpm, .artist:
             return files
-                .map { (entry: $0, snapshot: metadata($0.url)) }
+                .map { (entry: $0, snapshot: metadata($0)) }
                 .sorted { ascendingOrder($0, $1, sort: sort) }
                 .map(\.entry)
         }
