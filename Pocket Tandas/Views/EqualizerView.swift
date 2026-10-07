@@ -15,7 +15,8 @@
 //  Each band shows only the controls its kind has: the two rails a corner
 //  frequency and a switch, the shelves frequency and gain, the two peaking bands
 //  frequency, gain and Q. Tapping a marker on the curve selects a band and scrolls
-//  to it. Edits apply live to the audio node and persist. A master enable toggle
+//  to it. Double-tapping a slider sends it back to the band's factory value, as
+//  on a mixing desk. Edits apply live to the audio node and persist. A master enable toggle
 //  bypasses the whole unit; the presets at the bottom load the article's three
 //  starting points.
 //
@@ -43,6 +44,11 @@ struct EqualizerView: View {
     @State private var editing: RestorationFilter?
     /// The band whose marker was last tapped on the curve, if any.
     @State private var selected: Int?
+
+    /// Where a double-tapped slider returns to. The factory table, not the last
+    /// preset: the remote panel's bands come from the same table, so the
+    /// positions agree on both ends of the link.
+    private static let factory = Equalizer.defaultBands()
 
     var body: some View {
         NavigationStack {
@@ -178,19 +184,22 @@ struct EqualizerView: View {
 
     @ViewBuilder
     private func bandSection(_ band: EQBand) -> some View {
+        let initial = Self.factory.first { $0.id == band.id } ?? band
         Section {
             // The disable goes on the rows rather than the Section, or a switched
             // -out cut filter would disable its own switch in the header.
             Group {
                 if band.kind.hasGain {
-                    paramRow(title: "Gain", value: String(format: "%+.1f dB", band.gain)) {
+                    paramRow(title: "Gain", value: String(format: "%+.1f dB", band.gain),
+                             reset: { control.setGain(initial.gain, bandID: band.id) }) {
                         Slider(value: Binding(get: { band.gain },
                                               set: { control.setGain($0, bandID: band.id) }),
                                in: Equalizer.gainRange)
                     }
                 }
                 paramRow(title: band.kind.isCut ? "Corner" : "Frequency",
-                         value: frequencyLabel(band.frequency)) {
+                         value: frequencyLabel(band.frequency),
+                         reset: { control.setFrequency(initial.frequency, bandID: band.id) }) {
                     // Log-scaled: musical pitch is logarithmic, so a linear Hz slider
                     // wastes most of its travel on the top octave.
                     Slider(value: Binding(
@@ -203,7 +212,8 @@ struct EqualizerView: View {
                     // while the model and the node keep octaves. Log-scaled like
                     // the frequency slider, and rightwards is narrower, as on every
                     // other EQ a DJ has touched.
-                    paramRow(title: "Q", value: String(format: "%.2f", band.q)) {
+                    paramRow(title: "Q", value: String(format: "%.2f", band.q),
+                             reset: { control.setBandwidth(initial.bandwidth, bandID: band.id) }) {
                         Slider(value: Binding(
                             get: { log10(Double(band.q)) },
                             set: { control.setBandwidth(EQBandwidth.octaves(forQ: Float(pow(10.0, $0))),
@@ -235,6 +245,7 @@ struct EqualizerView: View {
     }
 
     private func paramRow<Content: View>(title: String, value: String,
+                                         reset: @escaping () -> Void,
                                          @ViewBuilder slider: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -243,7 +254,14 @@ struct EqualizerView: View {
                 Text(value).foregroundStyle(.secondary).monospacedDigit()
             }
             slider()
+                // VoiceOver's double tap is "activate", so it gets the reset as
+                // a named action instead.
+                .accessibilityAction(named: "Reset to Default", reset)
         }
+        // The whole row, label included, so a double tap doesn't have to land on
+        // the thin track. Simultaneous, or the slider's own drag would swallow it.
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture(count: 2).onEnded(reset))
     }
 
     private func frequencyLabel(_ hz: Float) -> String {
