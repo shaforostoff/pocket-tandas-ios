@@ -70,13 +70,14 @@ final class RemoteQueue {
         link.onConnected = { [weak self] _ in
             guard let self else { return }
             // Fresh receiver session may restart its seq counter — reset ours so
-            // the first new snapshot isn't rejected, then ask for current state.
+            // the first new snapshot isn't rejected. No need to ask for state: the
+            // receiver sends the queue, its audio settings and the position as soon
+            // as our hello lands, and asking as well had it send them all twice —
+            // every title in the queue included.
             self.lastSnapshotSeq = 0
             self.lastPlaybackSeq = 0
             self.lastProgressSeq = 0
             self.audio.resetSeq()
-            self.link.send(.requestSnapshot)
-            self.link.send(.requestAudioSettings)
         }
         link.onDisconnected = { [weak self] in self?.clear() }
     }

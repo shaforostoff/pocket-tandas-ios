@@ -29,7 +29,7 @@ enum RemoteMessage: Codable {
     case move(itemIDs: [RowHandle], toOffset: Int)
     case removeItems(itemIDs: [RowHandle])
     case addTracks([TrackAddRequest])
-    case requestSnapshot                   // resync on (re)connect
+    case requestSnapshot                   // resync when the mirror stops fitting
     // Audio chain: the sender edits the receiver's EQ / master volume. Band edits
     // carry all three parameters so a dropped intermediate value can't leave the
     // two sides disagreeing about the band.
@@ -52,7 +52,7 @@ enum RemoteMessage: Codable {
     case setDehum(DehumSettings)
     case resetDeclick
     case resetDehum
-    case requestAudioSettings              // resync on (re)connect
+    case requestAudioSettings              // sent only by older builds, on connect
 
     // MARK: Receiver → Sender (state)
     case snapshot(RemoteSnapshot)          // on structural change
