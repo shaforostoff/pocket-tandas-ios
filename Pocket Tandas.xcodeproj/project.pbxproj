@@ -187,7 +187,7 @@
 		EC004156BD2E3158E037828C /* LauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */; };
 		EDD0706A4478BDB1F5373185 /* RestorationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9739488D829648FB3542B387 /* RestorationSettingsView.swift */; };
 		EE724469B6FCEE7735FFAB7F /* key.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0FE44251B77072D157BF8D06 /* key.cpp */; };
-		EE8343CFA19B9C2DCEDF0380 /* PCMAssetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4354162BD24926E589F5762 /* PCMAssetReader.swift */; };
+		EE8343CFA19B9C2DCEDF0380 /* PCMAssetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4994D3AB3530B40A75A1150 /* PCMAssetReader.swift */; };
 		EFEB40888A3BB8CA808A503E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
 		F08A448DB14F8409AC71B513 /* AudioSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51ED43F1BF0AD0EADA70EF50 /* AudioSessionController.swift */; };
 		F397059BB19F718336BEDE26 /* PlaybackControlling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A789455796DA2EC4EB76F57E /* PlaybackControlling.swift */; };
@@ -327,7 +327,6 @@
 		DAEB4CA58A42864EDBA197EC /* MediaAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaAvailability.swift; path = MediaAvailability.swift; sourceTree = "<group>"; };
 		E112487F8DED525D48E18718 /* PlaybackState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackState.swift; path = PlaybackState.swift; sourceTree = "<group>"; };
 		E23540369F03A26D4315C3F2 /* EQButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EQButton.swift; path = EQButton.swift; sourceTree = "<group>"; };
-		E4354162BD24926E589F5762 /* PCMAssetReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCMAssetReader.swift; path = "Pocket Tandas/Audio/PCMAssetReader.swift"; sourceTree = SOURCE_ROOT; };
 		EB774D14B26DCD27A530AB67 /* SortMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SortMenu.swift; path = SortMenu.swift; sourceTree = "<group>"; };
 		EE7648CFBB140C25F62D7B4A /* VolumeButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VolumeButton.swift; path = VolumeButton.swift; sourceTree = "<group>"; };
 		EF264FDE876C3D059EEC95D6 /* StableTrackIDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StableTrackIDTests.swift; path = "Pocket TandasTests/StableTrackIDTests.swift"; sourceTree = SOURCE_ROOT; };
@@ -532,7 +531,6 @@
 				FC484D589ED786605E1B7B1F /* RestorationFilters.swift */,
 				F7C04B609FFC1EBC5EAB5869 /* DehumTrackScout.swift */,
 				9739488D829648FB3542B387 /* RestorationSettingsView.swift */,
-				E4354162BD24926E589F5762 /* PCMAssetReader.swift */,
 				F4994D3AB3530B40A75A1150 /* PCMAssetReader.swift */,
 			);
 			sourceTree = "<group>";
