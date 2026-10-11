@@ -683,7 +683,10 @@ extension PeerLink: CBPeripheralManagerDelegate {
                 return
             }
             ptLog("[PeerLink] \(peer.name) replaces the current link")
+            // close() silences the channel's own onClose, so report the drop here:
+            // a transfer the old sender left half-sent must not outlive it.
             current.close()
+            onDisconnected?()
         }
         let connected = Peer(id: peer.id, displayName: peer.name)
         channel = framed
