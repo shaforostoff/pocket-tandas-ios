@@ -97,11 +97,15 @@ final class PlayQueue {
     /// allowed. Enforcing the pin here, by identity, rather than via the view's
     /// `.moveDisabled`, keeps the `.onMove` offsets in one consistent index space
     /// so `Array.move` can't reorder the wrong element.
+    ///
+    /// The destination is clamped to the queue: a remote sender counts it in its
+    /// mirror, which can be a message behind (rows removed here meanwhile), and an
+    /// offset past the end traps inside `Array.move` — on the phone that is playing.
     func move(fromOffsets source: IndexSet, toOffset destination: Int, pinnedID: QueueItem.ID? = nil) {
         if let pinnedID, let pinnedIndex = index(of: pinnedID), source.contains(pinnedIndex) {
             return
         }
-        items.move(fromOffsets: source, toOffset: destination)
+        items.move(fromOffsets: source, toOffset: min(max(destination, 0), items.count))
         persist()
     }
 

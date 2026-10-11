@@ -56,6 +56,16 @@ final class PlayQueueTests: XCTestCase {
         XCTAssertEqual(q.items.map(\.trackKey), ["c", "a", "b"])
     }
 
+    /// A remote sender's offset can be counted in a mirror that still holds rows
+    /// removed here; it must land at the end, not trap.
+    func testMovePastTheEndLandsLast() {
+        let q = PlayQueue()
+        let a = makeItem("a"), b = makeItem("b"), c = makeItem("c")
+        q.enqueue(a); q.enqueue(b); q.enqueue(c)
+        q.move(fromOffsets: IndexSet(integer: 0), toOffset: 5)
+        XCTAssertEqual(q.items.map(\.trackKey), ["b", "c", "a"])
+    }
+
     func testPinnedTrackCannotBeMoved() {
         let q = PlayQueue()
         let a = makeItem("a"), b = makeItem("b"), c = makeItem("c")
