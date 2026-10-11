@@ -79,6 +79,12 @@ final class PlaybackEngine {
 
     @ObservationIgnored private var pausedReleaseTimer: Timer?
 
+    /// True only while the pause is one an interruption made. An interruption's end
+    /// may say "resume", and that must not start a deck the DJ paused by hand, or
+    /// one held because the sound system's cable was pulled. Cleared by any state
+    /// change, so it can't outlive the pause it describes.
+    @ObservationIgnored private var pausedByInterruption = false
+
     /// The block-based observer's token. Held so it can be withdrawn: the block
     /// form keeps the closure alive on the centre until the token is removed, and
     /// `[weak self]` only stops it reaching a dead engine — it does not unregister
@@ -248,13 +254,13 @@ final class PlaybackEngine {
     }
 
     private func wireSessionEvents() {
-        audioSession.onInterruptionBegan = { [weak self] in self?.handleInterruptionBegan() }
+        audioSession.onInterruptionBegan = { [weak self] in self?.handleInterruptionBegan(resumable: true) }
         audioSession.onInterruptionEnded = { [weak self] resume in self?.handleInterruptionEnded(shouldResume: resume) }
         #if os(iOS)
         // The sound system's cable pulled: hold the deck rather than carry on out
         // of the phone's own speaker, which is where iOS sends it next. Same as an
         // interruption, except nothing will say "resume" — the DJ does.
-        audioSession.onOutputLost = { [weak self] in self?.handleInterruptionBegan() }
+        audioSession.onOutputLost = { [weak self] in self?.handleInterruptionBegan(resumable: false) }
         #endif
         #if os(macOS)
         audioSession.onMainDeviceChanged = { [weak self] in self?.applyOutputDeviceChange() }
@@ -392,6 +398,7 @@ final class PlaybackEngine {
 
     private func setState(_ newState: PlaybackState) {
         state = newState
+        pausedByInterruption = false
         // A pause leaves the graph standing but nothing moving: the hum detector
         // has nothing to report until audio flows again, and the clock that
         // releases a forgotten pause starts here.
@@ -795,11 +802,12 @@ final class PlaybackEngine {
 
     // MARK: - Interruptions / route changes
 
-    private func handleInterruptionBegan() {
+    private func handleInterruptionBegan(resumable: Bool) {
         switch state {
         case .playing(let id):
             activePlayer.pause()
             setState(.paused(id))
+            pausedByInterruption = resumable
         case .fadingOut:
             stop()
         default:
@@ -808,7 +816,7 @@ final class PlaybackEngine {
     }
 
     private func handleInterruptionEnded(shouldResume: Bool) {
-        guard shouldResume, case .paused = state else { return }
+        guard shouldResume, pausedByInterruption, case .paused = state else { return }
         resume()
     }
 
