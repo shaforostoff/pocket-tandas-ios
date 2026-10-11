@@ -205,16 +205,8 @@ final class RemoteFileReceiver {
     /// looked for this track and missed, so it is something else) gets a number.
     private static func moveIntoPlace(_ temporary: URL, _ destination: URL) throws -> URL {
         let manager = FileManager.default
-        let folder = destination.deletingLastPathComponent()
-        try manager.createDirectory(at: folder, withIntermediateDirectories: true)
-        var target = destination
-        let stem = destination.deletingPathExtension().lastPathComponent
-        let ext = destination.pathExtension
-        var number = 2
-        while manager.fileExists(atPath: target.path) {
-            target = folder.appending(path: "\(stem) \(number).\(ext)", directoryHint: .notDirectory)
-            number += 1
-        }
+        try manager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let target = manager.unusedURL(like: destination)
         try manager.moveItem(at: temporary, to: target)
         return target
     }

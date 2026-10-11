@@ -101,4 +101,21 @@ final class PlaylistParserTests: XCTestCase {
         let urls = PlaylistParser.parseLines("sub\\c.mp3", relativeTo: dir)
         XCTAssertTrue(urls.contains { $0.lastPathComponent == "c.mp3" })
     }
+
+    /// Saving under a name already taken must keep the earlier playlist.
+    func testWriteNeverOverwritesAnExistingPlaylist() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("pt-" + UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let a = QueueItem(url: dir.appendingPathComponent("a.mp3"), trackKey: "a")
+        let b = QueueItem(url: dir.appendingPathComponent("b.mp3"), trackKey: "b")
+
+        let first = try PlaylistWriter.write(items: [a], name: "Tango", to: dir)
+        let second = try PlaylistWriter.write(items: [b], name: "Tango", to: dir)
+
+        XCTAssertEqual(first.lastPathComponent, "Tango.m3u8")
+        XCTAssertEqual(second.lastPathComponent, "Tango 2.m3u8")
+        XCTAssertEqual(try String(contentsOf: first, encoding: .utf8), "#EXTM3U\na.mp3\n")
+    }
 }

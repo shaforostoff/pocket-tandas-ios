@@ -30,9 +30,13 @@ enum PlaylistWriter {
 
     /// Write the queue as `<name>.m3u8` inside `directory`, returning the file
     /// URL. Throws if the write fails (e.g. no write access to the folder).
+    ///
+    /// Never over an existing file: the suggested name is the folder's, so last
+    /// week's set saved under it would otherwise be silently replaced. A taken name
+    /// gets a number ("Tango 2.m3u8"); the returned URL is the one written.
     @discardableResult
     static func write(items: [QueueItem], name: String, to directory: URL) throws -> URL {
-        let url = directory.appendingPathComponent(filename(from: name))
+        let url = FileManager.default.unusedURL(like: directory.appendingPathComponent(filename(from: name)))
         try makeContent(for: items, relativeTo: directory)
             .write(to: url, atomically: true, encoding: .utf8)
         return url
@@ -72,5 +76,22 @@ enum PlaylistWriter {
         var parts = Array(repeating: "..", count: dirParts.count - shared)
         parts.append(contentsOf: fileParts[shared...])
         return parts.joined(separator: "/")
+    }
+}
+
+extension FileManager {
+    /// `url` if nothing is there yet, otherwise the first free "<stem> N.<ext>"
+    /// beside it, counting from 2.
+    func unusedURL(like url: URL) -> URL {
+        let folder = url.deletingLastPathComponent()
+        let stem = url.deletingPathExtension().lastPathComponent
+        let ext = url.pathExtension
+        var candidate = url
+        var number = 2
+        while fileExists(atPath: candidate.path) {
+            candidate = folder.appending(path: "\(stem) \(number).\(ext)", directoryHint: .notDirectory)
+            number += 1
+        }
+        return candidate
     }
 }
