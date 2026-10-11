@@ -25,7 +25,8 @@
 //  the channel's PSM — and advertises the service. The sender is the central: it
 //  scans for the service, reads the identity, reads the PSM and opens the channel.
 //  The first frame on the channel is the sender's own identity ("hello"); the
-//  receiver counts the link as up only once it arrives.
+//  receiver counts the link as up only once it arrives — and, from a phone it has
+//  never let in, only once the DJ has allowed it (there is no pairing underneath).
 //
 //  Wire: each frame is [UInt32 big-endian length][UInt8 kind][body]. Kinds are a
 //  heartbeat (empty), hello (identity JSON), message (a RemoteMessage encoding) and
@@ -79,6 +80,9 @@ final class PeerLink: NSObject {
     private(set) var connectionState: ConnectionState = .idle
     /// Sender only: receivers heard recently, in the order first found.
     private(set) var discoveredPeers: [Peer] = []
+    /// Receiver only: a sender this phone has never let in, waiting for the DJ to
+    /// allow or refuse it. Nothing it sends is acted on meanwhile.
+    private(set) var pendingSender: Peer?
 
     /// Invoked on the main thread for each decoded inbound message.
     @ObservationIgnored var onReceive: ((RemoteMessage) -> Void)?
@@ -146,6 +150,13 @@ final class PeerLink: NSObject {
     @ObservationIgnored private var publishedPSM: CBL2CAPPSM?
     /// Channels opened by a sender that hasn't said hello yet, with when they opened.
     @ObservationIgnored private var unintroduced: [(channel: FramedChannel, openedAt: Date)] = []
+    /// The channel behind `pendingSender`, kept alive with heartbeats while the DJ
+    /// decides — a dialog can take longer than the sender's silence limit.
+    @ObservationIgnored private var pending: (channel: FramedChannel, identity: Identity)?
+    /// Persisted: install ids of the senders the DJ has allowed. The link has no
+    /// encryption or pairing, so without this any phone in range running the app
+    /// could stop the music, empty the queue, or write files into the library.
+    @ObservationIgnored private var allowedSenders: Set<UUID> = PeerLink.loadAllowedSenders()
 
     // MARK: State (sender)
 
@@ -198,6 +209,7 @@ final class PeerLink: NSObject {
 
     @ObservationIgnored private static let installIDKey = "PeerLink.installID"
     @ObservationIgnored private static let preferredKey = "PeerLink.preferredReceiver"
+    @ObservationIgnored private static let allowedSendersKey = "PeerLink.allowedSenders"
 
     init(role: Role) {
         self.role = role
@@ -268,6 +280,36 @@ final class PeerLink: NSObject {
         }
     }
 
+    /// Receiver: the DJ let the waiting sender in. Remembered, so it is never asked
+    /// about again.
+    func allowPendingSender() {
+        guard let (framed, sender) = pending else { return }
+        pending = nil
+        pendingSender = nil
+        allowedSenders.insert(sender.id)
+        UserDefaults.standard.set(allowedSenders.map(\.uuidString), forKey: Self.allowedSendersKey)
+        introduce(framed, as: sender)
+    }
+
+    /// Receiver: the DJ turned the waiting sender away. A goodbye first, so it
+    /// forgets this receiver instead of re-joining — and asking — every few seconds.
+    func refusePendingSender() {
+        guard let (framed, sender) = pending else { return }
+        ptLog("[PeerLink] refused \(sender.name)")
+        pending = nil
+        pendingSender = nil
+        if let goodbye = RemoteMessage.goodbye.encoded() {
+            framed.send(kind: .message, body: goodbye, droppable: false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { framed.close() }
+    }
+
+    private func dropPendingSender() {
+        pending?.channel.close()
+        pending = nil
+        pendingSender = nil
+    }
+
     /// Leaving the screen. Keeps the remembered receiver, so coming back reconnects.
     func stop() {
         isActive = false
@@ -278,6 +320,7 @@ final class PeerLink: NSObject {
         channelPeer = nil
         unintroduced.forEach { $0.channel.close() }
         unintroduced = []
+        dropPendingSender()
         switch role {
         case .receiver:
             if let manager = peripheralManager {
@@ -351,6 +394,13 @@ final class PeerLink: NSObject {
                 expired.forEach { $0.channel.close() }
                 unintroduced.removeAll { entry in expired.contains { $0.channel === entry.channel } }
             }
+            if let waiting = pending?.channel {
+                if now.timeIntervalSince(waiting.lastInbound) > Self.silenceLimit {
+                    dropPendingSender()
+                } else if now.timeIntervalSince(waiting.lastOutbound) >= Self.heartbeatInterval {
+                    waiting.send(kind: .heartbeat, body: Data(), droppable: true)
+                }
+            }
         case .sender:
             // The contact outlives its attempt — it stays set for as long as the
             // channel it produced is up — so only an attempt still without a channel
@@ -379,6 +429,8 @@ final class PeerLink: NSObject {
             if framed === self.channel {
                 ptLog("[PeerLink] channel closed")
                 self.channelLost()
+            } else if framed === self.pending?.channel {
+                self.dropPendingSender()   // it gave up waiting
             } else {
                 self.unintroduced.removeAll { $0.channel === framed }
             }
@@ -484,6 +536,11 @@ final class PeerLink: NSObject {
         return try? JSONDecoder().decode(PreferredReceiver.self, from: data)
     }
 
+    private static func loadAllowedSenders() -> Set<UUID> {
+        let stored = UserDefaults.standard.stringArray(forKey: allowedSendersKey) ?? []
+        return Set(stored.compactMap(UUID.init(uuidString:)))
+    }
+
     private static func savePreferred(_ preferred: PreferredReceiver?) {
         if let preferred, let data = try? JSONEncoder().encode(preferred) {
             UserDefaults.standard.set(data, forKey: preferredKey)
@@ -519,6 +576,7 @@ extension PeerLink: CBPeripheralManagerDelegate {
             publishInFlight = false
             unintroduced.forEach { $0.channel.close() }
             unintroduced = []
+            dropPendingSender()
             channelLost()
             if isActive, let reason = Self.unavailableReason(peripheral.state) { setState(.unavailable(reason)) }
         }
@@ -605,9 +663,17 @@ extension PeerLink: CBPeripheralManagerDelegate {
     /// A sender said hello. Stay 1:1: a second phone is turned away while the
     /// current link is alive — but not when the current one has gone quiet, or when
     /// the hello is from that same phone, which then is just coming back from a link
-    /// that died without us noticing yet.
+    /// that died without us noticing yet. A phone never let in before waits for the
+    /// DJ first (`pendingSender`); a newer one replaces it in the wait.
     private func introduce(_ framed: FramedChannel, as peer: Identity) {
         unintroduced.removeAll { $0.channel === framed }
+        guard allowedSenders.contains(peer.id) else {
+            ptLog("[PeerLink] \(peer.name) asks to connect — waiting for the DJ")
+            dropPendingSender()
+            pending = (framed, peer)
+            pendingSender = Peer(id: peer.id, displayName: peer.name)
+            return
+        }
         if let current = channel {
             let sameSender = channelPeer.map { $0.id == peer.id } ?? false
             let quiet = Date().timeIntervalSince(current.lastInbound) > Self.heartbeatInterval * 2

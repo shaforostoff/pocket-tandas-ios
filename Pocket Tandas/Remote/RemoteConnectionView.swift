@@ -33,7 +33,7 @@ struct RemoteConnectionView: View {
 
     var body: some View {
         Group {
-            if !(isConnected && hideWhileConnected) {
+            if !(isConnected && hideWhileConnected) || link.pendingSender != nil {
                 banner
                 Divider()
             }
@@ -75,6 +75,18 @@ struct RemoteConnectionView: View {
             }
             if role == .sender, !isConnected {
                 peerPicker
+            }
+            if let asking = link.pendingSender {
+                HStack(spacing: 8) {
+                    Text("\(asking.displayName) wants to control this phone")
+                        .font(.footnote)
+                    Spacer()
+                    Button("Refuse", role: .destructive) { link.refusePendingSender() }
+                        .buttonStyle(.borderless)
+                    Button("Allow") { link.allowPendingSender() }
+                        .buttonStyle(.borderedProminent)
+                }
+                .controlSize(.small)
             }
             // Re-checked at render, not just when the timer started: peers can turn
             // up while it runs, and that answers the question on its own.
