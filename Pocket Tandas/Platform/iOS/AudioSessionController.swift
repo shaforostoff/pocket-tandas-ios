@@ -49,6 +49,9 @@ final class AudioSessionController {
     /// The output the audio was going to has gone — a cable pulled, a Bluetooth
     /// speaker out of range. iOS reroutes to the phone's own speaker on its own.
     @ObservationIgnored var onOutputLost: (() -> Void)?
+    /// The system's media services were reset: every audio object the app made is
+    /// dead, and has to be made again. The category has been re-applied by then.
+    @ObservationIgnored var onMediaServicesReset: (() -> Void)?
 
     private let session = AVAudioSession.sharedInstance()
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -134,7 +137,14 @@ final class AudioSessionController {
                                    object: session, queue: .main) { [weak self] note in
             self?.handleRouteChange(note)
         }
-        observers = [interruption, route]
+        let reset = nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
+                                   object: session, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            ptLog("[AudioSession] media services were reset")
+            self.configureCategory()
+            self.onMediaServicesReset?()
+        }
+        observers = [interruption, route, reset]
     }
 
     private func handleInterruption(_ note: Notification) {

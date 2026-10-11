@@ -96,20 +96,26 @@ final class RestorationFilters: RestorationControlling {
     init() {
         loadPersisted()
 
-        let node = RestorationAudioUnitFactory.makeNode()
-        self.node = node
-        self.unit = node?.auAudioUnit as? RestorationAudioUnit
+        remakeNode()
 
         scout.onLines = { [weak self] lines in self?.adopt(lines) }
         scout.onStateChange = { [weak self] in
             guard let self else { return }
             scoutState = scout.state
         }
-
-        applyAll()
     }
 
     deinit { lineTimer?.invalidate() }
+
+    /// A fresh audio unit carrying the current settings — at launch, and for a
+    /// graph being rebuilt after the system's media services were reset (which
+    /// kills every node there was).
+    func remakeNode() {
+        let node = RestorationAudioUnitFactory.makeNode()
+        self.node = node
+        self.unit = node?.auAudioUnit as? RestorationAudioUnit
+        applyAll()
+    }
 
     // MARK: - Editing (from the UI)
 

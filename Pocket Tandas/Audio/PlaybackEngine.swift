@@ -96,9 +96,11 @@ final class PlaybackEngine {
     @ObservationIgnored private(set) var currentItem: QueueItem?
     @ObservationIgnored private(set) var currentDuration: TimeInterval = 0
 
-    @ObservationIgnored private let engine = AVAudioEngine()
-    @ObservationIgnored private let playerA = AVAudioPlayerNode()
-    @ObservationIgnored private let playerB = AVAudioPlayerNode()
+    /// `var` only so a media-services reset can replace the whole graph; see
+    /// `rebuildAfterMediaServicesReset`.
+    @ObservationIgnored private var engine = AVAudioEngine()
+    @ObservationIgnored private var playerA = AVAudioPlayerNode()
+    @ObservationIgnored private var playerB = AVAudioPlayerNode()
     @ObservationIgnored private var activePlayer: AVAudioPlayerNode
     @ObservationIgnored private var standbyPlayer: AVAudioPlayerNode
 
@@ -261,6 +263,7 @@ final class PlaybackEngine {
         // of the phone's own speaker, which is where iOS sends it next. Same as an
         // interruption, except nothing will say "resume" — the DJ does.
         audioSession.onOutputLost = { [weak self] in self?.handleInterruptionBegan(resumable: false) }
+        audioSession.onMediaServicesReset = { [weak self] in self?.rebuildAfterMediaServicesReset() }
         #endif
         #if os(macOS)
         audioSession.onMainDeviceChanged = { [weak self] in self?.applyOutputDeviceChange() }
@@ -299,6 +302,33 @@ final class PlaybackEngine {
         formats.removeAll()
         connectMasterChain()
         engine.prepare()
+    }
+    #endif
+
+    #if os(iOS)
+    /// The system's media server restarted, and with it went the engine, both
+    /// players and every node in the chain — they can't be restarted, only
+    /// replaced. Whatever was playing is lost, so the deck goes to idle on a fresh
+    /// graph: the next tap plays as normal, where before it was silence until the
+    /// app was relaunched.
+    private func rebuildAfterMediaServicesReset() {
+        ptLog("[Engine] rebuilding the graph after a media services reset")
+        cancelDecode()
+        fader.cancel()
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+        }
+        engine = AVAudioEngine()
+        playerA = AVAudioPlayerNode()
+        playerB = AVAudioPlayerNode()
+        activePlayer = playerA
+        standbyPlayer = playerB
+        formats.removeAll()
+        equalizer.remakeNode()
+        restoration.remakeNode()
+        configureGraph()
+        observeConfigurationChange()
+        goIdle()
     }
     #endif
 

@@ -72,7 +72,7 @@ final class Equalizer: EqualizerControlling {
     }
 
     /// The audio node the PlaybackEngine inserts on the master bus.
-    @ObservationIgnored let node = AVAudioUnitEQ(numberOfBands: 6)
+    @ObservationIgnored private(set) var node = AVAudioUnitEQ(numberOfBands: 6)
     /// v2: the band table changed shape entirely at the "EQ 4 TJ" rework, so a v1
     /// blob is not migrated — there is no honest mapping from a peaking "Low" at
     /// 120 Hz onto a low shelf plus a high pass. v1 is left on disk untouched so a
@@ -186,6 +186,13 @@ final class Equalizer: EqualizerControlling {
     }
 
     // MARK: - Node application
+
+    /// A fresh node carrying the current settings, for a graph being rebuilt after
+    /// the system's media services were reset (which kills every node there was).
+    func remakeNode() {
+        node = AVAudioUnitEQ(numberOfBands: 6)
+        configureNode()
+    }
 
     private func configureNode() {
         node.bypass = !isEnabled
