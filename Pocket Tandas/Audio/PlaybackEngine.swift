@@ -418,6 +418,21 @@ final class PlaybackEngine {
         setState(.playing(id))
     }
 
+    /// Explore mode's audition rule, for both browsers: a queue that is sounding
+    /// wins and the tap is ignored; a paused one is stopped to make room. Returns
+    /// whether the audition may start.
+    func makeRoomForPrelisten() -> Bool {
+        switch state {
+        case .playing, .fadingOut:
+            return false
+        case .paused:
+            stop()
+            return true
+        case .idle:
+            return true
+        }
+    }
+
     /// Skip to the next queued track (remote "next" command).
     func skipToNext() {
         guard state.isPlaying else { return }

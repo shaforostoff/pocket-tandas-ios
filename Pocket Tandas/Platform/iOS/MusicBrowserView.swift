@@ -341,14 +341,7 @@ struct MusicBrowserView: View {
                 skipReport = MediaSkipReport(title: item.title ?? track.title, reason: reason)
                 return
             }
-            switch engine.state {
-            case .playing, .fadingOut:
-                return                       // don't interrupt active queue playback
-            case .paused:
-                engine.stop()                // stop the paused queue to make room
-            case .idle:
-                break
-            }
+            guard engine.makeRoomForPrelisten() else { return }
             preListen.play(.media(persistentID: track.persistentID),
                            in: browser.musicModel.current.contextURL)
         }

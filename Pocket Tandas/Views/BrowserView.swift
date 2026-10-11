@@ -326,14 +326,7 @@ struct BrowserView: View {
             open(entry)
         case .audio:
             guard mode.isExploreLike else { return }
-            switch engine.state {
-            case .playing, .fadingOut:
-                return                       // don't interrupt active queue playback
-            case .paused:
-                engine.stop()                // stop the paused queue to make room
-            case .idle:
-                break
-            }
+            guard engine.makeRoomForPrelisten() else { return }
             preListen.play(.file(entry.url), in: browser.currentFolder)
         }
     }
