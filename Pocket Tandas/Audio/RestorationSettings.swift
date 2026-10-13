@@ -29,33 +29,35 @@ import Foundation
 
 /// Autoregressive detect-and-interpolate declicker. See DSP/declick_core.h.
 struct DeclickSettings: Codable, Hashable {
-    /// 0 = only the most obvious clicks, 1 = aggressive. 0.6 puts the trigger at
-    /// 3.9 sigma, which on 78 rpm tango transfers takes impulsive events from
-    /// about 71/s to about 14/s.
-    var sensitivity: Float = 0.6
+    /// 0 = only the most obvious clicks, 1 = aggressive. 0.8 puts the trigger at
+    /// 3.2 sigma; it won the listening comparison on full shellac transfers, with
+    /// no music audible in what it removes.
+    var sensitivity: Float = 0.8
     /// How far a detection spreads outwards into its own tail.
     var extent: Float = 0.5
     /// Longest single repair, milliseconds.
     var maxLengthMs: Float = 4.0
-    /// 0 subtracts the fraction of each click that adds the least error of its
-    /// own; raising it removes more of each click but substitutes more guesswork.
-    var depth: Float = 0.0
+    /// 1 replaces the damaged samples outright. Lower values subtract only part
+    /// of each click estimate, which caps how much of a click can ever come out.
+    var depth: Float = 1.0
     /// A second pass catches clicks the first one uncovers. Roughly 50% more CPU.
     var passes: Int = 2
     /// AR model order — the one control where spending CPU clearly buys quality.
-    var order: Int = 64
+    /// 128 is worth about 1 dB more removal and 1.5 dB less harm than 64, for
+    /// about 1.9x the CPU.
+    var order: Int = 128
     var dryWet: Float = 1.0
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        sensitivity = try c.decodeIfPresent(Float.self, forKey: .sensitivity) ?? 0.6
+        sensitivity = try c.decodeIfPresent(Float.self, forKey: .sensitivity) ?? 0.8
         extent = try c.decodeIfPresent(Float.self, forKey: .extent) ?? 0.5
         maxLengthMs = try c.decodeIfPresent(Float.self, forKey: .maxLengthMs) ?? 4.0
-        depth = try c.decodeIfPresent(Float.self, forKey: .depth) ?? 0
+        depth = try c.decodeIfPresent(Float.self, forKey: .depth) ?? 1
         passes = try c.decodeIfPresent(Int.self, forKey: .passes) ?? 2
-        order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 64
+        order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 128
         dryWet = try c.decodeIfPresent(Float.self, forKey: .dryWet) ?? 1
     }
 

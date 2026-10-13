@@ -82,9 +82,9 @@ private enum Caption {
         a detection follows a click into its own tail.
         """
     static let declickRepair = """
-        Depth at 0 % subtracts the fraction of each click that was measured to \
-        add the least error of its own. Raising it removes more of the click but \
-        substitutes more guesswork.
+        Depth at 100 % replaces the damaged samples outright. Lower values \
+        subtract only part of each click, which leaves some of every click \
+        behind however good the reconstruction is.
         """
     static let declickEffort = """
         A second pass catches clicks the first one uncovers, for roughly half as \
