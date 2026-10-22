@@ -87,6 +87,7 @@
 		60E446C597D26782AB0C5214 /* PlaylistParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884B4CCCB6057CD22F00D3B9 /* PlaylistParser.swift */; };
 		616246AEA80581A87763051C /* M4ATagMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 749F413BAFABFD110C4858D1 /* M4ATagMapper.swift */; };
 		616B4C72BB16ACBAAE45EBBE /* PlaybackControlling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A789455796DA2EC4EB76F57E /* PlaybackControlling.swift */; };
+		61E64FDFAACE5165CDD2B436 /* DeclickTrackWarmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6093400B81EFC91A799683B0 /* DeclickTrackWarmer.swift */; };
 		62664A67805367BC30EBFBEF /* StableTrackIDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF264FDE876C3D059EEC95D6 /* StableTrackIDTests.swift */; };
 		64E74C78BF609B17827447C1 /* RemoteFileSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7340379FBB316ADC8C14CE /* RemoteFileSender.swift */; };
 		657D4D219F3E67210CD53230 /* SortMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB774D14B26DCD27A530AB67 /* SortMenu.swift */; };
@@ -172,6 +173,7 @@
 		D4F14E70A3FB44560BADC9D2 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A840598B56A56E71B0F0EA /* QueueView.swift */; };
 		D5A339CF631728D1B6A390EC /* FadeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3A4024A7FA93B8956DA286 /* FadeController.swift */; };
 		D6164F32B895D20C772A6917 /* RemoteReceiverCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05024A29AC96010E6E14170A /* RemoteReceiverCoordinator.swift */; };
+		D69C48949D471A19A2B0CED6 /* DeclickTrackWarmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9A4CC183C92F4201D4AD9E /* DeclickTrackWarmer.swift */; };
 		D7104E5AA629E132B657CE83 /* MediaAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEB4CA58A42864EDBA197EC /* MediaAvailability.swift */; };
 		D8203468FF57CC40FB15E58A /* RemoteConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381D40C9A5BC87BA965371A7 /* RemoteConnectionView.swift */; };
 		D9C4700018CCF46BDC0EF5C8 /* LibraryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8A47AC93C9081661511DAF /* LibraryEntry.swift */; };
@@ -275,6 +277,7 @@
 		5F054B4588BF5BCD5D8514CD /* resample.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = resample.cpp; path = "Pocket Tandas/Analysis/bpmcore/resample.cpp"; sourceTree = SOURCE_ROOT; };
 		5F0F41328BBA6EA6F4A4877D /* PTBPMAnalyzer.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = PTBPMAnalyzer.mm; path = "Pocket Tandas/Analysis/PTBPMAnalyzer.mm"; sourceTree = SOURCE_ROOT; };
 		5FCB409B8B543F4137199041 /* MetadataParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataParsing.swift; path = MetadataParsing.swift; sourceTree = "<group>"; };
+		6093400B81EFC91A799683B0 /* DeclickTrackWarmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeclickTrackWarmer.swift; path = "Pocket Tandas/Audio/DeclickTrackWarmer.swift"; sourceTree = SOURCE_ROOT; };
 		65014CEDAF599BE6FB765107 /* internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = internal.h; path = "Pocket Tandas/Analysis/bpmcore/internal.h"; sourceTree = SOURCE_ROOT; };
 		654C4C87AB98F4DA4103E134 /* bpmcore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = bpmcore.h; path = "Pocket Tandas/Analysis/bpmcore/bpmcore.h"; sourceTree = SOURCE_ROOT; };
 		6654A17EF3825FB1EF5D9B5F /* AudioSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionController.swift; sourceTree = "<group>"; };
@@ -307,6 +310,7 @@
 		A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataService.swift; path = MetadataService.swift; sourceTree = "<group>"; };
 		A789455796DA2EC4EB76F57E /* PlaybackControlling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackControlling.swift; path = PlaybackControlling.swift; sourceTree = "<group>"; };
 		AAD3451DBC3FBFA192B41543 /* BrowserState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserState.swift; path = BrowserState.swift; sourceTree = "<group>"; };
+		AC9A4CC183C92F4201D4AD9E /* DeclickTrackWarmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeclickTrackWarmer.swift; path = "Pocket Tandas/Audio/DeclickTrackWarmer.swift"; sourceTree = SOURCE_ROOT; };
 		AD42454D852234C6AD343708 /* PlayQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayQueueTests.swift; path = PlayQueueTests.swift; sourceTree = "<group>"; };
 		B40B48CC8B52D5FD6C32184E /* PTRestorationDSP.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = PTRestorationDSP.mm; path = "Pocket Tandas/DSP/PTRestorationDSP.mm"; sourceTree = SOURCE_ROOT; };
 		B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoutePickerView.swift; path = RoutePickerView.swift; sourceTree = "<group>"; };
@@ -403,6 +407,8 @@
 				1B194BB3837007A3B31A6A1B /* StayAwake.swift */,
 				199340C58F6ACBD8773700C2 /* SynchronousAssetLoading.swift */,
 				F4974CF8A86937EE921CAB72 /* AACTranscoder.swift */,
+				6093400B81EFC91A799683B0 /* DeclickTrackWarmer.swift */,
+				AC9A4CC183C92F4201D4AD9E /* DeclickTrackWarmer.swift */,
 			);
 			name = Audio;
 			path = Audio;
@@ -887,6 +893,7 @@
 				96784D1ABEC0A01959A94841 /* RemoteFileSender.swift in Sources */,
 				4E3C4A8D82365AE518A461C0 /* RemoteFileReceiver.swift in Sources */,
 				17D8473B98714A2D894FA10D /* RemoteTransferViews.swift in Sources */,
+				D69C48949D471A19A2B0CED6 /* DeclickTrackWarmer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -989,6 +996,7 @@
 				64E74C78BF609B17827447C1 /* RemoteFileSender.swift in Sources */,
 				43014BAAA012B2F5B48CD8CE /* RemoteFileReceiver.swift in Sources */,
 				10F9489181132E8310A8A4D3 /* RemoteTransferViews.swift in Sources */,
+				61E64FDFAACE5165CDD2B436 /* DeclickTrackWarmer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

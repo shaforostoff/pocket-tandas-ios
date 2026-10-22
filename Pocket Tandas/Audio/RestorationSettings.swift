@@ -29,10 +29,10 @@ import Foundation
 
 /// Autoregressive detect-and-interpolate declicker. See DSP/declick_core.h.
 struct DeclickSettings: Codable, Hashable {
-    /// 0 = only the most obvious clicks, 1 = aggressive. 0.8 puts the trigger at
-    /// 3.2 sigma; it won the listening comparison on full shellac transfers, with
-    /// no music audible in what it removes.
-    var sensitivity: Float = 0.8
+    /// 0 = only the most obvious clicks, 1 = aggressive. 0.9 puts the trigger at
+    /// 2.85 sigma (it was 0.8, 3.2 sigma, until weak detections got a partial
+    /// repair): it reaches the small clicks 0.8 did and takes less from clean records.
+    var sensitivity: Float = 0.9
     /// How far a detection spreads outwards into its own tail.
     var extent: Float = 0.5
     /// Longest single repair, milliseconds.
@@ -52,7 +52,7 @@ struct DeclickSettings: Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        sensitivity = try c.decodeIfPresent(Float.self, forKey: .sensitivity) ?? 0.8
+        sensitivity = try c.decodeIfPresent(Float.self, forKey: .sensitivity) ?? 0.9
         extent = try c.decodeIfPresent(Float.self, forKey: .extent) ?? 0.5
         maxLengthMs = try c.decodeIfPresent(Float.self, forKey: .maxLengthMs) ?? 4.0
         depth = try c.decodeIfPresent(Float.self, forKey: .depth) ?? 1

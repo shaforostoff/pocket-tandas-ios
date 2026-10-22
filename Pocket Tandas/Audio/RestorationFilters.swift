@@ -80,6 +80,7 @@ final class RestorationFilters: RestorationControlling {
     @ObservationIgnored private var unit: RestorationAudioUnit?
 
     @ObservationIgnored private let scout = DehumTrackScout()
+    @ObservationIgnored private let warmer = DeclickTrackWarmer()
     @ObservationIgnored private let defaultsKey = "restoration.settings.v1"
 
     /// The track the current scan belongs to, so enabling Dehum part-way through
@@ -123,6 +124,9 @@ final class RestorationFilters: RestorationControlling {
         declickEnabled = on
         unit?.declick.bypassed = !on
         persist()
+        // Engaged part-way through a record, the warm pass for its opening is
+        // no longer what the stream needs: the unit warms from what just played.
+        if !on { warmer.cancel() }
     }
 
     func setDehumEnabled(_ on: Bool) {
@@ -199,6 +203,7 @@ final class RestorationFilters: RestorationControlling {
         unit?.dehum.resetLines()
         detectedLines = []
         startScoutIfWorthwhile()
+        startWarmIfWorthwhile()
         updateLinePolling()
     }
 
@@ -216,6 +221,7 @@ final class RestorationFilters: RestorationControlling {
     func playbackStopped() {
         currentTrack = nil
         scout.cancel()
+        warmer.cancel()
         detectedLines = []
         updateLinePolling()
     }
@@ -224,6 +230,21 @@ final class RestorationFilters: RestorationControlling {
     /// quoted against the rate the unit actually renders at.
     func noteOutputSampleRate(_ rate: Double) {
         if rate > 0 { outputSampleRate = rate }
+    }
+
+    /// Declick's warm start for the record that has just begun: its opening
+    /// seconds are read ahead of the stream and the live cores adopt what that
+    /// taught the core. Only when Declick is engaged — a bypassed unit is not
+    /// fed, and engaging later warms from the ring as it always did.
+    private func startWarmIfWorthwhile() {
+        guard declickEnabled, let url = currentTrack, let unit,
+              let pass = unit.declick.makeWarmer() else {
+            warmer.cancel()
+            return
+        }
+        warmer.warm(url: url, with: pass) { [weak unit] done in
+            unit?.declick.adoptWarm(done)
+        }
     }
 
     private func startScoutIfWorthwhile() {

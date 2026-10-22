@@ -69,6 +69,8 @@ typedef struct {
 /// Slots in a `PTDehumLine` array — dehum::kMaxLines.
 FOUNDATION_EXPORT const NSInteger PTDehumMaxLines;
 
+@class PTDeclickWarmer;
+
 #pragma mark - Declick
 
 /// A multi-channel declicker, driven push/pull by the render thread.
@@ -109,9 +111,50 @@ FOUNDATION_EXPORT const NSInteger PTDehumMaxLines;
            frameCount:(NSInteger)frameCount
     NS_SWIFT_NAME(render(_:channelCount:frameCount:));
 
+/// A warm pass for the unit as configured now, or nil when it is not prepared
+/// or the memory could not be had. Main or background thread.
+- (nullable PTDeclickWarmer *)makeWarmer;
+
+/// Hand over a finished pass. Taken at the top of the next render call, when
+/// engaged: the cores are re-warmed from the input ring exactly as on engaging,
+/// but starting from what the pass learned instead of from nothing. Dropped if
+/// the unit is bypassed by then, or if the configuration has since changed
+/// shape. Safe from any thread.
+- (void)adoptWarm:(PTDeclickWarmer *)warmer;
+
 /// Diagnostics: samples repaired / samples seen, summed over the channels.
 @property (nonatomic, readonly) uint64_t repairedSamples;
 @property (nonatomic, readonly) uint64_t seenSamples;
+
+@end
+
+#pragma mark - Declick warm start
+
+/// A throwaway declick pass over the opening of a track, run off the audio path.
+///
+/// The core's slow state — the carpet key and the crackle-floor ceiling — is
+/// empty at the first sample of a record, so the opening seconds are judged on
+/// no history. A file player can read ahead: feed this the first
+/// `seconds` of the track and `-[PTDeclickProcessor adoptWarm:]` starts the live
+/// channels from what it learned. Built by `-[PTDeclickProcessor makeWarmer]` so
+/// it runs the very configuration the live unit does. Per track, not
+/// thread-safe; belongs to the background queue that decodes.
+@interface PTDeclickWarmer : NSObject
+
+/// The rate, channel count and length of audio to feed: `seconds` of
+/// `channelCount` channels at `sampleRate`.
+@property (nonatomic, readonly) double sampleRate;
+@property (nonatomic, readonly) NSInteger channelCount;
+@property (nonatomic, readonly) double seconds;
+
+/// Deinterleaved slice of the track's opening, in order. Frames beyond
+/// `seconds` are ignored.
+- (void)feed:(const float * const _Nonnull * _Nonnull)data
+ channelCount:(NSInteger)channelCount
+   frameCount:(NSInteger)frameCount;
+
+/// Closes the pass. NO when it kept nothing worth adopting.
+- (BOOL)finish;
 
 @end
 

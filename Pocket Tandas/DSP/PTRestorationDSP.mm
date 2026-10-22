@@ -146,9 +146,21 @@ struct DeclickImpl {
     os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
     declick::Params pending = declick::Params::defaults();
     bool pendingDirty = false;
+
+    //! A track's warm pass, per channel. `pendingWarm` is filled under the lock
+    //! by the UI; the render thread swaps it into `warmState` (no allocation)
+    //! and consumes it in warmChannel().
+    std::vector<declick::WarmState> pendingWarm;
+    bool pendingWarmDirty = false;
+    std::vector<declick::WarmState> warmState;
 };
 
 } // anonymous namespace
+
+@interface PTDeclickWarmer ()
+- (instancetype)initWithParams:(declick::Params)p sampleRate:(double)rate channels:(int)channels;
+- (std::vector<declick::WarmState>)takeStates;
+@end
 
 @implementation PTDeclickProcessor {
     DeclickImpl _im;
@@ -175,6 +187,24 @@ struct DeclickImpl {
     os_unfair_lock_lock(&_im.lock);
     _im.pending = p;
     _im.pendingDirty = true;
+    os_unfair_lock_unlock(&_im.lock);
+}
+
+- (PTDeclickWarmer *)makeWarmer {
+    if (!_im.ready) return nil;
+    os_unfair_lock_lock(&_im.lock);
+    const declick::Params p = _im.pending;
+    os_unfair_lock_unlock(&_im.lock);
+    return [[PTDeclickWarmer alloc] initWithParams:p sampleRate:_im.rate channels:_im.channels];
+}
+
+- (void)adoptWarm:(PTDeclickWarmer *)warmer {
+    if (!warmer || !_im.ready) return;
+    std::vector<declick::WarmState> states = [warmer takeStates];
+    if (states.empty()) return;
+    os_unfair_lock_lock(&_im.lock);
+    _im.pendingWarm.swap(states);
+    _im.pendingWarmDirty = true;
     os_unfair_lock_unlock(&_im.lock);
 }
 
@@ -250,7 +280,14 @@ static void warmChannel(DeclickImpl & im, int c) {
     const std::vector<float> & ring = im.ring[(size_t)c];
     const int history = im.cfg.latency + im.cfg.madWindow;
 
-    ch.reset();
+    // From what the track's warm pass learned if there is one (adoptWarm()
+    // resets either way), else from nothing.
+    if ((size_t)c < im.warmState.size() && im.warmState[(size_t)c].valid()) {
+        ch.adoptWarm(im.warmState[(size_t)c]);
+        im.warmState[(size_t)c].clear();
+    } else {
+        ch.reset();
+    }
     // Absolute [written - history, written), which is still intact: the ring is
     // longer than history plus one render block. It wraps at most once, so it
     // goes in as one or two contiguous runs rather than a sample at a time.
@@ -286,7 +323,13 @@ static void warmChannel(DeclickImpl & im, int c) {
 
     // Pick up a parameter move without ever waiting for the UI to let go.
     bool restructured = false;
+    bool adoptingWarm = false;
     if (os_unfair_lock_trylock(&im.lock)) {
+        if (im.pendingWarmDirty) {
+            im.pendingWarmDirty = false;
+            im.warmState.swap(im.pendingWarm);
+            adoptingWarm = true;
+        }
         if (im.pendingDirty) {
             const declick::Params p = im.pending;
             im.pendingDirty = false;
@@ -316,7 +359,9 @@ static void warmChannel(DeclickImpl & im, int c) {
     }
 
     const bool wanted = !im.bypass.load(std::memory_order_relaxed);
-    const bool warm   = wanted && (!im.engaged || restructured);
+    const bool warm   = wanted && (!im.engaged || restructured || adoptingWarm);
+    // A pass is for the track it was made from: once bypassed, not for later.
+    if (adoptingWarm && !wanted) for (auto & s : im.warmState) s.clear();
     const int  ring   = im.ringFrames;
     const uint64_t base = im.written;
 
@@ -364,6 +409,90 @@ static void warmChannel(DeclickImpl & im, int c) {
         im.repaired.store(im.chan[0].repairedSamples(), std::memory_order_relaxed);
         im.seen.store(im.chan[0].seenSamples(), std::memory_order_relaxed);
     }
+}
+
+@end
+
+#pragma mark - Declick warm start
+
+@implementation PTDeclickWarmer {
+    std::vector<declick::Channel> _chan;
+    std::vector<declick::WarmState> _state;
+    std::vector<float> _dump;
+    size_t _wanted;     //!< frames still to take
+    bool _started;
+    bool _finished;
+    double _rate;
+    double _seconds;
+}
+
+- (instancetype)initWithParams:(declick::Params)p sampleRate:(double)rate channels:(int)channels {
+    self = [super init];
+    if (!self) return nil;
+    // maxBlock only sizes the out ring, so it need not match the live unit's:
+    // structurallyEquals() ignores it. Chunks fed are bounded by it below.
+    declick::Config cfg;
+    cfg.maxBlock = 4096;
+    cfg.compute(p, rate);
+    try {
+        _chan.resize((size_t)channels);
+        for (auto & ch : _chan) ch.configure(cfg);
+        _state.resize((size_t)channels);
+        _dump.assign((size_t)cfg.maxBlock, 0.0f);
+    } catch (const std::bad_alloc &) {
+        return nil;
+    }
+    _rate = rate;
+    _seconds = cfg.warmSeconds();
+    _wanted = (size_t)(_seconds * rate);
+    _started = false;
+    _finished = false;
+    return self;
+}
+
+- (double)sampleRate { return _rate; }
+- (NSInteger)channelCount { return (NSInteger)_chan.size(); }
+- (double)seconds { return _seconds; }
+
+- (void)feed:(const float * const *)data channelCount:(NSInteger)channelCount frameCount:(NSInteger)frameCount {
+    if (_finished || frameCount <= 0 || channelCount <= 0) return;
+    declick::scoped_flush_denormals ftz;
+    if (!_started) {
+        for (auto & ch : _chan) ch.beginWarm();
+        _started = true;
+    }
+    const size_t todo = std::min((size_t)frameCount, _wanted);
+    const size_t nch = (size_t)channelCount;
+    for (size_t at = 0; at < todo;) {
+        const size_t n = std::min(todo - at, _dump.size());
+        for (size_t c = 0; c < _chan.size(); ++c) {
+            // A source with fewer channels than the unit repeats its last.
+            const float * src = data[std::min(c, nch - 1)] + at;
+            _chan[c].push(src, n, 1);
+            const size_t got = std::min(n, _chan[c].available());
+            if (got > 0) _chan[c].pull(_dump.data(), got, 1);   // held back anyway
+        }
+        at += n;
+    }
+    _wanted -= todo;
+}
+
+- (BOOL)finish {
+    if (_finished) return NO;
+    _finished = true;
+    if (!_started) return NO;
+    bool ok = true;
+    for (size_t c = 0; c < _chan.size(); ++c) {
+        _chan[c].endWarm();
+        ok = _chan[c].saveWarm(_state[c]) && ok;
+    }
+    return ok ? YES : NO;
+}
+
+- (std::vector<declick::WarmState>)takeStates {
+    if (!_finished) return {};
+    for (auto & s : _state) if (!s.valid()) return {};
+    return std::move(_state);
 }
 
 @end
