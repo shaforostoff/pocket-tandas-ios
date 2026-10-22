@@ -10,7 +10,7 @@ algorithmic is written here: `PTBPMAnalyzer.mm` is host glue, exactly as
     the tempo + rhythm analysis behind foo_rubato (the "Rubato BPM Analyzer"
     foobar2000 component), which is itself only a shell around these files.
 
-Copied 2026-09-28 from `b61c77a` (`bpmcore/{analyse,key,odf,real_fft,resample,rhythm,tempo}.cpp`
+Copied 2026-10-22 from `2a4330d` (performance work only: `key,odf,real_fft,resample.cpp` and `bpmcore,internal,parallel,real_fft.h`; the new `features.cpp` is the audio-fingerprint extractor, which nothing here calls, so it is not compiled); before that 2026-09-28 from `b61c77a` (`bpmcore/{analyse,key,odf,real_fft,resample,rhythm,tempo}.cpp`
 and `bpmcore/{bpmcore,internal,parallel,real_fft,rhythm_model}.h`); earlier from
 `d853d0b` (2026-09-18) and first taken 2026-09-16 from `550f387`.
 
