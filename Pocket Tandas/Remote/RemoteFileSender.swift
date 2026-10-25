@@ -12,8 +12,8 @@
 //  receiver under the same base-relative path it has here and queued there as
 //  it lands.
 //
-//  Anything above 128 kbps can go as a 128 kbps AAC copy instead (see
-//  AACTranscoder), tags included. Bluetooth is slow — tens to a couple of hundred
+//  Anything above 128 kbps can go as an AAC copy instead — 96 kbps, or 64 kbps
+//  for a mono recording (see AACTranscoder) — tags included. Bluetooth is slow — tens to a couple of hundred
 //  kilobytes a second — so for a FLAC that is the difference between half a minute
 //  and several. The copy is made just before its turn, into a temporary file that
 //  is deleted once sent, and the next one is encoded while this one is on the air.
@@ -71,6 +71,9 @@ final class RemoteFileSender {
         let title: String
         var size: Int64 = 0
         var duration: TimeInterval = 0
+        /// As the file stores them. A stereo file of a mono recording still says
+        /// 2 here; only the transcoder's read-through finds it out.
+        var channels = 0
 
         /// Rough: the whole file over its length, so embedded cover art counts too.
         var bitRate: Double { duration > 0 ? Double(size) * 8 / duration : 0 }
@@ -79,13 +82,15 @@ final class RemoteFileSender {
         /// MP3 carrying a few hundred KB of it measures a little over 128, and
         /// re-encoding it would only cost quality.
         var isCompressible: Bool {
-            bitRate > Double(AACTranscoder.bitRate) * 1.15 && AACTranscoder.canDecode(url)
+            bitRate > Double(AACTranscoder.compressAbove) * 1.15 && AACTranscoder.canDecode(url)
         }
 
-        /// What it weighs as sent.
+        /// What it weighs as sent. For a compressed copy of a stereo file this is
+        /// the most it will be: if the transcoder finds the channels identical it
+        /// goes at the mono rate, half that.
         func sendSize(compressed: Bool) -> Int64 {
             guard compressed, isCompressible else { return size }
-            return Int64(duration * Double(AACTranscoder.bitRate) / 8)
+            return Int64(duration * Double(AACTranscoder.bitRate(channels: channels)) / 8)
         }
     }
 
@@ -180,8 +185,14 @@ final class RemoteFileSender {
             for var candidate in found {
                 let values = try? candidate.url.resourceValues(forKeys: [.fileSizeKey])
                 candidate.size = Int64(values?.fileSize ?? 0)
-                let duration = try? await AVURLAsset(url: candidate.url).load(.duration)
+                let asset = AVURLAsset(url: candidate.url)
+                let duration = try? await asset.load(.duration)
                 candidate.duration = duration.map(CMTimeGetSeconds).flatMap { $0.isFinite ? $0 : nil } ?? 0
+                if let track = try? await asset.loadTracks(withMediaType: .audio).first,
+                   let format = try? await track.load(.formatDescriptions).first,
+                   let description = CMAudioFormatDescriptionGetStreamBasicDescription(format) {
+                    candidate.channels = Int(description.pointee.mChannelsPerFrame)
+                }
                 weighed.append(candidate)
             }
             let ready = weighed.filter { $0.size > 0 }

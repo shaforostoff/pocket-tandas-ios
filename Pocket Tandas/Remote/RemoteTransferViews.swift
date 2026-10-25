@@ -136,7 +136,7 @@ private struct RemoteTransferOfferAlert: ViewModifier {
         let heavy = offer.compressibleCount
         if heavy > 0 {
             let which = heavy == count ? (count == 1 ? "It is" : "All are") : "\(heavy) of them are"
-            text += "\n\n\(which) above 128 kbps. A compressed copy (AAC, 128 kbps, tags kept) is much quicker to send."
+            text += "\n\n\(which) above 128 kbps. A compressed copy (AAC at 96 kbps, or 64 kbps for a mono recording; tags kept) is much quicker to send — mono ones come out smaller than shown."
         }
         return text
     }
