@@ -67,13 +67,14 @@ final class AudioSessionController {
         refreshRoute()
     }
 
-    /// `.playback` keeps audio alive when the screen locks / app is backgrounded;
-    /// the options allow Bluetooth A2DP and AirPlay outputs (USB routes through the
-    /// standard output automatically — there is no separate USB option).
+    /// `.playback` keeps audio alive when the screen locks / app is backgrounded.
+    /// It routes to Bluetooth A2DP, AirPlay and USB outputs by itself; passing
+    /// `.allowBluetoothA2DP` / `.allowAirPlay` here (legal only with
+    /// `.playAndRecord`) makes the call fail with -50 and leaves the session in
+    /// the default `.soloAmbient`, which breaks playback on screen lock.
     func configureCategory() {
         do {
-            try session.setCategory(.playback, mode: .default,
-                                    options: [.allowBluetoothA2DP, .allowAirPlay])
+            try session.setCategory(.playback, mode: .default)
         } catch {
             ptLog("[AudioSession] setCategory failed: \(error)")
         }

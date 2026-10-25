@@ -14,6 +14,7 @@
 #import <os/lock.h>
 
 #include <algorithm>
+#include <cassert>
 #include <atomic>
 #include <new>
 #include <vector>
@@ -226,7 +227,15 @@ struct DeclickImpl {
     // never has to grow again. See the buffer envelope note in declick::Config.
     declick::Config probe;
     probe.compute(declick::Params::defaults(), sampleRate);
-    const int latencyMax = probe.bufPad + (int)declick::kBlock;
+    // The latency is every stage's delay added up (Config::compute), so the
+    // most it can reach is each stage at its longest, switched on: the bypass
+    // delay reads `latency` back from the ring, and a ring short of it has the
+    // incoming block overwrite audio not yet played - inaudible at small render
+    // blocks, whose slack hides it, and dropouts at a locked phone's ~4096.
+    const int latencyMax = probe.bufPad + (int)declick::kBlock
+                         + declick::Config::bodyDelay(probe.bodyN)
+                         + (int)declick::kBlock
+                         + declick::Config::bodyDelay(probe.crackleFloorN);
     const int warmMax    = probe.madWindow;
     const int historyMax = latencyMax + warmMax;
 
@@ -235,6 +244,7 @@ struct DeclickImpl {
     // sized from that rather than from the render block alone.
     cfg.maxBlock = std::max(mf, historyMax);
     cfg.compute(p, sampleRate);
+    assert(cfg.latency <= latencyMax);
 
     try {
         _im.chan.resize((size_t)nch);
