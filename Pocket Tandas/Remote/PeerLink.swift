@@ -36,6 +36,13 @@
 //  sender answers each one, so both ends notice a dead link within seconds — the
 //  stream alone can sit open on a peer that has gone out of range.
 //
+//  Staying awake: iOS suspends a locked receiver within about a second of the
+//  screen going off unless it is playing, and data arriving on the L2CAP channel
+//  does not wake it — but a GATT read does (the bluetooth-peripheral background
+//  mode). So while the channel is up the sender reads the one-byte wake
+//  characteristic every couple of seconds, and each read buys the receiver another
+//  few seconds to drain the channel and send its heartbeats.
+//
 //  Reconnection: the sender remembers the last receiver it was connected to, across
 //  launches, and re-joins it without a tap — by a standing connect to its
 //  peripheral identifier and, since an unbonded phone's Bluetooth address rotates,
@@ -135,6 +142,8 @@ final class PeerLink: NSObject {
     static let identityUUID = CBUUID(string: "9180F492-E7DF-45A0-B422-2BB8E20A4F93")
     /// Apple's conventional UUID for "the PSM of this service's L2CAP channel".
     static let psmUUID = CBUUID(string: CBUUIDL2CAPPSMCharacteristicString)
+    /// Read only to wake a suspended receiver (see "Staying awake" above).
+    static let wakeUUID = CBUUID(string: "D0CC63FF-F12F-4D02-AE94-059424F66CF6")
 
     /// Who is at an end of the link. The install id is what reconnection matches
     /// on: device names are no good for that, since without a special entitlement
@@ -160,6 +169,9 @@ final class PeerLink: NSObject {
     /// How often a connected link logs its byte counts.
     @ObservationIgnored private static let reportInterval: TimeInterval = 5
     @ObservationIgnored private var lastReport = Date.distantPast
+    /// How often the sender reads the wake characteristic while the channel is up.
+    @ObservationIgnored private static let wakeInterval: TimeInterval = 2
+    @ObservationIgnored private var lastWake = Date.distantPast
 
     private static var appStateNote: String {
         #if canImport(UIKit)
@@ -253,6 +265,8 @@ final class PeerLink: NSObject {
         let startedAt: Date
         var identityCharacteristic: CBCharacteristic?
         var psmCharacteristic: CBCharacteristic?
+        /// Nil on a receiver from before the wake characteristic existed.
+        var wakeCharacteristic: CBCharacteristic?
         var identity: Identity?
         var psm: CBL2CAPPSM?
     }
@@ -456,6 +470,10 @@ final class PeerLink: NSObject {
                 channelLost()
             } else if role == .receiver, now.timeIntervalSince(channel.lastOutbound) >= Self.heartbeatInterval {
                 channel.send(kind: .heartbeat, body: Data(), droppable: true)
+            } else if role == .sender, now.timeIntervalSince(lastWake) >= Self.wakeInterval,
+                      let current = contact, let wake = current.wakeCharacteristic {
+                lastWake = now
+                current.peripheral.readValue(for: wake)
             }
         }
         switch role {
@@ -689,7 +707,11 @@ extension PeerLink: CBPeripheralManagerDelegate {
             let psmChar = CBMutableCharacteristic(type: Self.psmUUID, properties: [.read],
                                                   value: nil, permissions: [.readable])
             let service = CBMutableService(type: Self.serviceUUID, primary: true)
-            service.characteristics = [identityChar, psmChar]
+            // No cached value: Core Bluetooth would answer a cached one by itself,
+            // without waking the app — and waking the app is the point.
+            let wakeChar = CBMutableCharacteristic(type: Self.wakeUUID, properties: [.read],
+                                                   value: nil, permissions: [.readable])
+            service.characteristics = [identityChar, psmChar, wakeChar]
             manager.add(service)
             // No link-level encryption: that would mean a pairing prompt on both
             // phones, for a DJ's queue and transport commands between two phones in
@@ -739,6 +761,11 @@ extension PeerLink: CBPeripheralManagerDelegate {
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        // Every couple of seconds while linked, so not logged.
+        if request.characteristic.uuid == Self.wakeUUID {
+            request.value = Data([0])
+            return peripheral.respond(to: request, withResult: .success)
+        }
         let value: Data?
         switch request.characteristic.uuid {
         case Self.identityUUID: value = try? JSONEncoder().encode(identity)
@@ -1018,7 +1045,7 @@ extension PeerLink: CBPeripheralDelegate {
             return contactFailed()
         }
         linkLog("found the remote service; discovering its characteristics")
-        peripheral.discoverCharacteristics([Self.identityUUID, Self.psmUUID], for: service)
+        peripheral.discoverCharacteristics([Self.identityUUID, Self.psmUUID, Self.wakeUUID], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -1026,6 +1053,7 @@ extension PeerLink: CBPeripheralDelegate {
         let chars = service.characteristics ?? []
         current.identityCharacteristic = chars.first { $0.uuid == Self.identityUUID }
         current.psmCharacteristic = chars.first { $0.uuid == Self.psmUUID }
+        current.wakeCharacteristic = chars.first { $0.uuid == Self.wakeUUID }
         contact = current
         guard let identityChar = current.identityCharacteristic, let psmChar = current.psmCharacteristic else {
             linkLog("characteristics missing (got \(chars.map(\.uuid)), error \(error.map { "\($0)" } ?? "none"))")
@@ -1039,6 +1067,12 @@ extension PeerLink: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard var current = contact, current.peripheral === peripheral else { return }
+        // A wake read did its job by reaching the receiver; a failed one is left to
+        // the silence limit, not treated as a failed contact.
+        if characteristic.uuid == Self.wakeUUID {
+            if let error { linkLog("wake read failed: \(error)") }
+            return
+        }
         guard error == nil, let value = characteristic.value else {
             linkLog("reading \(characteristic.uuid) failed: \(error.map { "\($0)" } ?? "empty")")
             return contactFailed()

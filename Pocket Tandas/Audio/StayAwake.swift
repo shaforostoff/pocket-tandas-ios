@@ -9,8 +9,9 @@
 //  Two opt-in ways to stop iOS suspending the app while it sits idle — which is
 //  can make a Remote Controllable phone unreachable after the screen locks
 //  (Bluetooth keeps advertising in the background and wakes a suspended app to
-//  accept a connection, but whether the link's data keeps flowing to a suspended
-//  app is unverified; playing audio, real or silent, keeps the process running):
+//  accept a connection; data on the link's channel does not wake it, so PeerLink
+//  has the sender poke it with a GATT read every couple of seconds while linked.
+//  Playing audio, real or silent, keeps the process running regardless):
 //
 //   - "Screen stays awake" — the idle timer is disabled, so the phone doesn't
 //     auto-lock. Handled by MainScreenView.
