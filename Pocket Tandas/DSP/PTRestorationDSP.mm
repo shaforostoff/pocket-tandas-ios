@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cassert>
 #include <atomic>
+#include <mutex>
 #include <new>
 #include <vector>
 
@@ -117,7 +118,24 @@ namespace {
 //! Everything the declicker owns. In a struct rather than in ivars because the
 //! render path touches it through one pointer and never through objc_msgSend.
 struct DeclickImpl {
+    //! The cores. Empty until the filter is first engaged: at 44.1 kHz stereo
+    //! they are about 6 MB, sized for the worst any setting can reach, and most
+    //! sessions never switch the filter on. The bypass path needs only the ring,
+    //! so it runs - with the full delay - while this is still empty.
     std::vector<declick::Channel> chan;
+
+    //! Cores built off the audio thread (see -buildCores), handed over under
+    //! `lock`: the render thread swaps them into `chan`, which frees nothing
+    //! there because what it swaps back out is empty.
+    std::vector<declick::Channel> pendingChan;
+    declick::Config pendingChanCfg;
+    bool pendingChanDirty = false;
+
+    //! Serialises -prepare…, -unprepare and -buildCores, which may come from
+    //! different threads. The audio thread never takes it.
+    std::mutex build;
+    bool coresBuilt = false;      //!< under `build`: cores exist or are on their way
+    int  maxBlock   = 0;          //!< cfg.maxBlock, kept apart: the audio thread rewrites cfg
 
     //! History of the input, one ring per channel, holding the last
     //! `ringFrames` samples. Two jobs: it IS the bypass path's delay line, and
@@ -177,7 +195,44 @@ struct DeclickImpl {
 }
 
 - (BOOL)bypassed { return _im.bypass.load(std::memory_order_relaxed); }
-- (void)setBypassed:(BOOL)b { _im.bypass.store(b ? true : false, std::memory_order_relaxed); }
+- (void)setBypassed:(BOOL)b {
+    // Built before the flag flips, but the render thread checks for the cores
+    // anyway: it can see the flag before it has had the lock to pick them up.
+    if (!b) [self buildCores];
+    _im.bypass.store(b ? true : false, std::memory_order_relaxed);
+}
+
+/// Build the cores for the prepared format and hand them to the render thread,
+/// once per prepare. Allocates, so never from the audio thread. Before the unit
+/// is prepared it does nothing: -prepare… builds them itself when it finds the
+/// filter already engaged.
+- (void)buildCores {
+    std::lock_guard<std::mutex> guard(_im.build);
+    if (!_im.ready || _im.coresBuilt) return;
+
+    os_unfair_lock_lock(&_im.lock);
+    const declick::Params p = _im.pending;
+    os_unfair_lock_unlock(&_im.lock);
+
+    declick::Config cfg;
+    cfg.maxBlock = _im.maxBlock;
+    cfg.compute(p, _im.rate);
+
+    std::vector<declick::Channel> fresh;
+    try {
+        fresh.resize((size_t)_im.channels);
+        for (auto & ch : fresh) ch.configure(cfg);
+    } catch (const std::bad_alloc &) {
+        return;                                   // stays bypassed in effect
+    }
+
+    os_unfair_lock_lock(&_im.lock);
+    _im.pendingChan.swap(fresh);
+    _im.pendingChanCfg = cfg;
+    _im.pendingChanDirty = true;
+    os_unfair_lock_unlock(&_im.lock);
+    _im.coresBuilt = true;
+}
 
 - (NSInteger)latencyFrames { return (NSInteger)_im.latency.load(std::memory_order_relaxed); }
 - (uint64_t)repairedSamples { return _im.repaired.load(std::memory_order_relaxed); }
@@ -213,6 +268,7 @@ struct DeclickImpl {
                  channelCount:(NSInteger)channelCount
                     maxFrames:(NSInteger)maxFrames {
     [self unprepare];
+    std::lock_guard<std::mutex> guard(_im.build);
 
     const int nch = (int)std::min<NSInteger>(std::max<NSInteger>(channelCount, 1), kMaxChannels);
     const int mf  = (int)std::max<NSInteger>(maxFrames, 1);
@@ -221,6 +277,9 @@ struct DeclickImpl {
     const declick::Params p = _im.pending;
     _im.pendingDirty = false;
     os_unfair_lock_unlock(&_im.lock);
+    // Only an engaged filter gets its cores now; a bypassed one waits for
+    // -setBypassed:NO, so it costs the ring and nothing more.
+    const bool engaged = !_im.bypass.load(std::memory_order_relaxed);
 
     // Everything the core allocates is sized from the sample rate alone, so the
     // worst case any later parameter move can reach is known here and the ring
@@ -247,14 +306,16 @@ struct DeclickImpl {
     assert(cfg.latency <= latencyMax);
 
     try {
-        _im.chan.resize((size_t)nch);
-        for (int c = 0; c < nch; ++c) _im.chan[(size_t)c].configure(cfg);
+        if (engaged) {
+            _im.chan.resize((size_t)nch);
+            for (int c = 0; c < nch; ++c) _im.chan[(size_t)c].configure(cfg);
+        }
 
         _im.ringFrames = historyMax + mf + 1;
         _im.ring.assign((size_t)nch, std::vector<float>((size_t)_im.ringFrames, 0.0f));
         _im.dump.assign((size_t)(warmMax + (int)declick::kBlock), 0.0f);
     } catch (const std::bad_alloc &) {
-        [self unprepare];
+        [self clear];
         return NO;
     }
 
@@ -263,17 +324,31 @@ struct DeclickImpl {
     _im.rate      = sampleRate;
     _im.channels  = nch;
     _im.maxFrames = mf;
+    _im.maxBlock  = cfg.maxBlock;
     _im.written   = 0;
     _im.engaged   = false;
+    _im.coresBuilt = engaged;
     _im.ready     = true;
     _im.latency.store(cfg.latency, std::memory_order_relaxed);
     return YES;
 }
 
 - (void)unprepare {
+    std::lock_guard<std::mutex> guard(_im.build);
+    [self clear];
+}
+
+/// -unprepare's body, for callers already holding `build`.
+- (void)clear {
     _im.ready = false;
     _im.engaged = false;
+    _im.coresBuilt = false;
     _im.chan.clear();
+    os_unfair_lock_lock(&_im.lock);
+    std::vector<declick::Channel> stale;
+    stale.swap(_im.pendingChan);
+    _im.pendingChanDirty = false;
+    os_unfair_lock_unlock(&_im.lock);
     _im.ring.clear();
     _im.dump.clear();
     _im.ringFrames = 0;
@@ -335,6 +410,18 @@ static void warmChannel(DeclickImpl & im, int c) {
     bool restructured = false;
     bool adoptingWarm = false;
     if (os_unfair_lock_trylock(&im.lock)) {
+        if (im.pendingChanDirty) {
+            im.pendingChanDirty = false;
+            im.chan.swap(im.pendingChan);
+            // Built for the parameters pending at the time, which a move since
+            // may have overtaken; bring them to what this thread is running.
+            // Within the envelope, so neither call allocates.
+            const bool same = im.pendingChanCfg.structurallyEquals(im.cfg);
+            for (auto & ch : im.chan) {
+                if (!(same && ch.retune(im.cfg))) ch.configure(im.cfg);
+            }
+            restructured = true;
+        }
         if (im.pendingWarmDirty) {
             im.pendingWarmDirty = false;
             im.warmState.swap(im.pendingWarm);
@@ -349,14 +436,16 @@ static void warmChannel(DeclickImpl & im, int c) {
                 declick::Config next;
                 next.maxBlock = im.cfg.maxBlock;
                 next.compute(p, im.rate);
+                // `chan` is empty until the filter is first engaged; the move
+                // still lands in cfg, which the bypass delay follows.
                 bool retuned = next.structurallyEquals(im.cfg);
-                for (int c = 0; c < im.channels && retuned; ++c) {
-                    retuned = im.chan[(size_t)c].retune(next);
+                for (size_t c = 0; c < im.chan.size() && retuned; ++c) {
+                    retuned = im.chan[c].retune(next);
                 }
                 if (!retuned) {
                     // Max repair or Model order: the pipeline is a different
                     // length, so it has to be rebuilt and re-warmed.
-                    for (int c = 0; c < im.channels; ++c) im.chan[(size_t)c].configure(next);
+                    for (auto & ch : im.chan) ch.configure(next);
                     restructured = true;
                 }
                 im.cfg    = next;
@@ -368,7 +457,10 @@ static void warmChannel(DeclickImpl & im, int c) {
         }
     }
 
-    const bool wanted = !im.bypass.load(std::memory_order_relaxed);
+    // Engaged only once the cores have arrived, which can be a block or two
+    // after the flag flipped; until then the dry delay carries on.
+    const bool wanted = !im.bypass.load(std::memory_order_relaxed)
+                     && im.chan.size() >= (size_t)im.channels;
     const bool warm   = wanted && (!im.engaged || restructured || adoptingWarm);
     // A pass is for the track it was made from: once bypassed, not for later.
     if (adoptingWarm && !wanted) for (auto & s : im.warmState) s.clear();
@@ -512,7 +604,17 @@ static void warmChannel(DeclickImpl & im, int c) {
 namespace {
 
 struct DehumImpl {
+    //! Empty until the filter is first engaged, as for DeclickImpl::chan - a
+    //! bypassed dehum passes audio through untouched, so it needs nothing.
     std::vector<dehum::Channel> chan;
+
+    //! Built off the audio thread, handed over under `lock`. See DeclickImpl.
+    std::vector<dehum::Channel> pendingChan;
+    dehum::Config pendingChanCfg;
+    bool pendingChanDirty = false;
+
+    std::mutex build;             //!< -prepare…, -unprepare, -buildCores; never the audio thread
+    bool coresBuilt = false;      //!< under `build`
 
     dehum::Config cfg;
     dehum::Params active = dehum::Params::defaults();
@@ -555,7 +657,39 @@ struct DehumImpl {
 }
 
 - (BOOL)bypassed { return _im.bypass.load(std::memory_order_relaxed); }
-- (void)setBypassed:(BOOL)b { _im.bypass.store(b ? true : false, std::memory_order_relaxed); }
+- (void)setBypassed:(BOOL)b {
+    if (!b) [self buildCores];
+    _im.bypass.store(b ? true : false, std::memory_order_relaxed);
+}
+
+/// As PTDeclickProcessor's: the cores for the prepared format, once per prepare,
+/// handed to the render thread. Allocates.
+- (void)buildCores {
+    std::lock_guard<std::mutex> guard(_im.build);
+    if (!_im.ready || _im.coresBuilt) return;
+
+    os_unfair_lock_lock(&_im.lock);
+    const dehum::Params p = _im.pending;
+    os_unfair_lock_unlock(&_im.lock);
+
+    dehum::Config cfg;
+    cfg.compute(p, _im.rate);
+
+    std::vector<dehum::Channel> fresh;
+    try {
+        fresh.resize((size_t)_im.channels);
+        for (auto & ch : fresh) ch.configure(cfg);
+    } catch (const std::bad_alloc &) {
+        return;
+    }
+
+    os_unfair_lock_lock(&_im.lock);
+    _im.pendingChan.swap(fresh);
+    _im.pendingChanCfg = cfg;
+    _im.pendingChanDirty = true;
+    os_unfair_lock_unlock(&_im.lock);
+    _im.coresBuilt = true;
+}
 
 - (void)setParams:(PTDehumParams)params {
     const dehum::Params p = toCore(params);
@@ -587,6 +721,7 @@ struct DehumImpl {
                  channelCount:(NSInteger)channelCount
                     maxFrames:(NSInteger)maxFrames {
     [self unprepare];
+    std::lock_guard<std::mutex> guard(_im.build);
 
     const int nch = (int)std::min<NSInteger>(std::max<NSInteger>(channelCount, 1), kMaxChannels);
 
@@ -594,15 +729,18 @@ struct DehumImpl {
     const dehum::Params p = _im.pending;
     _im.pendingDirty = false;
     os_unfair_lock_unlock(&_im.lock);
+    const bool engaged = !_im.bypass.load(std::memory_order_relaxed);
 
     dehum::Config cfg;
     cfg.compute(p, sampleRate);
 
     try {
-        _im.chan.resize((size_t)nch);
-        for (int c = 0; c < nch; ++c) _im.chan[(size_t)c].configure(cfg);
+        if (engaged) {
+            _im.chan.resize((size_t)nch);
+            for (int c = 0; c < nch; ++c) _im.chan[(size_t)c].configure(cfg);
+        }
     } catch (const std::bad_alloc &) {
-        [self unprepare];
+        [self clear];
         return NO;
     }
 
@@ -612,14 +750,27 @@ struct DehumImpl {
     _im.channels  = nch;
     _im.maxFrames = (int)std::max<NSInteger>(maxFrames, 1);
     _im.engaged   = false;
+    _im.coresBuilt = engaged;
     _im.ready     = true;
     return YES;
 }
 
 - (void)unprepare {
+    std::lock_guard<std::mutex> guard(_im.build);
+    [self clear];
+}
+
+/// -unprepare's body, for callers already holding `build`.
+- (void)clear {
     _im.ready = false;
     _im.engaged = false;
+    _im.coresBuilt = false;
     _im.chan.clear();
+    os_unfair_lock_lock(&_im.lock);
+    std::vector<dehum::Channel> stale;
+    stale.swap(_im.pendingChan);
+    _im.pendingChanDirty = false;
+    os_unfair_lock_unlock(&_im.lock);
 }
 
 - (void)renderInPlace:(float * const *)data
@@ -632,8 +783,6 @@ struct DehumImpl {
     const int nch = (int)std::min<NSInteger>(channelCount, im.channels);
     if (n <= 0 || nch <= 0) return;
 
-    const bool wanted = !im.bypass.load(std::memory_order_relaxed);
-
     dehum::scoped_flush_denormals ftz;
 
     bool doReset = false, doAdopt = false;
@@ -643,6 +792,14 @@ struct DehumImpl {
     dehum::Params moved = im.active;
     bool doMove = false;
     if (os_unfair_lock_trylock(&im.lock)) {
+        if (im.pendingChanDirty) {
+            im.pendingChanDirty = false;
+            im.chan.swap(im.pendingChan);   // swaps out an empty vector: frees nothing
+            const bool same = im.pendingChanCfg.structurallyEquals(im.cfg);
+            for (auto & ch : im.chan) {
+                if (!(same && ch.retune(im.cfg))) ch.configure(im.cfg);
+            }
+        }
         if (im.pendingDirty) {
             im.pendingDirty = false;
             moved = im.pending;
@@ -663,15 +820,19 @@ struct DehumImpl {
         next.compute(moved, im.rate);
         // Only the sample rate sizes anything here, so every parameter move
         // retunes live and the audio never breaks.
+        // `chan` may still be empty; the move then only lands in cfg.
         bool ok = next.structurallyEquals(im.cfg);
-        for (int c = 0; c < im.channels && ok; ++c) ok = im.chan[(size_t)c].retune(next);
-        if (!ok) for (int c = 0; c < im.channels; ++c) im.chan[(size_t)c].configure(next);
+        for (size_t c = 0; c < im.chan.size() && ok; ++c) ok = im.chan[c].retune(next);
+        if (!ok) for (auto & ch : im.chan) ch.configure(next);
         im.cfg    = next;
         im.active = moved;
     }
 
-    if (doReset) for (int c = 0; c < im.channels; ++c) im.chan[(size_t)c].reset();
+    if (doReset) for (auto & ch : im.chan) ch.reset();
 
+    // Engaged only once the cores have arrived.
+    const bool wanted = !im.bypass.load(std::memory_order_relaxed)
+                     && im.chan.size() >= (size_t)im.channels;
     if (!wanted) {
         // Nothing is spent on a detector the user has switched off; the analysis
         // window is therefore stale when it comes back, so drop it then - the

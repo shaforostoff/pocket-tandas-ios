@@ -35,6 +35,7 @@
 		25134B84AB1B1EF2C51E34D7 /* MetadataParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FCB409B8B543F4137199041 /* MetadataParsing.swift */; };
 		25424C5384517F1D2F522E22 /* QueueItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DF4E2A802765BB203C5F04 /* QueueItem.swift */; };
 		258A3577901F5DB3457EF136 /* EqualizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F51A8AF65C344967C38D366 /* EqualizerTests.swift */; };
+		7E3C1A90D2B44F6A8C5E0B11 /* RestorationDSPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3C1A90D2B44F6A8C5E0B12 /* RestorationDSPTests.swift */; };
 		264A08FC767EA43CF8F61206 /* NowPlayingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9F4E9C90C2CB9F7F4D8BC9 /* NowPlayingController.swift */; };
 		29EE3D65103AAA14B71D71E2 /* DirectoryLister.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521E4B3C811E96019D8FBEB4 /* DirectoryLister.swift */; };
 		2AB27B884E20680D6CD6012A /* QueueRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550446ACA175ABD3E68124BF /* QueueRowView.swift */; };
@@ -251,6 +252,7 @@
 		1C6B4E8DA356A73DE344214B /* tempo.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = tempo.cpp; path = "Pocket Tandas/Analysis/bpmcore/tempo.cpp"; sourceTree = SOURCE_ROOT; };
 		1DCD4630A30D4AE666147A03 /* QueuePresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueuePresenter.swift; path = QueuePresenter.swift; sourceTree = "<group>"; };
 		1F51A8AF65C344967C38D366 /* EqualizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EqualizerTests.swift; path = EqualizerTests.swift; sourceTree = "<group>"; };
+		7E3C1A90D2B44F6A8C5E0B12 /* RestorationDSPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RestorationDSPTests.swift; path = RestorationDSPTests.swift; sourceTree = "<group>"; };
 		221445D89AC89DD4F5B1650A /* real_fft.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = real_fft.h; path = "Pocket Tandas/Analysis/bpmcore/real_fft.h"; sourceTree = SOURCE_ROOT; };
 		26EE44BF8CA36F66FC8457FA /* rhythm_model.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = rhythm_model.h; path = "Pocket Tandas/Analysis/bpmcore/rhythm_model.h"; sourceTree = SOURCE_ROOT; };
 		2CF04EC9A9D61989661BCF0E /* TrackDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackDisplay.swift; path = TrackDisplay.swift; sourceTree = "<group>"; };
@@ -608,6 +610,7 @@
 				72C74E75B1F091A21869F10B /* PlaylistParserTests.swift */,
 				793840C9AF05E7B7D618259E /* FadeControllerTests.swift */,
 				1F51A8AF65C344967C38D366 /* EqualizerTests.swift */,
+				7E3C1A90D2B44F6A8C5E0B12 /* RestorationDSPTests.swift */,
 				737C41A1A07C1158688B2CCC /* TrackAnalysisTests.swift */,
 				EF264FDE876C3D059EEC95D6 /* StableTrackIDTests.swift */,
 			);
@@ -1010,6 +1013,7 @@
 				462943C2808343F92EB059C3 /* PlaylistParserTests.swift in Sources */,
 				20724BE78F3BDBA17F2BD71E /* FadeControllerTests.swift in Sources */,
 				258A3577901F5DB3457EF136 /* EqualizerTests.swift in Sources */,
+				7E3C1A90D2B44F6A8C5E0B11 /* RestorationDSPTests.swift in Sources */,
 				21AD409BB690517F6DB5851E /* TrackAnalysisTests.swift in Sources */,
 				62664A67805367BC30EBFBEF /* StableTrackIDTests.swift in Sources */,
 			);

@@ -83,7 +83,10 @@ FOUNDATION_EXPORT const NSInteger PTDehumMaxLines;
 /// repaired sample comes out.
 @interface PTDeclickProcessor : NSObject
 
-/// Pass-through (with the delay preserved). Settable from any thread.
+/// Pass-through (with the delay preserved). Settable from any thread but the
+/// audio thread: the cores (about 6 MB at 44.1 kHz stereo) are built the first
+/// time a prepared unit is engaged, so a filter never switched on never pays
+/// for them. Engaging takes effect within a render block or two.
 @property (nonatomic) BOOL bypassed;
 
 /// Frames of delay the unit imposes, bypassed or not. Changes only when
@@ -165,7 +168,8 @@ FOUNDATION_EXPORT const NSInteger PTDehumMaxLines;
 @interface PTDehumProcessor : NSObject
 
 /// Pass-through. While bypassed the detector is not fed either, so nothing is
-/// spent on an FFT the user has switched off. Settable from any thread.
+/// spent on an FFT the user has switched off. Settable from any thread but the
+/// audio thread; as for the declicker, the first engage builds the cores.
 @property (nonatomic) BOOL bypassed;
 
 - (BOOL)prepareWithSampleRate:(double)sampleRate
