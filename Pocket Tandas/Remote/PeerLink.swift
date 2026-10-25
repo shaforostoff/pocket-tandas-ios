@@ -41,7 +41,10 @@
 //  does not wake it — but a GATT read does (the bluetooth-peripheral background
 //  mode). So while the channel is up the sender reads the one-byte wake
 //  characteristic every couple of seconds, and each read buys the receiver another
-//  few seconds to drain the channel and send its heartbeats.
+//  few seconds to drain the channel and send its heartbeats. A wake read also
+//  counts as hearing from the sender: a locked receiver doesn't reliably read the
+//  sender's heartbeat answers off the channel, and without this it hit its silence
+//  limit and closed an idle link every fifteen seconds.
 //
 //  Reconnection: the sender remembers the last receiver it was connected to, across
 //  launches, and re-joins it without a tap — by a standing connect to its
@@ -763,6 +766,10 @@ extension PeerLink: CBPeripheralManagerDelegate {
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
         // Every couple of seconds while linked, so not logged.
         if request.characteristic.uuid == Self.wakeUUID {
+            for framed in [channel, pending?.channel].compactMap({ $0 })
+            where framed.peerIdentifier == request.central.identifier {
+                framed.heard()
+            }
             request.value = Data([0])
             return peripheral.respond(to: request, withResult: .success)
         }
@@ -1182,6 +1189,11 @@ private final class FramedChannel: NSObject, StreamDelegate {
     private(set) var bytesWritten = 0
 
     private let l2cap: CBL2CAPChannel
+    var peerIdentifier: UUID { l2cap.peer.identifier }
+
+    /// The far end showed it is alive some other way than on this channel.
+    func heard() { lastInbound = Date() }
+
     private var inbox = Data()
     private var outbox: [Data] = []
     private var outOffset = 0
