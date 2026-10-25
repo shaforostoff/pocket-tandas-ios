@@ -258,7 +258,10 @@ final class PlayQueueTests: XCTestCase {
         try fm.removeItem(at: track)   // the file disappears between launches
 
         let q2 = PlayQueue(storeURL: store)
+        defer { try? fm.removeItem(at: q2.backupURL) }
         q2.restore(baseURL: base)
         XCTAssertTrue(q2.items.isEmpty)
+        // The queue as it was saved is kept, since the next edit overwrites it.
+        XCTAssertEqual(try Data(contentsOf: q2.backupURL), try Data(contentsOf: store))
     }
 }

@@ -206,6 +206,18 @@ final class PlayQueue {
             guard fm.fileExists(atPath: url.path) else { return nil }
             return QueueItem(url: url, trackKey: StableTrackID.key(for: url, baseURL: baseURL))
         }
+        // A whole folder can be out of reach at launch — an unplugged drive, tracks
+        // iCloud has offloaded — and the next edit would overwrite the saved queue
+        // with what survived. Keep the full one beside it, so the set isn't lost.
+        if items.count < stored.count {
+            try? fm.removeItem(at: backupURL)
+            try? fm.copyItem(at: storeURL, to: backupURL)
+        }
+    }
+
+    /// The last saved queue that didn't fully restore. See `restore`.
+    var backupURL: URL {
+        storeURL.deletingPathExtension().appendingPathExtension("bak.json")
     }
 
     /// The library fields a stored media entry needs back, keyed by persistent id.

@@ -25,8 +25,6 @@ final class LibraryStore {
     @ObservationIgnored private var scopedURL: URL?
     @ObservationIgnored private let bookmarkKey = "baseFolderBookmark"
 
-    var hasBaseFolder: Bool { baseURL != nil }
-
     init() {
         restore()
     }
