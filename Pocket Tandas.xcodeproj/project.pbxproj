@@ -68,7 +68,7 @@
 		46FD481BB5597FB8B3FA30B7 /* EqualizerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76764CC68526E0C71A84329B /* EqualizerView.swift */; };
 		48ED43DBB5A495ACD73C3026 /* tempo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C6B4E8DA356A73DE344214B /* tempo.cpp */; };
 		4B0282F86FB21716DF3B37AC /* RestorationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A444E18E085C787F2F4893 /* RestorationSettings.swift */; };
-		4C3141D8AC88818DF0C59799 /* declick_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D80F41F3997423635A64AE94 /* declick_core.cpp */; };
+		4C3141D8AC88818DF0C59799 /* declick_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D80F41F3997423635A64AE94 /* declick_core.cpp */; settings = {COMPILER_FLAGS = "-O2"; }; };
 		4CA3AF96FEEF6F1F23A51F2D /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE986D212FDDF87C003B2F2A /* Preview Assets.xcassets */; };
 		4DED473FB48CB1E5087A8335 /* AACTranscoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4974CF8A86937EE921CAB72 /* AACTranscoder.swift */; };
 		4E3C4A8D82365AE518A461C0 /* RemoteFileReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47C44DBBF73D061BC3F23C8 /* RemoteFileReceiver.swift */; };
@@ -96,7 +96,7 @@
 		660802EF162698A2BA7FA87B /* AppMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F204B4A9645469298030DA4 /* AppMode.swift */; };
 		69F84E3E88A3785FF6C833EF /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F74FFEA141432E11F27838 /* BrowserView.swift */; };
 		6AFA57E67887807AD3D865B2 /* PeerLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D45CBB99FB2EF3837BF45 /* PeerLink.swift */; };
-		6CCD47CDB413801C85567EF7 /* PTRestorationDSP.mm in Sources */ = {isa = PBXBuildFile; fileRef = B40B48CC8B52D5FD6C32184E /* PTRestorationDSP.mm */; };
+		6CCD47CDB413801C85567EF7 /* PTRestorationDSP.mm in Sources */ = {isa = PBXBuildFile; fileRef = B40B48CC8B52D5FD6C32184E /* PTRestorationDSP.mm */; settings = {COMPILER_FLAGS = "-O2"; }; };
 		6E090B721FB28D6B95FEA354 /* OutputDevicePickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1646A25D1C9E837E5AD1B1BF /* OutputDevicePickers.swift */; };
 		6ECCD249DB5AD20FB86C9DFB /* PlaylistWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326E43918354BD12D57FCB96 /* PlaylistWriter.swift */; };
 		6F3A4711ACE788EE98F297C9 /* RoutePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BF457EA0F54578CCA91277 /* RoutePickerView.swift */; };
@@ -120,7 +120,7 @@
 		8BB8CE3727B03F0E2E55D1A6 /* MusicBrowseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD484C8AB0ADF994D715D737 /* MusicBrowseModel.swift */; };
 		92E4642A65AEB43846BA8B6F /* SortMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB774D14B26DCD27A530AB67 /* SortMenu.swift */; };
 		9398411B846238CC22097F21 /* MediaTrackDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F80042B1A005AAD4ABA98817 /* MediaTrackDecoder.swift */; };
-		93A10B67173696905B2A462F /* declick_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D80F41F3997423635A64AE94 /* declick_core.cpp */; };
+		93A10B67173696905B2A462F /* declick_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D80F41F3997423635A64AE94 /* declick_core.cpp */; settings = {COMPILER_FLAGS = "-O2"; }; };
 		9475457596677D5744C52B85 /* TrackAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64C4DFE914725695EC89080 /* TrackAnalysis.swift */; };
 		96434058A8946AF6406A1A47 /* BrowserState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAD3451DBC3FBFA192B41543 /* BrowserState.swift */; };
 		96784D1ABEC0A01959A94841 /* RemoteFileSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7340379FBB316ADC8C14CE /* RemoteFileSender.swift */; };
@@ -154,7 +154,7 @@
 		B93B40358CB52B3131C99486 /* resample.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5F054B4588BF5BCD5D8514CD /* resample.cpp */; };
 		B995518595693C2BDAC612E2 /* BrowserRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A94CD9B0093F4342BFBC42 /* BrowserRowView.swift */; };
 		BCD2C1BEBA21F9DBBDDF9244 /* SavePlaylistButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117D4F0B8209DA7F1CDC67F6 /* SavePlaylistButton.swift */; };
-		BD4700994FB912A8743BC055 /* PTRestorationDSP.mm in Sources */ = {isa = PBXBuildFile; fileRef = B40B48CC8B52D5FD6C32184E /* PTRestorationDSP.mm */; };
+		BD4700994FB912A8743BC055 /* PTRestorationDSP.mm in Sources */ = {isa = PBXBuildFile; fileRef = B40B48CC8B52D5FD6C32184E /* PTRestorationDSP.mm */; settings = {COMPILER_FLAGS = "-O2"; }; };
 		C0DA8D5518433CE517509493 /* MediaTrackDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F80042B1A005AAD4ABA98817 /* MediaTrackDecoder.swift */; };
 		C14A37D935291FFC6EB9CC96 /* LauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF3460D82A5BD10D499C6B4 /* LauncherView.swift */; };
 		C749453D8D474C4631F1752E /* TrackAnalysisQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6F4655AE41A3AC7EF6E771 /* TrackAnalysisQueue.swift */; };
@@ -186,7 +186,7 @@
 		DCF14B4D99E171D505330DB9 /* tempo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C6B4E8DA356A73DE344214B /* tempo.cpp */; };
 		DE8F4332A9265EF9457F9E2E /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E112487F8DED525D48E18718 /* PlaybackState.swift */; };
 		DF1D75B8339041C491210920 /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E194492A760141C1C5FCFE7 /* PlaybackEngine.swift */; };
-		DF6BA41891DE83852066D446 /* dehum_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 41F74DE9B24A28C18A99BD1E /* dehum_core.cpp */; };
+		DF6BA41891DE83852066D446 /* dehum_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 41F74DE9B24A28C18A99BD1E /* dehum_core.cpp */; settings = {COMPILER_FLAGS = "-O2"; }; };
 		E217BBE5D4B7446821A4998C /* AudioOutputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDB09D588E0C993BC5FF929 /* AudioOutputDevice.swift */; };
 		E2204B2095DE9E32AB0CA737 /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */; };
 		E4BA44DD985DA497D324F855 /* StableTrackID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FB4789B2B0DA7E8401866A /* StableTrackID.swift */; };
@@ -207,7 +207,7 @@
 		F3FD425A9B41745492452915 /* TrackAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C06C4689AEEF9695EC89829B /* TrackAnalyzer.swift */; };
 		F4ADC2E9062905158C58C568 /* RemoteQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9CA4380AB56B57660B01D65 /* RemoteQueue.swift */; };
 		F4B94D15A9B0EC5203EE260D /* pffft.c in Sources */ = {isa = PBXBuildFile; fileRef = 01E04F8498B687FB358FE183 /* pffft.c */; };
-		F619461B8DE4BC43A7F7DC71 /* dehum_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 41F74DE9B24A28C18A99BD1E /* dehum_core.cpp */; };
+		F619461B8DE4BC43A7F7DC71 /* dehum_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 41F74DE9B24A28C18A99BD1E /* dehum_core.cpp */; settings = {COMPILER_FLAGS = "-O2"; }; };
 		F75E4615AB95C79357735D99 /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E194492A760141C1C5FCFE7 /* PlaybackEngine.swift */; };
 		FBC4497C9A5B0A2DDB247D21 /* MetadataParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9C4726B986D34E5855DCFC /* MetadataParsingTests.swift */; };
 		FD7704A517C995B38A083254 /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49A4CBC86F0BAF01CE1A0AF /* MetadataService.swift */; };
