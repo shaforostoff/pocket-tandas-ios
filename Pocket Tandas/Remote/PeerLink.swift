@@ -51,9 +51,34 @@
 import Foundation
 import CoreBluetooth
 import Observation
+import os
 #if canImport(UIKit)
 import UIKit
 #endif
+
+/// The link's own log, kept in release builds too (unlike ptLog), so a TestFlight
+/// build can be followed in Console.app: pick the phone, filter on category
+/// "PeerLink". Public, or release builds show every interpolation as <private>.
+private let peerLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Pocket Tandas", category: "PeerLink")
+
+private func linkLog(_ message: @autoclosure () -> String) {
+    let text = message()
+    peerLog.notice("\(text, privacy: .public)")
+}
+
+private extension CBManagerState {
+    var name: String {
+        switch self {
+        case .unknown:      return "unknown"
+        case .resetting:    return "resetting"
+        case .unsupported:  return "unsupported"
+        case .unauthorized: return "unauthorized"
+        case .poweredOff:   return "poweredOff"
+        case .poweredOn:    return "poweredOn"
+        @unknown default:   return "state \(rawValue)"
+        }
+    }
+}
 
 @Observable
 final class PeerLink: NSObject {
@@ -226,6 +251,7 @@ final class PeerLink: NSObject {
     // MARK: - Control (called from the main thread)
 
     func startAdvertising() {
+        linkLog("receiver: start (\(identity.name), install \(identity.id), \(allowedSenders.count) allowed senders)")
         isActive = true
         startTick()
         if let manager = peripheralManager {
@@ -240,6 +266,8 @@ final class PeerLink: NSObject {
     }
 
     func startBrowsing() {
+        linkLog("sender: start (\(identity.name), install \(identity.id), remembered receiver: "
+                + (preferredReceiver.map { "\($0.identity.name) at \($0.peripheralID)" } ?? "none") + ")")
         isActive = true
         startTick()
         discoveredPeers = []
@@ -254,8 +282,12 @@ final class PeerLink: NSObject {
 
     /// Sender: the DJ tapped a receiver in the picker.
     func invite(_ peer: Peer) {
-        guard role == .sender, let entry = known[peer.id] else { return }
+        guard role == .sender, let entry = known[peer.id] else {
+            linkLog("invite: \(peer.displayName) (\(peer.id)) is no longer known")
+            return
+        }
         let peripheral = entry.peripheral
+        linkLog("invite: the DJ picked \(peer.displayName) (\(peer.id))")
         if var current = contact, current.peripheral === peripheral {
             current.intent = .join
             contact = current
@@ -273,6 +305,7 @@ final class PeerLink: NSObject {
     /// auto-reconnect would re-join within the second — and drop the link a beat
     /// later so that message actually makes it out.
     func disconnect() {
+        linkLog("disconnect requested by the DJ")
         forgetPreferred()
         send(.goodbye)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
@@ -284,6 +317,7 @@ final class PeerLink: NSObject {
     /// about again.
     func allowPendingSender() {
         guard let (framed, sender) = pending else { return }
+        linkLog("allowed \(sender.name) (install \(sender.id))")
         pending = nil
         pendingSender = nil
         allowedSenders.insert(sender.id)
@@ -295,7 +329,7 @@ final class PeerLink: NSObject {
     /// forgets this receiver instead of re-joining — and asking — every few seconds.
     func refusePendingSender() {
         guard let (framed, sender) = pending else { return }
-        ptLog("[PeerLink] refused \(sender.name)")
+        linkLog("refused \(sender.name)")
         pending = nil
         pendingSender = nil
         if let goodbye = RemoteMessage.goodbye.encoded() {
@@ -312,6 +346,7 @@ final class PeerLink: NSObject {
 
     /// Leaving the screen. Keeps the remembered receiver, so coming back reconnects.
     func stop() {
+        linkLog("\(role): stop")
         isActive = false
         tick?.invalidate()
         tick = nil
@@ -381,7 +416,7 @@ final class PeerLink: NSObject {
         let now = Date()
         if let channel {
             if now.timeIntervalSince(channel.lastInbound) > Self.silenceLimit {
-                ptLog("[PeerLink] nothing heard for \(Int(Self.silenceLimit))s — link is dead")
+                linkLog("nothing heard for \(Int(Self.silenceLimit))s — link is dead")
                 channelLost()
             } else if role == .receiver, now.timeIntervalSince(channel.lastOutbound) >= Self.heartbeatInterval {
                 channel.send(kind: .heartbeat, body: Data(), droppable: true)
@@ -391,11 +426,13 @@ final class PeerLink: NSObject {
         case .receiver:
             let expired = unintroduced.filter { now.timeIntervalSince($0.openedAt) > Self.attemptLimit }
             if !expired.isEmpty {
+                linkLog("closing \(expired.count) channel(s) that never said hello")
                 expired.forEach { $0.channel.close() }
                 unintroduced.removeAll { entry in expired.contains { $0.channel === entry.channel } }
             }
             if let waiting = pending?.channel {
                 if now.timeIntervalSince(waiting.lastInbound) > Self.silenceLimit {
+                    linkLog("the sender waiting for the DJ went silent — dropping it")
                     dropPendingSender()
                 } else if now.timeIntervalSince(waiting.lastOutbound) >= Self.heartbeatInterval {
                     waiting.send(kind: .heartbeat, body: Data(), droppable: true)
@@ -406,7 +443,7 @@ final class PeerLink: NSObject {
             // channel it produced is up — so only an attempt still without a channel
             // can time out.
             if channel == nil, let contact, now.timeIntervalSince(contact.startedAt) > Self.attemptLimit {
-                ptLog("[PeerLink] connection attempt to \(displayName(for: contact.peripheral.identifier)) timed out")
+                linkLog("connection attempt to \(displayName(for: contact.peripheral.identifier)) timed out")
                 contactFailed()
             }
             refreshDiscoveredPeers(now: now)
@@ -427,11 +464,13 @@ final class PeerLink: NSObject {
         framed.onClose = { [weak self, weak framed] in
             guard let self, let framed else { return }
             if framed === self.channel {
-                ptLog("[PeerLink] channel closed")
+                linkLog("channel closed")
                 self.channelLost()
             } else if framed === self.pending?.channel {
+                linkLog("the sender waiting for the DJ closed its channel")
                 self.dropPendingSender()   // it gave up waiting
             } else {
+                linkLog("a channel closed before saying hello")
                 self.unintroduced.removeAll { $0.channel === framed }
             }
         }
@@ -446,12 +485,19 @@ final class PeerLink: NSObject {
                 framed.send(kind: .heartbeat, body: Data(), droppable: true)
             }
         case .hello:
-            guard role == .receiver, let peer = try? JSONDecoder().decode(Identity.self, from: body) else { return }
+            guard role == .receiver, let peer = try? JSONDecoder().decode(Identity.self, from: body) else {
+                linkLog("unreadable hello (\(body.count) bytes) — ignored")
+                return
+            }
+            linkLog("hello from \(peer.name) (install \(peer.id))")
             introduce(framed, as: peer)
         case .message:
             guard framed === channel else { return }
             decodeQueue.async { [weak self] in
-                guard let message = RemoteMessage.decode(body) else { return }
+                guard let message = RemoteMessage.decode(body) else {
+                    linkLog("undecodable message (\(body.count) bytes) — dropped")
+                    return
+                }
                 DispatchQueue.main.async {
                     guard let self, framed === self.channel else { return }
                     // The peer is leaving deliberately — don't chase it.
@@ -478,6 +524,7 @@ final class PeerLink: NSObject {
     /// purpose. Report it, then go back to waiting / searching.
     private func channelLost() {
         guard let lost = channel else { return }
+        linkLog("link to \(channelPeer?.displayName ?? "?") lost")
         lost.close()
         channel = nil
         channelPeer = nil
@@ -495,7 +542,9 @@ final class PeerLink: NSObject {
     }
 
     private func setState(_ newState: ConnectionState) {
-        if connectionState != newState { connectionState = newState }
+        guard connectionState != newState else { return }
+        linkLog("state: \(connectionState) → \(newState)")
+        connectionState = newState
     }
 
     private func observeLifecycle() {
@@ -507,6 +556,7 @@ final class PeerLink: NSObject {
             NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification,
                                                    object: nil, queue: .main) { [weak self] _ in
                 guard let self, self.isActive, self.role == .sender, self.channel == nil else { return }
+                linkLog("back in the foreground — searching again")
                 self.beginSearch()
             },
         ]
@@ -563,6 +613,7 @@ final class PeerLink: NSObject {
 
 extension PeerLink: CBPeripheralManagerDelegate {
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+        linkLog("receiver: Bluetooth \(peripheral.state.name), authorization \(CBManager.authorization.rawValue), active \(isActive)")
         switch peripheral.state {
         case .poweredOn:
             guard isActive else { return }
@@ -585,6 +636,7 @@ extension PeerLink: CBPeripheralManagerDelegate {
     private func publish() {
         guard let manager = peripheralManager, manager.state == .poweredOn else { return }
         if !serviceAdded && publishedPSM == nil && !publishInFlight {
+            linkLog("publishing the service and the L2CAP channel")
             publishInFlight = true
             manager.removeAllServices()
             let identityChar = CBMutableCharacteristic(type: Self.identityUUID, properties: [.read],
@@ -608,16 +660,18 @@ extension PeerLink: CBPeripheralManagerDelegate {
         // The name only travels while in the foreground; in the background iOS keeps
         // just the service UUID, and the sender reads the name from the identity
         // characteristic instead.
+        linkLog("advertising as \(identity.name), PSM \(publishedPSM.map(String.init) ?? "?")")
         manager.startAdvertising([CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
                                   CBAdvertisementDataLocalNameKey: identity.name])
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
         if let error {
-            ptLog("[PeerLink] adding the service failed: \(error)")
+            linkLog("adding the service failed: \(error)")
             publishInFlight = false   // the next startAdvertising() tries again
             return
         }
+        linkLog("service added")
         serviceAdded = true
         publishInFlight = publishedPSM == nil
         startAdvertisingIfReady()
@@ -625,17 +679,18 @@ extension PeerLink: CBPeripheralManagerDelegate {
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didPublishL2CAPChannel PSM: CBL2CAPPSM, error: Error?) {
         if let error {
-            ptLog("[PeerLink] publishing the channel failed: \(error)")
+            linkLog("publishing the channel failed: \(error)")
             publishInFlight = false   // the next startAdvertising() tries again
             return
         }
+        linkLog("L2CAP channel published on PSM \(PSM)")
         publishedPSM = PSM
         publishInFlight = !serviceAdded
         startAdvertisingIfReady()
     }
 
     func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
-        if let error { ptLog("[PeerLink] advertise error: \(error)") }
+        if let error { linkLog("advertise error: \(error)") } else { linkLog("advertising started") }
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
@@ -645,6 +700,8 @@ extension PeerLink: CBPeripheralManagerDelegate {
         case Self.psmUUID:      value = publishedPSM.map { withUnsafeBytes(of: $0.littleEndian) { Data($0) } }
         default:                value = nil
         }
+        linkLog("read of \(request.characteristic.uuid) at offset \(request.offset) from central \(request.central.identifier)"
+                + (value == nil ? " — nothing to give" : ""))
         guard let value else { return peripheral.respond(to: request, withResult: .attributeNotFound) }
         guard request.offset <= value.count else { return peripheral.respond(to: request, withResult: .invalidOffset) }
         request.value = value.subdata(in: request.offset..<value.count)
@@ -653,9 +710,11 @@ extension PeerLink: CBPeripheralManagerDelegate {
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didOpen channel: CBL2CAPChannel?, error: Error?) {
         guard let channel else {
-            if let error { ptLog("[PeerLink] incoming channel failed: \(error)") }
+            if let error { linkLog("incoming channel failed: \(error)") }
             return
         }
+        linkLog("incoming channel on PSM \(channel.psm) from \(channel.peer?.identifier.uuidString ?? "?")"
+                + (isActive ? "" : " — not active, ignored"))
         guard isActive else { return }
         unintroduced.append((makeFramed(channel), Date()))
     }
@@ -668,7 +727,7 @@ extension PeerLink: CBPeripheralManagerDelegate {
     private func introduce(_ framed: FramedChannel, as peer: Identity) {
         unintroduced.removeAll { $0.channel === framed }
         guard allowedSenders.contains(peer.id) else {
-            ptLog("[PeerLink] \(peer.name) asks to connect — waiting for the DJ")
+            linkLog("\(peer.name) asks to connect — waiting for the DJ")
             dropPendingSender()
             pending = (framed, peer)
             pendingSender = Peer(id: peer.id, displayName: peer.name)
@@ -678,17 +737,18 @@ extension PeerLink: CBPeripheralManagerDelegate {
             let sameSender = channelPeer.map { $0.id == peer.id } ?? false
             let quiet = Date().timeIntervalSince(current.lastInbound) > Self.heartbeatInterval * 2
             guard sameSender || quiet else {
-                ptLog("[PeerLink] turning away \(peer.name) — already connected")
+                linkLog("turning away \(peer.name) — already connected")
                 framed.close()
                 return
             }
-            ptLog("[PeerLink] \(peer.name) replaces the current link")
+            linkLog("\(peer.name) replaces the current link")
             // close() silences the channel's own onClose, so report the drop here:
             // a transfer the old sender left half-sent must not outlive it.
             current.close()
             onDisconnected?()
         }
         let connected = Peer(id: peer.id, displayName: peer.name)
+        linkLog("link up with \(peer.name)")
         channel = framed
         channelPeer = connected
         setState(.connected(peer.name))
@@ -709,6 +769,7 @@ extension PeerLink: CBPeripheralManagerDelegate {
 
 extension PeerLink: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        linkLog("sender: Bluetooth \(central.state.name), authorization \(CBManager.authorization.rawValue), active \(isActive)")
         switch central.state {
         case .poweredOn:
             guard isActive else { return }
@@ -731,6 +792,7 @@ extension PeerLink: CBCentralManagerDelegate {
               let central = centralManager, central.state == .poweredOn else { return }
         // Duplicates on: the picker drops receivers that stop being heard, and that
         // needs a steady stream of sightings. Scanning stops once connected.
+        if !central.isScanning { linkLog("scanning for receivers") }
         central.scanForPeripherals(withServices: [Self.serviceUUID],
                                    options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         armStandingReconnect()
@@ -742,6 +804,7 @@ extension PeerLink: CBCentralManagerDelegate {
               contact == nil, standingReconnect == nil,
               let peripheral = central.retrievePeripherals(withIdentifiers: [preferred.peripheralID]).first
         else { return }
+        linkLog("standing connect to \(preferred.identity.name) at \(peripheral.identifier)")
         remember(peripheral, seen: false)
         standingReconnect = peripheral
         // No timeout: this completes whenever the receiver is next reachable.
@@ -751,7 +814,12 @@ extension PeerLink: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         guard isActive else { return }
-        remember(peripheral, advertisedName: advertisementData[CBAdvertisementDataLocalNameKey] as? String)
+        let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        // Duplicates are on, so only the first sighting of each is logged.
+        if known[peripheral.identifier].map({ $0.lastSeen == .distantPast }) ?? true {
+            linkLog("discovered \(advertisedName ?? "unnamed receiver") at \(peripheral.identifier), RSSI \(RSSI)")
+        }
+        remember(peripheral, advertisedName: advertisedName)
         refreshDiscoveredPeers(now: Date())
         guard channel == nil else { return }
         // The remembered receiver, under a peripheral id we already recognise.
@@ -798,6 +866,8 @@ extension PeerLink: CBCentralManagerDelegate {
 
     private func beginContact(_ peripheral: CBPeripheral, intent: Contact.Intent) {
         contact = Contact(peripheral: peripheral, intent: intent, startedAt: Date())
+        linkLog("contact (\(intent)) with \(displayName(for: peripheral.identifier)) at \(peripheral.identifier)"
+                + (peripheral.state == .connected ? ", already connected" : ", connecting"))
         peripheral.delegate = self
         if peripheral.state == .connected {
             peripheral.discoverServices([Self.serviceUUID])
@@ -819,6 +889,7 @@ extension PeerLink: CBCentralManagerDelegate {
     /// is waiting on is reported.
     private func contactFailed() {
         guard let failed = contact else { return }
+        linkLog("contact (\(failed.intent)) with \(displayName(for: failed.peripheral.identifier)) failed")
         known[failed.peripheral.identifier]?.probeSettled = true
         dropContact()
         if failed.intent != .probe {
@@ -829,6 +900,7 @@ extension PeerLink: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        linkLog("connected to \(peripheral.identifier)" + (peripheral === standingReconnect ? " (standing connect)" : ""))
         if peripheral === standingReconnect {
             standingReconnect = nil
             if contact?.peripheral !== peripheral {
@@ -841,21 +913,24 @@ extension PeerLink: CBCentralManagerDelegate {
             }
         }
         guard let current = contact, current.peripheral === peripheral else {
+            linkLog("not the current contact — disconnecting \(peripheral.identifier)")
             central.cancelPeripheralConnection(peripheral)
             return
         }
         if current.intent != .probe { setState(.connecting(displayName(for: peripheral.identifier))) }
+        linkLog("discovering services on \(peripheral.identifier)")
         peripheral.delegate = self
         peripheral.discoverServices([Self.serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        ptLog("[PeerLink] connect failed: \(error.map { "\($0)" } ?? "no reason")")
+        linkLog("connect failed: \(error.map { "\($0)" } ?? "no reason")")
         if peripheral === standingReconnect { standingReconnect = nil }
         if contact?.peripheral === peripheral { contactFailed() } else { beginSearch() }
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        linkLog("disconnected from \(peripheral.identifier): \(error.map { "\($0)" } ?? "on request")")
         if peripheral === standingReconnect { standingReconnect = nil }
         if contact?.peripheral === peripheral {
             contact = nil
@@ -868,6 +943,7 @@ extension PeerLink: CBCentralManagerDelegate {
 
     private func proceedToChannel() {
         guard let current = contact, let psmChar = current.psmCharacteristic else { return }
+        linkLog("reading the PSM")
         current.peripheral.readValue(for: psmChar)
     }
 
@@ -888,9 +964,10 @@ extension PeerLink: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard contact?.peripheral === peripheral else { return }
         guard let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
-            ptLog("[PeerLink] \(peripheral.identifier) has no remote service: \(error.map { "\($0)" } ?? "")")
+            linkLog("\(peripheral.identifier) has no remote service: \(error.map { "\($0)" } ?? "")")
             return contactFailed()
         }
+        linkLog("found the remote service; discovering its characteristics")
         peripheral.discoverCharacteristics([Self.identityUUID, Self.psmUUID], for: service)
     }
 
@@ -901,8 +978,10 @@ extension PeerLink: CBPeripheralDelegate {
         current.psmCharacteristic = chars.first { $0.uuid == Self.psmUUID }
         contact = current
         guard let identityChar = current.identityCharacteristic, let psmChar = current.psmCharacteristic else {
+            linkLog("characteristics missing (got \(chars.map(\.uuid)), error \(error.map { "\($0)" } ?? "none"))")
             return contactFailed()
         }
+        linkLog("reading the identity" + (current.intent == .join ? " and the PSM" : ""))
         peripheral.readValue(for: identityChar)
         // A join doesn't need to wait for the identity to know it wants the PSM.
         if current.intent == .join { peripheral.readValue(for: psmChar) }
@@ -911,12 +990,17 @@ extension PeerLink: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard var current = contact, current.peripheral === peripheral else { return }
         guard error == nil, let value = characteristic.value else {
-            ptLog("[PeerLink] reading \(characteristic.uuid) failed: \(error.map { "\($0)" } ?? "empty")")
+            linkLog("reading \(characteristic.uuid) failed: \(error.map { "\($0)" } ?? "empty")")
             return contactFailed()
         }
         switch characteristic.uuid {
         case Self.identityUUID:
-            guard let peer = try? JSONDecoder().decode(Identity.self, from: value) else { return contactFailed() }
+            guard let peer = try? JSONDecoder().decode(Identity.self, from: value) else {
+                linkLog("unreadable identity (\(value.count) bytes)")
+                return contactFailed()
+            }
+            linkLog("identity: \(peer.name) (install \(peer.id))"
+                    + (preferredReceiver?.identity.id == peer.id ? ", the remembered receiver" : ""))
             current.identity = peer
             known[peripheral.identifier]?.identity = peer
             refreshDiscoveredPeers(now: Date())
@@ -937,8 +1021,12 @@ extension PeerLink: CBPeripheralDelegate {
                 probeNext()
             }
         case Self.psmUUID:
-            guard value.count >= 2 else { return contactFailed() }
+            guard value.count >= 2 else {
+                linkLog("PSM too short (\(value.count) bytes)")
+                return contactFailed()
+            }
             current.psm = CBL2CAPPSM(value[value.startIndex]) | CBL2CAPPSM(value[value.startIndex + 1]) << 8
+            linkLog("PSM: \(current.psm!)")
             contact = current
             openChannelIfReady()
         default:
@@ -950,17 +1038,19 @@ extension PeerLink: CBPeripheralDelegate {
     private func openChannelIfReady() {
         guard let current = contact, current.intent != .probe,
               current.identity != nil, let psm = current.psm else { return }
+        linkLog("opening the L2CAP channel on PSM \(psm)")
         current.peripheral.openL2CAPChannel(psm)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didOpen l2cap: CBL2CAPChannel?, error: Error?) {
         guard let current = contact, current.peripheral === peripheral, let receiver = current.identity else { return }
         guard let l2cap else {
-            ptLog("[PeerLink] opening the channel failed: \(error.map { "\($0)" } ?? "no reason")")
+            linkLog("opening the channel failed: \(error.map { "\($0)" } ?? "no reason")")
             return contactFailed()
         }
         let framed = makeFramed(l2cap)
         guard let hello = try? JSONEncoder().encode(identity) else { return contactFailed() }
+        linkLog("channel open; saying hello")
         framed.send(kind: .hello, body: hello, droppable: false)
         centralManager?.stopScan()
         if let standing = standingReconnect, standing !== peripheral {
@@ -971,7 +1061,7 @@ extension PeerLink: CBPeripheralDelegate {
         let connected = Peer(id: peripheral.identifier, displayName: receiver.name)
         channel = framed
         channelPeer = connected
-        ptLog("[PeerLink] connected to \(receiver.name) in \(String(format: "%.2f", Date().timeIntervalSince(current.startedAt)))s")
+        linkLog("connected to \(receiver.name) in \(String(format: "%.2f", Date().timeIntervalSince(current.startedAt)))s")
         setState(.connected(receiver.name))
         onConnected?(connected)
     }
@@ -1052,6 +1142,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
         case .hasBytesAvailable: readAvailable()
         case .hasSpaceAvailable: pump()
         case .errorOccurred, .endEncountered:
+            linkLog("channel stream " + (event == .endEncountered ? "ended" : "error: \(stream.streamError.map { "\($0)" } ?? "unknown")"))
             close()
             onClose?()
         default: break
@@ -1101,7 +1192,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
             let start = inbox.startIndex
             let length = inbox[start..<start + 4].reduce(0) { $0 << 8 | Int($1) }
             guard length >= 1, length <= Self.maxFrame else {
-                ptLog("[PeerLink] corrupt frame length \(length) — closing")
+                linkLog("corrupt frame length \(length) — closing")
                 close()
                 onClose?()
                 return
