@@ -64,6 +64,11 @@ private let peerLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Pocket 
 private func linkLog(_ message: @autoclosure () -> String) {
     let text = message()
     peerLog.notice("\(text, privacy: .public)")
+    #if DEBUG
+    // stderr is unbuffered, so `devicectl … launch --console` shows each line as it
+    // happens. Timestamped: gaps show where the app was suspended.
+    fputs("[PeerLink] \(Date().formatted(.iso8601.time(includingFractionalSeconds: true))) \(text)\n", stderr)
+    #endif
 }
 
 private extension CBManagerState {
@@ -149,7 +154,25 @@ final class PeerLink: NSObject {
     @ObservationIgnored private static let attemptLimit: TimeInterval = 10
     /// A receiver not heard from in this long leaves the sender's picker.
     @ObservationIgnored private static let peerStaleAfter: TimeInterval = 12
+    /// A receiver whose contact failed is tried again after this long.
+    @ObservationIgnored private static let retryAfter: TimeInterval = 5
     @ObservationIgnored private static let tickInterval: TimeInterval = 1
+    /// How often a connected link logs its byte counts.
+    @ObservationIgnored private static let reportInterval: TimeInterval = 5
+    @ObservationIgnored private var lastReport = Date.distantPast
+
+    private static var appStateNote: String {
+        #if canImport(UIKit)
+        switch UIApplication.shared.applicationState {
+        case .active: return ""
+        case .inactive: return ", app inactive"
+        case .background: return ", app in background"
+        @unknown default: return ""
+        }
+        #else
+        return ""
+        #endif
+    }
 
     // MARK: State (both roles)
 
@@ -204,9 +227,16 @@ final class PeerLink: NSObject {
         var identity: Identity?
         var firstSeen: Date
         var lastSeen: Date
-        /// Probed and found not to be the remembered receiver, or unreadable — don't
-        /// keep connecting to it.
+        /// Probed and found not to be the remembered receiver — don't keep connecting to it.
         var probeSettled = false
+        /// The last contact with it failed: unreachable, or the phone answered but its
+        /// app isn't serving the remote link (yet). Retried after `retryAfter`, never
+        /// given up on — the receiver may simply not have been started.
+        var failedAt: Date?
+
+        func mayRetry(now: Date) -> Bool {
+            failedAt.map { now.timeIntervalSince($0) > PeerLink.retryAfter } ?? true
+        }
     }
 
     private struct Contact {
@@ -415,6 +445,12 @@ final class PeerLink: NSObject {
     private func onTick() {
         let now = Date()
         if let channel {
+            if now.timeIntervalSince(lastReport) >= Self.reportInterval {
+                lastReport = now
+                linkLog("link: in \(channel.bytesRead / 1024) KB, out \(channel.bytesWritten / 1024) KB, "
+                        + "queued \(channel.queuedBytes / 1024) KB, heard \(String(format: "%.1f", now.timeIntervalSince(channel.lastInbound)))s ago"
+                        + Self.appStateNote)
+            }
             if now.timeIntervalSince(channel.lastInbound) > Self.silenceLimit {
                 linkLog("nothing heard for \(Int(Self.silenceLimit))s — link is dead")
                 channelLost()
@@ -445,6 +481,12 @@ final class PeerLink: NSObject {
             if channel == nil, let contact, now.timeIntervalSince(contact.startedAt) > Self.attemptLimit {
                 linkLog("connection attempt to \(displayName(for: contact.peripheral.identifier)) timed out")
                 contactFailed()
+            }
+            // Picks the remembered receiver and unknown ones back up once their
+            // retry wait is over, even if no fresh sighting arrives to prompt it.
+            if channel == nil, contact == nil {
+                armStandingReconnect()
+                probeNext()
             }
             refreshDiscoveredPeers(now: now)
         }
@@ -533,7 +575,10 @@ final class PeerLink: NSObject {
         guard role == .sender else { return }
         // Tear down the GATT link too, so the reconnect starts from a clean connect;
         // didDisconnect then re-arms the standing reconnect if we still want it.
+        // The contact goes now, not in didDisconnect: left in place, its old start
+        // time would read as a timed-out attempt on the next tick.
         if let contact, contact.peripheral.state != .disconnected {
+            self.contact = nil
             centralManager?.cancelPeripheralConnection(contact.peripheral)
         } else {
             self.contact = nil
@@ -802,6 +847,7 @@ extension PeerLink: CBCentralManagerDelegate {
     private func armStandingReconnect() {
         guard let preferred = preferredReceiver, let central = centralManager,
               contact == nil, standingReconnect == nil,
+              known[preferred.peripheralID]?.mayRetry(now: Date()) ?? true,
               let peripheral = central.retrievePeripherals(withIdentifiers: [preferred.peripheralID]).first
         else { return }
         linkLog("standing connect to \(preferred.identity.name) at \(peripheral.identifier)")
@@ -822,10 +868,14 @@ extension PeerLink: CBCentralManagerDelegate {
         remember(peripheral, advertisedName: advertisedName)
         refreshDiscoveredPeers(now: Date())
         guard channel == nil else { return }
-        // The remembered receiver, under a peripheral id we already recognise.
+        // The remembered receiver, under a peripheral id we already recognise — or
+        // under its remembered id while the identity is still unread, as when the
+        // last contact reached the phone before its app was serving.
         if let preferred = preferredReceiver,
-           known[peripheral.identifier]?.identity?.id == preferred.identity.id,
-           contact?.peripheral !== peripheral {
+           known[peripheral.identifier]?.identity?.id == preferred.identity.id
+            || (peripheral.identifier == preferred.peripheralID && known[peripheral.identifier]?.identity == nil),
+           contact?.peripheral !== peripheral,
+           known[peripheral.identifier]?.mayRetry(now: Date()) ?? true {
             if let current = contact, current.intent == .join { return }  // the DJ's pick wins
             dropContact()
             beginContact(peripheral, intent: .rejoin)
@@ -856,7 +906,7 @@ extension PeerLink: CBCentralManagerDelegate {
         guard role == .sender, isActive, channel == nil, contact == nil else { return }
         let now = Date()
         let candidate = known.values
-            .filter { !$0.probeSettled && $0.identity == nil
+            .filter { !$0.probeSettled && $0.identity == nil && $0.mayRetry(now: now)
                 && now.timeIntervalSince($0.lastSeen) < Self.peerStaleAfter
                 && ($0.advertisedName == nil || preferredReceiver != nil) }
             .min { $0.firstSeen < $1.firstSeen }
@@ -890,7 +940,7 @@ extension PeerLink: CBCentralManagerDelegate {
     private func contactFailed() {
         guard let failed = contact else { return }
         linkLog("contact (\(failed.intent)) with \(displayName(for: failed.peripheral.identifier)) failed")
-        known[failed.peripheral.identifier]?.probeSettled = true
+        known[failed.peripheral.identifier]?.failedAt = Date()
         dropContact()
         if failed.intent != .probe {
             if channel == nil { setState(.disconnected) }
@@ -1093,6 +1143,9 @@ private final class FramedChannel: NSObject, StreamDelegate {
     /// Bytes in the outbox not yet written.
     private(set) var queuedBytes = 0
     private(set) var lastOutbound = Date()
+    /// Totals since the channel opened, for the periodic link report.
+    private(set) var bytesRead = 0
+    private(set) var bytesWritten = 0
 
     private let l2cap: CBL2CAPChannel
     private var inbox = Data()
@@ -1173,6 +1226,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
             if written == 0 { return }
             outOffset += written
             queuedBytes -= written
+            bytesWritten += written
             if outOffset == frame.count {
                 outbox.removeFirst()
                 outOffset = 0
@@ -1186,6 +1240,7 @@ private final class FramedChannel: NSObject, StreamDelegate {
             let count = input.read(&readBuffer, maxLength: readBuffer.count)
             if count <= 0 { break }
             inbox.append(readBuffer, count: count)
+            bytesRead += count
         }
         lastInbound = Date()
         while inbox.count >= 4 {

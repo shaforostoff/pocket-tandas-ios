@@ -14,12 +14,19 @@ import SwiftUI
 
 struct LauncherView: View {
     @Environment(AudioSessionController.self) private var audioSession
-    @State private var activeMode: AppMode?
-    /// Remote Send's mirror and peer link, made once when the mode is picked and
-    /// handed to the main screen. Made here rather than in MainScreenView's init,
-    /// which SwiftUI re-runs on every re-render of this view while the screen is
-    /// up — each run built (and threw away) a link of its own.
-    @State private var remoteSendQueue: RemoteQueue?
+    @State private var presented: Presentation?
+
+    /// The open mode, plus Remote Send's mirror and peer link. The link is made
+    /// once when the mode is picked rather than in MainScreenView's init, which
+    /// SwiftUI re-runs on every re-render of this view while the screen is up —
+    /// each run built (and threw away) a link of its own. It travels inside the
+    /// presented item: kept in a separate @State, the cover's first presentation
+    /// read it before the update landed, got nil, and never started the link.
+    private struct Presentation: Identifiable {
+        let mode: AppMode
+        var remoteQueue: RemoteQueue?
+        var id: AppMode { mode }
+    }
 
     /// DJ-mode Stop fade-out length, shared with the engine via UserDefaults.
     @AppStorage(PlaybackEngine.fadeOutDurationKey)
@@ -71,14 +78,14 @@ struct LauncherView: View {
             #endif
         }
         #if os(iOS)
-        .fullScreenCover(item: $activeMode, onDismiss: { remoteSendQueue = nil }) { mode in
-            MainScreenView(mode: mode, remoteQueue: mode == .remoteSend ? remoteSendQueue : nil)
+        .fullScreenCover(item: $presented) { presentation in
+            MainScreenView(mode: presentation.mode, remoteQueue: presentation.remoteQueue)
         }
         #else
         // A Mac has no full-screen presentation: the mode takes over the window,
         // which is already the size the browser and queue want.
-        .sheet(item: $activeMode, onDismiss: { remoteSendQueue = nil }) { mode in
-            MainScreenView(mode: mode, remoteQueue: mode == .remoteSend ? remoteSendQueue : nil)
+        .sheet(item: $presented) { presentation in
+            MainScreenView(mode: presentation.mode, remoteQueue: presentation.remoteQueue)
                 .frame(minWidth: 900, minHeight: 600)
         }
         #endif
@@ -179,7 +186,7 @@ struct LauncherView: View {
         VStack(spacing: 14) {
             HStack(spacing: 14) {
                 Button {
-                    activeMode = .explore
+                    presented = Presentation(mode: .explore)
                 } label: {
                     Label("Explore", systemImage: "folder")
                         .lineLimit(2)
@@ -190,8 +197,8 @@ struct LauncherView: View {
                 .controlSize(.large)
 
                 Button {
-                    remoteSendQueue = RemoteQueue(link: PeerLink(role: .sender))
-                    activeMode = .remoteSend
+                    presented = Presentation(mode: .remoteSend,
+                                             remoteQueue: RemoteQueue(link: PeerLink(role: .sender)))
                 } label: {
                     Label("Remote Control", systemImage: "dot.radiowaves.right")
                         .lineLimit(2)
@@ -204,7 +211,7 @@ struct LauncherView: View {
 
             HStack(spacing: 14) {
                 Button {
-                    activeMode = .dj
+                    presented = Presentation(mode: .dj)
                 } label: {
                     Label("DJ Mode", systemImage: "slider.horizontal.3")
                         .lineLimit(2)
@@ -215,7 +222,7 @@ struct LauncherView: View {
                 .controlSize(.large)
 
                 Button {
-                    activeMode = .remoteReceive
+                    presented = Presentation(mode: .remoteReceive)
                 } label: {
                     Label("Remote Controllable", systemImage: "antenna.radiowaves.left.and.right")
                         .lineLimit(2)
