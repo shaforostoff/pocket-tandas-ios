@@ -46,6 +46,11 @@
 //  sender's heartbeat answers off the channel, and without this it hit its silence
 //  limit and closed an idle link every fifteen seconds.
 //
+//  Files over Wi-Fi: once the link is up the receiver offers a TCP lane over
+//  peer-to-peer Wi-Fi (see WiFiLane), and file transfers go that way while it
+//  works — about 25 KB/s on Bluetooth against megabytes a second. Everything else
+//  stays on Bluetooth, and so does a file when there is no lane.
+//
 //  Reconnection: the sender remembers the last receiver it was connected to, across
 //  launches, and re-joins it without a tap — by a standing connect to its
 //  peripheral identifier and, since an unbonded phone's Bluetooth address rotates,
@@ -60,6 +65,7 @@
 
 import Foundation
 import CoreBluetooth
+import Network
 import Observation
 import os
 #if canImport(UIKit)
@@ -71,7 +77,7 @@ import UIKit
 /// "PeerLink". Public, or release builds show every interpolation as <private>.
 private let peerLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Pocket Tandas", category: "PeerLink")
 
-private func linkLog(_ message: @autoclosure () -> String) {
+func linkLog(_ message: @autoclosure () -> String) {
     let text = message()
     peerLog.notice("\(text, privacy: .public)")
     #if DEBUG
@@ -138,6 +144,9 @@ final class PeerLink: NSObject {
     /// feeds its next piece from here, which keeps at most a piece or two queued
     /// and lets a Stop the DJ taps meanwhile go out straight behind it.
     @ObservationIgnored var onOutboundDrained: (() -> Void)?
+    /// Sender: the Wi-Fi lane failed while carrying these transfers' pieces, so
+    /// they will never arrive complete — the file sender sends them again.
+    @ObservationIgnored var onLaneTransfersLost: (([Int]) -> Void)?
 
     // MARK: GATT layout
 
@@ -201,6 +210,33 @@ final class PeerLink: NSObject {
     @ObservationIgnored private var channelPeer: Peer?
     @ObservationIgnored private var tick: Timer?
     @ObservationIgnored private let decodeQueue = DispatchQueue(label: "PeerLink.decode", qos: .userInitiated)
+
+    // MARK: Wi-Fi lane
+
+    /// What the receiver sends over Bluetooth to let the sender onto its lane.
+    private struct LaneOffer: Codable {
+        let service: String
+        let token: Data
+    }
+    /// Receiver: the listener and the token a lane has to open with.
+    @ObservationIgnored private var laneListener: WiFiLaneListener?
+    @ObservationIgnored private var laneToken = Data()
+    /// Receiver: connections that haven't shown the token yet.
+    @ObservationIgnored private var laneCandidates: [WiFiLane] = []
+    /// Sender: the receiver's offer, kept for retries.
+    @ObservationIgnored private var laneOffer: LaneOffer?
+    /// Sender: a lane connecting, and since when.
+    @ObservationIgnored private var laneAttempt: (lane: WiFiLane, startedAt: Date)?
+    @ObservationIgnored private var laneRetryAt = Date.distantPast
+    /// The working lane: ready (sender) or past the token (receiver).
+    @ObservationIgnored private var lane: WiFiLane?
+    /// Sender: transfers whose pieces are going over the lane, until the
+    /// receiver's result for them comes back.
+    @ObservationIgnored private var laneTransfers: Set<Int> = []
+    /// A lane with data waiting and no progress in this long has stalled.
+    @ObservationIgnored private static let laneStallLimit: TimeInterval = 5
+    /// After a lane fails, wait this long before trying again.
+    @ObservationIgnored private static let laneRetryAfter: TimeInterval = 30
     @ObservationIgnored private var lifecycleObservers: [NSObjectProtocol] = []
 
     // MARK: State (receiver)
@@ -400,6 +436,7 @@ final class PeerLink: NSObject {
         channel?.close()
         channel = nil
         channelPeer = nil
+        closeLane()
         unintroduced.forEach { $0.channel.close() }
         unintroduced = []
         dropPendingSender()
@@ -425,7 +462,7 @@ final class PeerLink: NSObject {
     }
 
     /// Bytes queued on the channel and not yet written to it.
-    var outboundBacklog: Int { channel?.queuedBytes ?? 0 }
+    var outboundBacklog: Int { (channel?.queuedBytes ?? 0) + (lane?.queuedBytes ?? 0) }
 
     /// One piece of a file transfer. False when there is no link to send it on.
     @discardableResult
@@ -434,12 +471,37 @@ final class PeerLink: NSObject {
         var body = Data(capacity: 4 + bytes.count)
         withUnsafeBytes(of: UInt32(truncatingIfNeeded: id).bigEndian) { body.append(contentsOf: $0) }
         body.append(bytes)
-        channel.send(kind: .file, body: body, droppable: false)
+        if let lane = lane(for: id) {
+            lane.send(kind: .file, body: body)
+        } else {
+            channel.send(kind: .file, body: body, droppable: false)
+        }
         return true
+    }
+
+    /// Where a transfer's frames go: the lane, if the transfer started on it and
+    /// the lane is still up. A transfer starts on the lane whenever there is one.
+    private func lane(for transfer: Int, starting: Bool = false) -> WiFiLane? {
+        guard role == .sender, let lane else { return nil }
+        if starting { laneTransfers.insert(transfer) }
+        return laneTransfers.contains(transfer) ? lane : nil
     }
 
     func send(_ message: RemoteMessage) {
         guard let channel, let data = message.encoded() else { return }
+        let laneForMessage: WiFiLane?
+        switch message {
+        case .fileStart(let start): laneForMessage = lane(for: start.id, starting: true)
+        case .fileEnd(let id):      laneForMessage = lane(for: id)
+        case .fileCancel(let id):
+            laneForMessage = lane(for: id)
+            laneTransfers.remove(id)
+        default:                    laneForMessage = nil
+        }
+        if let laneForMessage {
+            laneForMessage.send(kind: .message, body: data)
+            return
+        }
         // Position updates are superseded by the next one within seconds, so one
         // stuck behind a backlog is dropped rather than delivered stale.
         let droppable: Bool
@@ -478,6 +540,7 @@ final class PeerLink: NSObject {
                 lastWake = now
                 current.peripheral.readValue(for: wake)
             }
+            if role == .sender { tickLane(now) }
         }
         switch role {
         case .receiver:
@@ -565,9 +628,17 @@ final class PeerLink: NSObject {
                     guard let self, framed === self.channel else { return }
                     // The peer is leaving deliberately — don't chase it.
                     if case .goodbye = message { self.forgetPreferred() }
+                    if case .fileResult(let result) = message { self.laneTransfers.remove(result.id) }
                     self.onReceive?(message)
                 }
             }
+        case .lane:
+            guard role == .sender, framed === channel,
+                  let offer = try? JSONDecoder().decode(LaneOffer.self, from: body) else { return }
+            linkLog("Wi-Fi lane offered (\(offer.service))")
+            closeLane()
+            laneOffer = offer
+            connectLane()
         case .file:
             guard framed === channel, body.count >= 4 else { return }
             let id = Int(body.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
@@ -589,6 +660,7 @@ final class PeerLink: NSObject {
         guard let lost = channel else { return }
         linkLog("link to \(channelPeer?.displayName ?? "?") lost")
         lost.close()
+        closeLane()
         channel = nil
         channelPeer = nil
         setState(isActive ? .disconnected : .idle)
@@ -832,6 +904,7 @@ extension PeerLink: CBPeripheralManagerDelegate {
         channelPeer = connected
         setState(.connected(peer.name))
         onConnected?(connected)
+        openLane()
     }
 
     fileprivate static func unavailableReason(_ state: CBManagerState) -> String? {
@@ -1158,6 +1231,158 @@ extension PeerLink: CBPeripheralDelegate {
     }
 }
 
+// MARK: - Wi-Fi lane
+
+extension PeerLink {
+    /// Receiver: listen for the sender's lane, and offer it once listening. A new
+    /// Bluetooth link gets a new listener and a new token.
+    fileprivate func openLane() {
+        guard role == .receiver else { return }
+        closeLane()
+        let token = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+        let listener: WiFiLaneListener
+        do { listener = try WiFiLaneListener() } catch {
+            return linkLog("Wi-Fi lane: can't listen: \(error)")
+        }
+        laneToken = token
+        laneListener = listener
+        listener.onReady = { [weak self, weak listener] in
+            guard let self, let listener, listener === self.laneListener, let channel = self.channel,
+                  let body = try? JSONEncoder().encode(LaneOffer(service: listener.name, token: token)) else { return }
+            linkLog("Wi-Fi lane listening as \(listener.name); offering it")
+            channel.send(kind: .lane, body: body, droppable: false)
+        }
+        listener.onFailed = { reason in linkLog("Wi-Fi lane listener failed: \(reason)") }
+        listener.onConnection = { [weak self] connection in self?.admitLane(connection) }
+    }
+
+    /// Receiver: a connection gets in by opening with the token.
+    private func admitLane(_ connection: NWConnection) {
+        let candidate = WiFiLane(connection)
+        laneCandidates.append(candidate)
+        candidate.onClose = { [weak self, weak candidate] _ in
+            self?.laneCandidates.removeAll { $0 === candidate }
+        }
+        candidate.onFrame = { [weak self, weak candidate] kind, body in
+            guard let self, let candidate else { return }
+            self.laneCandidates.removeAll { $0 === candidate }
+            guard kind == .hello, body == self.laneToken, self.channel != nil else {
+                linkLog("Wi-Fi lane: a connection without the token — closed")
+                return candidate.close()
+            }
+            self.lane?.close()
+            self.lane = candidate
+            linkLog("Wi-Fi lane up (\(candidate.path))")
+            candidate.onFrame = { [weak self] kind, body in self?.handleLaneFrame(kind, body) }
+            candidate.onClose = { [weak self, weak candidate] reason in
+                guard let self, let candidate, candidate === self.lane else { return }
+                linkLog("Wi-Fi lane closed: \(reason)")
+                self.lane = nil
+            }
+        }
+    }
+
+    /// Receiver: messages and pieces off the lane, through the decode queue like
+    /// the channel's so each transfer's start lands before its bytes.
+    private func handleLaneFrame(_ kind: WiFiLane.Kind, _ body: Data) {
+        switch kind {
+        case .hello:
+            return
+        case .message:
+            decodeQueue.async { [weak self] in
+                guard let message = RemoteMessage.decode(body) else {
+                    return linkLog("undecodable lane message (\(body.count) bytes) — dropped")
+                }
+                DispatchQueue.main.async {
+                    guard let self, self.channel != nil else { return }
+                    self.onReceive?(message)
+                }
+            }
+        case .file:
+            guard body.count >= 4 else { return }
+            let id = Int(body.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
+            let bytes = body.dropFirst(4)
+            decodeQueue.async { [weak self] in
+                DispatchQueue.main.async {
+                    guard let self, self.channel != nil else { return }
+                    self.onFileChunk?(id, Data(bytes))
+                }
+            }
+        }
+    }
+
+    /// Sender: connect to the offered lane; it counts once it is ready, and opens
+    /// with the token.
+    fileprivate func connectLane() {
+        guard role == .sender, lane == nil, laneAttempt == nil, channel != nil, let offer = laneOffer else { return }
+        linkLog("Wi-Fi lane: connecting to \(offer.service)")
+        let attempt = WiFiLane(service: offer.service)
+        laneAttempt = (attempt, Date())
+        attempt.onReady = { [weak self, weak attempt] in
+            guard let self, let attempt, attempt === self.laneAttempt?.lane else { return }
+            self.laneAttempt = nil
+            attempt.send(kind: .hello, body: offer.token)
+            self.lane = attempt
+            linkLog("Wi-Fi lane up (\(attempt.path)) — files go this way")
+        }
+        attempt.onDrained = { [weak self] in self?.onOutboundDrained?() }
+        attempt.onClose = { [weak self, weak attempt] reason in
+            guard let self, let attempt else { return }
+            if attempt === self.lane {
+                self.laneLost("closed: \(reason)")
+            } else if attempt === self.laneAttempt?.lane {
+                linkLog("Wi-Fi lane: couldn't connect: \(reason)")
+                self.laneAttempt = nil
+                self.laneRetryAt = Date().addingTimeInterval(Self.laneRetryAfter)
+            }
+        }
+    }
+
+    /// Sender, each tick: give up on a slow attempt, notice a stalled lane, retry.
+    fileprivate func tickLane(_ now: Date) {
+        if let attempt = laneAttempt, now.timeIntervalSince(attempt.startedAt) > Self.attemptLimit {
+            linkLog("Wi-Fi lane: no connection after \(Int(Self.attemptLimit))s — staying on Bluetooth")
+            attempt.lane.close()
+            laneAttempt = nil
+            laneRetryAt = now.addingTimeInterval(Self.laneRetryAfter)
+        }
+        if let lane, lane.queuedBytes > 0, now.timeIntervalSince(lane.lastProgress) > Self.laneStallLimit {
+            laneLost("stalled for \(Int(Self.laneStallLimit))s")
+        }
+        if lane == nil, laneAttempt == nil, laneOffer != nil, now >= laneRetryAt {
+            connectLane()
+        }
+    }
+
+    /// Sender: the lane is gone. A transfer whose pieces were on it can't finish;
+    /// the file sender sends it again, over Bluetooth until a lane is back.
+    private func laneLost(_ reason: String) {
+        guard let lost = lane else { return }
+        linkLog("Wi-Fi lane lost (\(reason)) — back to Bluetooth")
+        lost.close()
+        lane = nil
+        laneRetryAt = Date().addingTimeInterval(Self.laneRetryAfter)
+        let stranded = Array(laneTransfers)
+        laneTransfers = []
+        if !stranded.isEmpty { onLaneTransfersLost?(stranded) }
+    }
+
+    /// Both roles: the Bluetooth link is gone or being replaced, and the lane with it.
+    fileprivate func closeLane() {
+        laneListener?.cancel()
+        laneListener = nil
+        laneCandidates.forEach { $0.close() }
+        laneCandidates = []
+        laneAttempt?.lane.close()
+        laneAttempt = nil
+        lane?.close()
+        lane = nil
+        laneOffer = nil
+        laneTransfers = []
+        laneRetryAt = .distantPast
+    }
+}
+
 // MARK: - Framed channel
 
 /// One L2CAP channel with message framing on top: length-prefixed frames in, a
@@ -1169,6 +1394,8 @@ private final class FramedChannel: NSObject, StreamDelegate {
         case hello = 1
         case message = 2
         case file = 3
+        /// Receiver → sender: a LaneOffer.
+        case lane = 4
     }
 
     /// A queue snapshot is the largest thing sent; anything claiming to be bigger

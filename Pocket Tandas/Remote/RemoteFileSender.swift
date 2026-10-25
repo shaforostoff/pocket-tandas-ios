@@ -168,6 +168,7 @@ final class RemoteFileSender {
     init(link: PeerLink) {
         self.link = link
         link.onOutboundDrained = { [weak self] in self?.pump() }
+        link.onLaneTransfersLost = { [weak self] stranded in self?.resend(stranded) }
         // Copies left behind by a run that was killed mid-transfer.
         try? FileManager.default.removeItem(at: Self.temporaryFolder)
     }
@@ -365,6 +366,21 @@ final class RemoteFileSender {
         }
     }
 
+    /// The Wi-Fi lane failed under the file on the air, taking what it carried
+    /// with it: start that file over, from the copy already made (PeerLink sends it
+    /// over Bluetooth now). A file already fully sent just waits for its result,
+    /// which comes back over Bluetooth either way.
+    private func resend(_ stranded: [Int]) {
+        guard let file = current, stranded.contains(file.id) else { return }
+        let title = awaiting.removeValue(forKey: file.id) ?? progress?.title ?? file.prepared.relativePath
+        ptLog("[RemoteFileSender] Wi-Fi lane lost mid-file — sending \(title) again")
+        link.send(.fileCancel(id: file.id))
+        try? file.handle.close()
+        current = nil
+        progress?.sent = 0
+        begin(file.prepared, title: title)
+    }
+
     private func abandonCurrent() {
         guard let file = current else { return }
         try? file.handle.close()
@@ -380,14 +396,21 @@ final class RemoteFileSender {
             discard(file.prepared)
         }
         current = nil
-        preparing.values.forEach { $0.cancel() }
+        // A copy encoded ahead for a file that now won't be sent is deleted once
+        // its task is done — cancelled mid-encode, the transcoder removes it itself.
+        for task in preparing.values {
+            task.cancel()
+            Task { if let prepared = try? await task.value { Self.discard(prepared) } }
+        }
         preparing = [:]
         jobs = []
         next = 0
         progress = nil
     }
 
-    private func discard(_ prepared: Prepared) {
+    private func discard(_ prepared: Prepared) { Self.discard(prepared) }
+
+    private static func discard(_ prepared: Prepared) {
         if prepared.isTemporary { try? FileManager.default.removeItem(at: prepared.url) }
     }
 

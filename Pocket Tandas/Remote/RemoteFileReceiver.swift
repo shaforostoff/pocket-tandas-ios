@@ -15,6 +15,11 @@
 //  a track in the library. The writes happen on a queue of their own: this is the
 //  phone that is playing, and its track transitions are driven from main.
 //
+//  A transfer that stops arriving — the sender gone quiet, or its Wi-Fi lane
+//  lost after the last piece — is dropped after `stallLimit`, its partial file
+//  deleted and the sender told, so nothing half-written outlives it. The
+//  temporary folder is also emptied at launch, for a run killed mid-transfer.
+//
 //  The path comes from the other phone, so it is held to the base folder: no
 //  "..", no hidden components, and an audio extension — nothing else gets written.
 //
@@ -47,6 +52,8 @@ final class RemoteFileReceiver {
         let temporary: URL
         let size: Int64
         var received: Int64 = 0
+        /// The start or the latest piece, on main.
+        var lastActivity = Date()
         /// Written to and closed on `io` only.
         var handle: FileHandle?
         /// Set on `io` when a write fails; read there at the end.
@@ -61,6 +68,9 @@ final class RemoteFileReceiver {
     }
 
     @ObservationIgnored private var incoming: [Int: Incoming] = [:]
+    /// Runs while anything is arriving, to drop transfers that stopped.
+    @ObservationIgnored private var stallTimer: Timer?
+    private static let stallLimit: TimeInterval = 30
 
     /// A track is a few MB, a long lossless one a few hundred; anything claiming
     /// more is not a track.
@@ -93,6 +103,7 @@ final class RemoteFileReceiver {
         let temporary = Self.temporaryFolder.appending(path: "\(start.id)-\(UUID().uuidString).part")
         let file = Incoming(id: start.id, destination: destination, temporary: temporary, size: start.size)
         incoming[start.id] = file
+        watchForStalls()
         progress = Progress(name: destination.lastPathComponent, received: 0, size: start.size)
         io.async {
             do {
@@ -110,6 +121,7 @@ final class RemoteFileReceiver {
     func chunk(_ id: Int, _ bytes: Data) {
         guard let file = incoming[id] else { return }   // refused, cancelled, or unknown
         file.received += Int64(bytes.count)
+        file.lastActivity = Date()
         guard file.received <= file.size else {
             discard(file)
             return refuse(id, "more data than announced")
@@ -167,6 +179,27 @@ final class RemoteFileReceiver {
     }
 
     // MARK: - Helpers
+
+    private func watchForStalls() {
+        guard stallTimer == nil else { return }
+        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.dropStalled() }
+        timer.tolerance = 1
+        RunLoop.main.add(timer, forMode: .common)
+        stallTimer = timer
+    }
+
+    private func dropStalled() {
+        let now = Date()
+        for file in incoming.values where now.timeIntervalSince(file.lastActivity) > Self.stallLimit {
+            ptLog("[RemoteFileReceiver] transfer \(file.id) stopped arriving — dropping it")
+            discard(file)
+            refuse(file.id, "stopped arriving")
+        }
+        if incoming.isEmpty {
+            stallTimer?.invalidate()
+            stallTimer = nil
+        }
+    }
 
     private func refuse(_ id: Int, _ reason: String) {
         ptLog("[RemoteFileReceiver] refusing transfer \(id): \(reason)")

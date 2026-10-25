@@ -95,6 +95,7 @@
 		660802EF162698A2BA7FA87B /* AppMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F204B4A9645469298030DA4 /* AppMode.swift */; };
 		69F84E3E88A3785FF6C833EF /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F74FFEA141432E11F27838 /* BrowserView.swift */; };
 		6AFA57E67887807AD3D865B2 /* PeerLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D45CBB99FB2EF3837BF45 /* PeerLink.swift */; };
+		EC7A0477E84919A785E9580C /* WiFiLane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09F280D66294F10644DF7C3 /* WiFiLane.swift */; };
 		6CCD47CDB413801C85567EF7 /* PTRestorationDSP.mm in Sources */ = {isa = PBXBuildFile; fileRef = B40B48CC8B52D5FD6C32184E /* PTRestorationDSP.mm */; settings = {COMPILER_FLAGS = "-O2"; }; };
 		6E090B721FB28D6B95FEA354 /* OutputDevicePickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1646A25D1C9E837E5AD1B1BF /* OutputDevicePickers.swift */; };
 		6ECCD249DB5AD20FB86C9DFB /* PlaylistWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326E43918354BD12D57FCB96 /* PlaylistWriter.swift */; };
@@ -128,6 +129,7 @@
 		99B44B73BB1D397161655B01 /* AppMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F204B4A9645469298030DA4 /* AppMode.swift */; };
 		99CE42249B28CBDF4059E83C /* MusicLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA504F82A4DD10D872654477 /* MusicLibrary.swift */; };
 		99EA4D4CBD4BE75EDD40F6A0 /* PeerLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D45CBB99FB2EF3837BF45 /* PeerLink.swift */; };
+		E52DCE64A8072813AB5C8892 /* WiFiLane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09F280D66294F10644DF7C3 /* WiFiLane.swift */; };
 		9A01727B4F0D6EA340210453 /* Pocket_TandasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE986D182FDDF876003B2F2A /* Pocket_TandasApp.swift */; };
 		9A874A8A992CC0033EAAF673 /* CurrentRouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4607403494523710516CAD07 /* CurrentRouteView.swift */; };
 		9B2B4D9F7FCEEFB61C261D81 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 094D413EAD72D63E453EB4AC /* PrivacyInfo.xcprivacy */; };
@@ -280,6 +282,7 @@
 		749F413BAFABFD110C4858D1 /* M4ATagMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = M4ATagMapper.swift; path = M4ATagMapper.swift; sourceTree = "<group>"; };
 		74E64A91ABB037C8D2EC8E5F /* StopResumeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StopResumeBar.swift; path = StopResumeBar.swift; sourceTree = "<group>"; };
 		750D45CBB99FB2EF3837BF45 /* PeerLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PeerLink.swift; path = PeerLink.swift; sourceTree = "<group>"; };
+		B09F280D66294F10644DF7C3 /* WiFiLane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WiFiLane.swift; path = WiFiLane.swift; sourceTree = "<group>"; };
 		76124D929F0AFEA8128073DF /* PreListenPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreListenPlayer.swift; path = PreListenPlayer.swift; sourceTree = "<group>"; };
 		76764CC68526E0C71A84329B /* EqualizerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EqualizerView.swift; path = EqualizerView.swift; sourceTree = "<group>"; };
 		76EA45E88C6106201C0CAA90 /* TrackMetadataSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackMetadataSnapshot.swift; path = TrackMetadataSnapshot.swift; sourceTree = "<group>"; };
@@ -370,6 +373,7 @@
 				D53643CEB516E9D67C100371 /* RemoteMessage.swift */,
 				A789455796DA2EC4EB76F57E /* PlaybackControlling.swift */,
 				750D45CBB99FB2EF3837BF45 /* PeerLink.swift */,
+				B09F280D66294F10644DF7C3 /* WiFiLane.swift */,
 				F9CA4380AB56B57660B01D65 /* RemoteQueue.swift */,
 				05024A29AC96010E6E14170A /* RemoteReceiverCoordinator.swift */,
 				785B4A9EA9A368A0E6B32379 /* RemoteTrackResolver.swift */,
@@ -810,6 +814,7 @@
 				7C29330A8F4D077719F03141 /* RemoteMessage.swift in Sources */,
 				F397059BB19F718336BEDE26 /* PlaybackControlling.swift in Sources */,
 				6AFA57E67887807AD3D865B2 /* PeerLink.swift in Sources */,
+				EC7A0477E84919A785E9580C /* WiFiLane.swift in Sources */,
 				F4ADC2E9062905158C58C568 /* RemoteQueue.swift in Sources */,
 				5D52EA2635D26F88CDBA804C /* RemoteReceiverCoordinator.swift in Sources */,
 				81A44C600A887CDC8958A04E /* RemoteTrackResolver.swift in Sources */,
@@ -911,6 +916,7 @@
 				5930485BA7FCD1A190D203C8 /* RemoteMessage.swift in Sources */,
 				616B4C72BB16ACBAAE45EBBE /* PlaybackControlling.swift in Sources */,
 				99EA4D4CBD4BE75EDD40F6A0 /* PeerLink.swift in Sources */,
+				E52DCE64A8072813AB5C8892 /* WiFiLane.swift in Sources */,
 				C9544E77B948A8144AC0C7A8 /* RemoteQueue.swift in Sources */,
 				D6164F32B895D20C772A6917 /* RemoteReceiverCoordinator.swift in Sources */,
 				428747CDBB1F714A700B0AAC /* RemoteTrackResolver.swift in Sources */,

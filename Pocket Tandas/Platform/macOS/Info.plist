@@ -14,6 +14,12 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ptandas._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Pocket Tandas sends tracks to the other phone over Wi-Fi when it can, which is much faster than Bluetooth.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Pocket Tandas uses Bluetooth to connect to a nearby phone for remote DJ control.</string>
 </dict>
